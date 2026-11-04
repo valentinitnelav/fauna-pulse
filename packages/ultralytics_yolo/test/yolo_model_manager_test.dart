@@ -38,23 +38,6 @@ void main() {
       expect(manager, isNotNull);
     });
 
-    test('constructor with classifier options', () {
-      final manager = YOLOModelManager(
-        channel: mockChannel,
-        instanceId: 'test_instance',
-        modelPath: 'classifier_model.tflite',
-        task: YOLOTask.classify,
-        useGpu: false,
-        classifierOptions: {
-          'enable1ChannelSupport': true,
-          'expectedChannels': 1,
-        },
-        viewId: 123,
-      );
-
-      expect(manager, isNotNull);
-    });
-
     test('download progress stream broadcasts clamped progress', () async {
       final events = <DownloadProgress>[];
       final subscription = YOLOModelManager.downloadProgress.listen(events.add);
@@ -163,38 +146,6 @@ void main() {
       );
     });
 
-    test('loadModel with classifier options', () async {
-      final manager = YOLOModelManager(
-        channel: mockChannel,
-        instanceId: 'test_instance',
-        modelPath: 'classifier_model.tflite',
-        task: YOLOTask.classify,
-        useGpu: false,
-        classifierOptions: {
-          'enable1ChannelSupport': true,
-          'expectedChannels': 1,
-        },
-      );
-
-      await manager.loadModel();
-
-      YOLOTestHelpers.assertMethodCalled(
-        log,
-        'loadModel',
-        arguments: {
-          'modelPath': 'classifier_model.tflite',
-          'task': 'classify',
-          'useGpu': false,
-          'numItemsThreshold': 30,
-          'classifierOptions': {
-            'enable1ChannelSupport': true,
-            'expectedChannels': 1,
-          },
-          'instanceId': 'test_instance',
-        },
-      );
-    });
-
     test('loadModel handles platform exceptions', () async {
       final errorChannel = YOLOTestHelpers.setupMockChannel(
         customResponses: {
@@ -226,7 +177,7 @@ void main() {
         viewId: 123,
       );
 
-      await manager.switchModel('new_model.tflite', YOLOTask.segment);
+      await manager.switchModel('new_model.tflite', YOLOTask.detect);
 
       YOLOTestHelpers.assertMethodCalled(
         log,
@@ -234,7 +185,7 @@ void main() {
         arguments: {
           'viewId': 123,
           'modelPath': 'new_model.tflite',
-          'task': 'segment',
+          'task': 'detect',
           'useGpu': true,
           'instanceId': 'test_instance',
         },
@@ -251,7 +202,7 @@ void main() {
       );
 
       expect(
-        () => manager.switchModel('new_model.tflite', YOLOTask.segment),
+        () => manager.switchModel('new_model.tflite', YOLOTask.detect),
         throwsA(isA<StateError>()),
       );
     });
@@ -276,7 +227,7 @@ void main() {
       );
 
       expect(
-        () => manager.switchModel('new_model.tflite', YOLOTask.segment),
+        () => manager.switchModel('new_model.tflite', YOLOTask.detect),
         throwsA(isA<YOLOException>()),
       );
     });

@@ -142,7 +142,7 @@ void main() {
         MaterialApp(
           home: YOLOView(
             modelPath: 'custom_model.tflite',
-            task: YOLOTask.segment,
+            task: YOLOTask.detect,
             cameraResolution: '1080p',
             onResult: (results) {},
             onPerformanceMetrics: (metrics) {},
@@ -155,7 +155,7 @@ void main() {
     test('supports different task types and model paths', () {
       expect(YOLOTask.values.length, greaterThan(0));
       expect(YOLOTask.values.contains(YOLOTask.detect), true);
-      expect(YOLOTask.values.contains(YOLOTask.segment), true);
+      expect(YOLOTask.values, [YOLOTask.detect]); // FaunaPulse fork
 
       const widget1 = YOLOView(
         modelPath: 'test_model.tflite',
@@ -163,11 +163,11 @@ void main() {
       );
       const widget2 = YOLOView(
         modelPath: 'test_model.tflite',
-        task: YOLOTask.segment,
+        task: YOLOTask.detect,
       );
 
       expect(widget1.task, YOLOTask.detect);
-      expect(widget2.task, YOLOTask.segment);
+      expect(widget2.task, YOLOTask.detect);
       expect(widget1.modelPath, isA<String>());
       expect(widget1.modelPath.isNotEmpty, true);
     });
@@ -224,7 +224,7 @@ void main() {
           home: Scaffold(
             body: YOLOView(
               modelPath: 'assets/yolo_new.tflite',
-              task: YOLOTask.segment,
+              task: YOLOTask.detect,
               controller: controller,
             ),
           ),
@@ -667,7 +667,7 @@ void main() {
           MaterialApp(
             home: YOLOView(
               modelPath: 'test_model.tflite',
-              task: YOLOTask.segment,
+              task: YOLOTask.detect,
               controller: controller,
               lensFacing: LensFacing.front,
               confidenceThreshold: 0.7,

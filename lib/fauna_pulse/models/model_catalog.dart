@@ -228,6 +228,10 @@ class ModelCatalog {
     return _imgszFrom(await _inspect(probe));
   }
 
+  /// The `task` word of the file's metadata ("detect", "segment", "pose", ...),
+  /// or null when the file has none (round 354: the import refuses the others).
+  static Future<String?> metadataTask(File f) async => (await _inspect(f.path))['task'] as String?;
+
   static Future<Map<String, dynamic>> _inspect(String modelPath) async {
     try {
       final r = await _channel.invokeMethod('inspectModel', {

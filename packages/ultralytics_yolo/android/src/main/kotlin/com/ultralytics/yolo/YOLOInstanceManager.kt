@@ -26,9 +26,6 @@ object YOLOInstanceManager {
     // Store loading states to prevent multiple concurrent loads
     private val loadingStates = ConcurrentHashMap<String, Boolean>()
 
-    // Store classifier options per instance
-    private val instanceOptions = ConcurrentHashMap<String, Map<String, Any>>()
-
     init {
         // Initialize default instance for backward compatibility
         createInstance("default")
@@ -66,13 +63,12 @@ object YOLOInstanceManager {
             modelPath = modelPath,
             task = task,
             useGpu = true,
-            classifierOptions = null,
             callback = callback
         )
     }
 
     /**
-     * Loads a model for a specific instance with GPU control and classifier options
+     * Loads a model for a specific instance with GPU control
      */
     fun loadModel(
         instanceId: String,
@@ -81,7 +77,6 @@ object YOLOInstanceManager {
         task: YOLOTask,
         useGpu: Boolean = true,
         numItemsThreshold: Int = 30,
-        classifierOptions: Map<String, Any>?,
         callback: (Result<Unit>) -> Unit
     ) {
         // Check if already loaded
@@ -101,18 +96,12 @@ object YOLOInstanceManager {
         loadingStates[instanceId] = true
 
         try {
-            // Store classifier options if provided
-            classifierOptions?.let { options ->
-                instanceOptions[instanceId] = options
-            }
-
             // Create YOLO instance with the specified parameters
-            val yolo = YOLO(context, modelPath, task, emptyList(), useGpu, numItemsThreshold, classifierOptions)
+            val yolo = YOLO(context, modelPath, task, emptyList(), useGpu, numItemsThreshold)
             instances[instanceId] = yolo
             loadingStates[instanceId] = false
         } catch (e: Throwable) { // FaunaPulse (round 326): see the Throwable note in YOLOView.kt's model load
             loadingStates[instanceId] = false
-            instanceOptions.remove(instanceId) // Clean up options on failure
             Log.e(TAG, "Failed to load model for instance $instanceId: ${e.message}")
             callback(Result.failure(e))
             return
@@ -174,7 +163,6 @@ object YOLOInstanceManager {
      */
     suspend fun dispose(instanceId: String) {
         loadingStates.remove(instanceId)
-        instanceOptions.remove(instanceId)
         val yolo = instances.remove(instanceId) ?: return
         withContext(Dispatchers.IO) { yolo.close() }
     }
@@ -186,7 +174,6 @@ object YOLOInstanceManager {
      */
     fun disposeAll() {
         loadingStates.clear()
-        instanceOptions.clear()
         val all = instances.values.toList()
         instances.clear()
         if (all.isNotEmpty()) {
@@ -214,13 +201,6 @@ object YOLOInstanceManager {
      */
     fun getActiveInstanceIds(): List<String> {
         return instances.keys.toList()
-    }
-
-    /**
-     * Gets classifier options for a specific instance
-     */
-    fun getClassifierOptions(instanceId: String): Map<String, Any>? {
-        return instanceOptions[instanceId]
     }
 
     /**

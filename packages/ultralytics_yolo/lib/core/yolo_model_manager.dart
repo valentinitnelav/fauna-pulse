@@ -99,7 +99,6 @@ class YOLOModelManager {
   final YOLOTask _task;
   final bool _useGpu;
   final int _numItemsThreshold;
-  final Map<String, dynamic>? _classifierOptions;
   int? _viewId;
 
   bool _isInitialized = false;
@@ -110,7 +109,6 @@ class YOLOModelManager {
     required String modelPath,
     required YOLOTask task,
     required bool useGpu,
-    Map<String, dynamic>? classifierOptions,
     int? viewId,
     int? numItemsThreshold,
   }) : _channel = channel,
@@ -118,7 +116,6 @@ class YOLOModelManager {
        _modelPath = modelPath,
        _task = task,
        _useGpu = useGpu,
-       _classifierOptions = classifierOptions,
        _viewId = viewId,
        _numItemsThreshold = numItemsThreshold ?? 30;
 
@@ -166,10 +163,6 @@ class YOLOModelManager {
         'useGpu': _useGpu,
         'numItemsThreshold': _numItemsThreshold,
       };
-
-      if (_classifierOptions != null) {
-        arguments['classifierOptions'] = _classifierOptions;
-      }
 
       if (_instanceId != 'default') {
         arguments['instanceId'] = _instanceId;

@@ -104,6 +104,14 @@ extension _CameraModelChoice on _CameraSessionScreenState {
 
   /// Makes [m] the camera's detection model and saves it.
   void _useDetector(ModelEntry m) {
+    // Round 354: a pose or rotated-box file imported before the intake rule
+    // would run through the detector and give wrong boxes; the Models screen
+    // marks it for deletion.
+    final note = unsupportedTaskNote(m.task);
+    if (note != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${m.name} $note.')));
+      return;
+    }
     final updated = _config.copyWith(
       modelPath: m.id,
       task: YOLOTaskParsing.tryParse(m.task) ?? _config.task,

@@ -107,6 +107,11 @@ extension _SettingsAiTab on _SettingsSheetState {
           onChanged: (v) {
             if (v == null) return;
             final picked = _models.firstWhere((m) => m.id == v);
+            final note = unsupportedTaskNote(picked.task); // round 354, see _useDetector
+            if (note != null) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${picked.name} $note.')));
+              return;
+            }
             setState(() {
               _c = _c.copyWith(
                 modelPath: v,

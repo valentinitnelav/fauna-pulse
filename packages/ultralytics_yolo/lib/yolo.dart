@@ -75,7 +75,6 @@ class YOLO {
   late int numItemsThreshold;
 
   /// Classifier options for customizing preprocessing
-  final Map<String, dynamic>? classifierOptions;
 
   /// The view ID of the associated YoloView (used for model switching)
   int? _viewId;
@@ -94,7 +93,6 @@ class YOLO {
     this.task,
     this.useGpu = true,
     bool useMultiInstance = false,
-    this.classifierOptions,
     int? numItemsThreshold,
   }) {
     if (useMultiInstance) {
@@ -134,7 +132,6 @@ class YOLO {
       modelPath: nextResolvedModel.modelPath,
       task: nextResolvedModel.task,
       useGpu: useGpu,
-      classifierOptions: classifierOptions,
       viewId: _viewId,
       numItemsThreshold: numItemsThreshold,
     );
@@ -390,54 +387,6 @@ class YOLO {
     } catch (e) {
       return {};
     }
-  }
-
-  /// Creates a YOLO instance with classifier options for custom preprocessing
-  ///
-  /// This constructor is specifically designed for classification models that
-  /// need custom preprocessing, such as 1-channel grayscale models. 1-channel
-  /// support is detected automatically from the model's input tensor.
-  ///
-  /// Supported keys: `labels` (class names when the model has no embedded
-  /// metadata), `enableColorInversion`, `enableMaxNormalization`, `inputMean`,
-  /// and `inputStd`.
-  ///
-  /// Example:
-  /// ```dart
-  /// final yolo = YOLO.withClassifierOptions(
-  ///   modelPath: 'assets/handwriting_model.tflite',
-  ///   task: YOLOTask.classify,
-  ///   classifierOptions: {
-  ///     'enableColorInversion': true,
-  ///     'enableMaxNormalization': true,
-  ///   },
-  /// );
-  /// ```
-  ///
-  /// if need custom Normalization:
-  /// ```dart
-  /// final grayscaleOptions = {
-  ///   'enableMaxNormalization': false,
-  ///   'inputMean': 127.5,
-  ///   'inputStd': 127.5,
-  ///   // 'labels': [...] (if the model has no embedded labels)
-  /// };
-  /// ```
-
-  static YOLO withClassifierOptions({
-    required String modelPath,
-    YOLOTask? task,
-    required Map<String, dynamic> classifierOptions,
-    bool useGpu = true,
-    bool useMultiInstance = false,
-  }) {
-    return YOLO(
-      modelPath: modelPath,
-      task: task,
-      useGpu: useGpu,
-      useMultiInstance: useMultiInstance,
-      classifierOptions: classifierOptions,
-    );
   }
 
   Future<void> dispose() async {

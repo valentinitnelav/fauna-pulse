@@ -19,23 +19,9 @@ void main() {
         modelPath: 'detect_model.tflite',
         task: YOLOTask.detect,
       );
-      final segmentYolo = YOLO(
-        modelPath: 'segment_model.tflite',
-        task: YOLOTask.segment,
-      );
-      final classifyYolo = YOLO(
-        modelPath: 'classify_model.tflite',
-        task: YOLOTask.classify,
-      );
-      final poseYolo = YOLO(
-        modelPath: 'pose_model.tflite',
-        task: YOLOTask.pose,
-      );
 
       expect(detectYolo.task, YOLOTask.detect);
-      expect(segmentYolo.task, YOLOTask.segment);
-      expect(classifyYolo.task, YOLOTask.classify);
-      expect(poseYolo.task, YOLOTask.pose);
+      expect(YOLOTask.values, [YOLOTask.detect]); // FaunaPulse fork
     });
 
     test('model path handling works', () {

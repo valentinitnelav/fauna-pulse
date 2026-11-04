@@ -4,14 +4,10 @@ package com.ultralytics.yolo
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Rect
 import android.graphics.RectF
 import kotlin.math.abs
-import kotlin.math.atan2
-import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 /**
  * Runtime-agnostic inference model behind the predictors: RGB float32 pixels in (interleaved HWC, or planar
@@ -134,7 +130,6 @@ abstract class BasePredictor : Predictor {
     var IOU_THRESHOLD:Float = 0.7f
     var isFrontCamera: Boolean = false
     var cameraRotationDegrees: Int? = null
-    var includeRawMaskData: Boolean = true
 
     // Optional region-of-interest crop (FaunaPulse). When set, the
     // predictor feeds ONLY this square region of the frame to the model — the
@@ -248,70 +243,8 @@ abstract class BasePredictor : Predictor {
         )
     }
 
-    protected fun inputPointFromOutputPoint(
-        x: Float,
-        y: Float,
-        origWidth: Int,
-        origHeight: Int,
-        outputIsNormalized: Boolean = outputCoordinatesAreNormalized(x, y)
-    ): Pair<Float, Float> {
-        val modelX = modelCoordinate(x, modelInputSize.first, outputIsNormalized)
-        val modelY = modelCoordinate(y, modelInputSize.second, outputIsNormalized)
-        return inputPointFromModelPoint(modelX, modelY, origWidth, origHeight, clamp = true)
-    }
-
-    protected fun inputOBBFromModelOBB(obb: OBB, origWidth: Int, origHeight: Int): OBB {
-        val modelWidth = modelInputSize.first
-        val modelHeight = modelInputSize.second
-        val outputIsNormalized = outputCoordinatesAreNormalized(obb)
-        val modelOBB = OBB(
-            cx = modelCoordinate(obb.cx, modelWidth, outputIsNormalized),
-            cy = modelCoordinate(obb.cy, modelHeight, outputIsNormalized),
-            w = modelCoordinate(obb.w, modelWidth, outputIsNormalized),
-            h = modelCoordinate(obb.h, modelHeight, outputIsNormalized),
-            angle = obb.angle
-        )
-        val points = modelOBB.toPolygon().map { point ->
-            inputPointFromModelPoint(point.x, point.y, origWidth, origHeight, clamp = false)
-        }
-        val p0 = points[0]
-        val p1 = points[1]
-        val p2 = points[2]
-        val centerX = points.sumOf { it.first.toDouble() }.toFloat() / points.size
-        val centerY = points.sumOf { it.second.toDouble() }.toFloat() / points.size
-        val width = hypot(p1.first - p0.first, p1.second - p0.second)
-        val height = hypot(p2.first - p1.first, p2.second - p1.second)
-
-        return OBB(
-            cx = centerX / origWidth,
-            cy = centerY / origHeight,
-            w = width / origWidth,
-            h = height / origHeight,
-            angle = atan2(p1.second - p0.second, p1.first - p0.first)
-        )
-    }
-
     private fun letterboxTransform(origWidth: Int, origHeight: Int): ImageUtils.LetterboxTransform? =
         ImageUtils.letterboxTransform(origWidth, origHeight, modelInputSize.first, modelInputSize.second)
-
-    protected fun modelMaskCropRect(maskWidth: Int, maskHeight: Int, origWidth: Int, origHeight: Int): Rect? {
-        val transform = letterboxTransform(origWidth, origHeight) ?: return null
-        val modelWidth = modelInputSize.first.toFloat()
-        val modelHeight = modelInputSize.second.toFloat()
-        val left = (transform.padX / modelWidth * maskWidth).roundToInt()
-        val top = (transform.padY / modelHeight * maskHeight).roundToInt()
-        val right = maskWidth - (transform.padRight / modelWidth * maskWidth).roundToInt()
-        val bottom = maskHeight - (transform.padBottom / modelHeight * maskHeight).roundToInt()
-        val crop = Rect(
-            left.coerceIn(0, maskWidth),
-            top.coerceIn(0, maskHeight),
-            right.coerceIn(0, maskWidth),
-            bottom.coerceIn(0, maskHeight)
-        )
-        if (crop.left >= crop.right || crop.top >= crop.bottom) return null
-        if (crop.left == 0 && crop.top == 0 && crop.right == maskWidth && crop.bottom == maskHeight) return null
-        return crop
-    }
 
     private fun inputRectFromModelRect(modelRect: RectF, origWidth: Int, origHeight: Int): RectF? {
         // Do NOT clamp to the image bounds: a partially off-frame object has a box that legitimately extends past the
@@ -358,21 +291,5 @@ abstract class BasePredictor : Predictor {
         } else {
             rect
         }
-    }
-
-    private fun outputCoordinatesAreNormalized(x: Float, y: Float): Boolean {
-        return max(abs(x), abs(y)) <= 2f
-    }
-
-    private fun outputCoordinatesAreNormalized(obb: OBB): Boolean {
-        val maxCoordinate = max(
-            max(abs(obb.cx), abs(obb.cy)),
-            max(abs(obb.w), abs(obb.h))
-        )
-        return maxCoordinate <= 2f
-    }
-
-    private fun modelCoordinate(value: Float, axisSize: Int, outputIsNormalized: Boolean): Float {
-        return if (outputIsNormalized) value * axisSize else value
     }
 }

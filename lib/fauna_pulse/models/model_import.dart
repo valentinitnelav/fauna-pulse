@@ -138,6 +138,7 @@ class ModelImport {
       try {
         final source = File(path);
         final kind = await modelFileKind(source, name);
+        await _refuseOtherTasks(kind, source);
         final target = await ModelImport.target(kind, name);
         if (await target.exists() && !await replace(name, kind, files.length - 1 - i)) {
           kept.add(name);
@@ -166,6 +167,15 @@ class ModelImport {
     return ModelImportReport(imported: imported, kept: kept, rejected: rejected);
   }
 
+  /// Round 354: a detection-shaped file whose export says it is a pose or
+  /// rotated-box model (their box table looks like a detector's) is refused
+  /// with the reason; a file without metadata passes.
+  static Future<void> _refuseOtherTasks(ModelFileKind kind, File file) async {
+    if (kind != ModelFileKind.detection) return;
+    final note = unsupportedTaskNote(await ModelCatalog.metadataTask(file));
+    if (note != null) throw Exception('$note.');
+  }
+
   /// The file name a link points at when the app can use it, else null.
   static String? linkFileName(String url) => modelFileNameFromUrl(url, accept: isSafeName);
 
@@ -192,6 +202,7 @@ class ModelImport {
       validate: (part) async {
         await validateModelFile(part, name);
         kind = await modelFileKind(part, name);
+        await _refuseOtherTasks(kind, part);
       },
       onProgress: onProgress,
       isCancelled: isCancelled,

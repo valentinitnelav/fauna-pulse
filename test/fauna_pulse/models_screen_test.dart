@@ -27,6 +27,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fauna_pulse/fauna_pulse/identification/identification_assets.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_catalog.dart';
+import 'package:fauna_pulse/fauna_pulse/models/model_file_kind.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_downloads.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_import.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/models_screen.dart';
@@ -760,6 +761,27 @@ void main() {
         '⚠ This is an identification model, not a detection model. Delete it here and import it again: it '
         'then goes to its place.',
       ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('round 354: a detection model of another task is marked for deletion', (tester) async {
+    await _pump(
+      tester,
+      inventory: () {
+        final base = _inventory();
+        return ModelsInventory(
+          detectors: base.detectors,
+          idModels: base.idModels,
+          nameLists: base.nameLists,
+          headers: base.headers,
+          downloads: _downloads,
+          unsupportedTask: {base.detectors.last.id: unsupportedTaskNote('pose')!},
+        );
+      },
+    );
+    expect(
+      find.text('⚠ This file is a pose model (keypoints): this app runs detection models only (plain boxes). Delete it here.'),
       findsOneWidget,
     );
   });

@@ -269,7 +269,7 @@ class LiteRtModel(
                 // litert-torch (format=litert) names signature outputs output_0, output_1, …; current Ultralytics
                 // TFLite exports use output0, output1, … (upstream 0.6.14); legacy onnx2tf exports name them
                 // Identity, Identity_1, …. Try all three so the output shape resolves for any export; a miss leaves
-                // that outputDims entry empty (detect falls back to the element count, segment/pose need it).
+                // that outputDims entry empty (detect then falls back to the element count).
                 val legacyName = if (i == 0) "Identity" else "Identity_$i"
                 sequenceOf("output_$i", "output$i", legacyName).firstNotNullOfOrNull { name ->
                     try {

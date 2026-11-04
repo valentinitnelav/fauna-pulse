@@ -53,23 +53,17 @@ void main() {
       expect(yolo.task, YOLOTask.detect);
     });
 
-    test('different task types work', () {
+    test('detection is the only task (FaunaPulse fork)', () {
       final detectYolo = YOLO(
         modelPath: 'detect_model.tflite',
         task: YOLOTask.detect,
       );
-      final segmentYolo = YOLO(
-        modelPath: 'segment_model.tflite',
-        task: YOLOTask.segment,
-      );
-      final classifyYolo = YOLO(
-        modelPath: 'classify_model.tflite',
-        task: YOLOTask.classify,
-      );
 
       expect(detectYolo.task, YOLOTask.detect);
-      expect(segmentYolo.task, YOLOTask.segment);
-      expect(classifyYolo.task, YOLOTask.classify);
+      expect(YOLOTask.values, [YOLOTask.detect]);
+      expect(YOLOTaskParsing.tryParse('detect'), YOLOTask.detect);
+      expect(YOLOTaskParsing.tryParse('segment'), isNull);
+      expect(YOLOTaskParsing.tryParse('pose'), isNull);
     });
 
     test('official models are available per task', () {
@@ -80,41 +74,6 @@ void main() {
           'yolo26m',
           'yolo26l',
           'yolo26x',
-        ],
-        YOLOTask.segment: [
-          'yolo26n-seg',
-          'yolo26s-seg',
-          'yolo26m-seg',
-          'yolo26l-seg',
-          'yolo26x-seg',
-        ],
-        YOLOTask.semantic: [
-          'yolo26n-sem',
-          'yolo26s-sem',
-          'yolo26m-sem',
-          'yolo26l-sem',
-          'yolo26x-sem',
-        ],
-        YOLOTask.classify: [
-          'yolo26n-cls',
-          'yolo26s-cls',
-          'yolo26m-cls',
-          'yolo26l-cls',
-          'yolo26x-cls',
-        ],
-        YOLOTask.pose: [
-          'yolo26n-pose',
-          'yolo26s-pose',
-          'yolo26m-pose',
-          'yolo26l-pose',
-          'yolo26x-pose',
-        ],
-        YOLOTask.obb: [
-          'yolo26n-obb',
-          'yolo26s-obb',
-          'yolo26m-obb',
-          'yolo26l-obb',
-          'yolo26x-obb',
         ],
       };
 
@@ -127,38 +86,13 @@ void main() {
       }
     });
 
-    test('official YOLO26 Android and Apple URLs cover every task and size', () {
+    test('official YOLO26 Android and Apple URLs cover every size (detection only in this fork)', () {
       const expected = [
         'yolo26n',
         'yolo26s',
         'yolo26m',
         'yolo26l',
         'yolo26x',
-        'yolo26n-seg',
-        'yolo26s-seg',
-        'yolo26m-seg',
-        'yolo26l-seg',
-        'yolo26x-seg',
-        'yolo26n-sem',
-        'yolo26s-sem',
-        'yolo26m-sem',
-        'yolo26l-sem',
-        'yolo26x-sem',
-        'yolo26n-cls',
-        'yolo26s-cls',
-        'yolo26m-cls',
-        'yolo26l-cls',
-        'yolo26x-cls',
-        'yolo26n-pose',
-        'yolo26s-pose',
-        'yolo26m-pose',
-        'yolo26l-pose',
-        'yolo26x-pose',
-        'yolo26n-obb',
-        'yolo26s-obb',
-        'yolo26m-obb',
-        'yolo26l-obb',
-        'yolo26x-obb',
       ];
 
       for (final modelId in expected) {
@@ -210,15 +144,8 @@ void main() {
       );
     });
 
-    test('task order follows Ultralytics docs navigation', () {
-      expect(YOLOTask.values, [
-        YOLOTask.detect,
-        YOLOTask.segment,
-        YOLOTask.semantic,
-        YOLOTask.classify,
-        YOLOTask.pose,
-        YOLOTask.obb,
-      ]);
+    test('the task list is detection only (FaunaPulse fork)', () {
+      expect(YOLOTask.values, [YOLOTask.detect]);
     });
 
     test('task can be inferred from model metadata', () async {
@@ -326,7 +253,6 @@ void main() {
           modelPath: 'detect_model.tflite',
           task: YOLOTask.detect,
           useGpu: false,
-          classifierOptions: {'expectedClasses': 80},
           numItemsThreshold: 5,
         )..setViewId(42);
 
@@ -345,8 +271,8 @@ void main() {
         final metadata = await YOLO.inspectModel('detect_model.tflite');
         expect(metadata['task'], 'detect');
 
-        await yolo.switchModel('segment_model.tflite', YOLOTask.segment);
-        expect(yolo.resolvedTask, YOLOTask.segment);
+        await yolo.switchModel('other_model.tflite', YOLOTask.detect);
+        expect(yolo.resolvedTask, YOLOTask.detect);
         await yolo.dispose();
         expect(yolo.isInitialized, isFalse);
 
@@ -356,7 +282,6 @@ void main() {
         expect(loadArgs['modelPath'], 'detect_model.tflite');
         expect(loadArgs['task'], 'detect');
         expect(loadArgs['useGpu'], isFalse);
-        expect(loadArgs['classifierOptions'], {'expectedClasses': 80});
         expect(loadArgs['numItemsThreshold'], 5);
 
         final predictArgs =
@@ -372,8 +297,8 @@ void main() {
             calls.firstWhere((call) => call.method == 'setModel').arguments
                 as Map;
         expect(switchArgs['viewId'], 42);
-        expect(switchArgs['modelPath'], 'segment_model.tflite');
-        expect(switchArgs['task'], 'segment');
+        expect(switchArgs['modelPath'], 'other_model.tflite');
+        expect(switchArgs['task'], 'detect');
       },
     );
   });
@@ -519,53 +444,17 @@ void main() {
       );
     });
 
-    test('preset constructors encode streaming tradeoffs', () {
-      final constructors = <YOLOStreamingConfig Function()>[
-        YOLOStreamingConfig.minimal,
-        YOLOStreamingConfig.withMasks,
-        YOLOStreamingConfig.withPoses,
-        YOLOStreamingConfig.full,
-        YOLOStreamingConfig.debug,
-      ];
-      final minimal = constructors[0]();
-      final masks = constructors[1]();
-      final poses = constructors[2]();
-      final full = constructors[3]();
-      final debug = constructors[4]();
-      final throttled = YOLOStreamingConfig.throttled(
-        maxFPS: 12,
-        includeOBB: true,
-        skipFrames: 2,
-      );
-      final powerSaving = YOLOStreamingConfig.powerSaving(
-        inferenceFrequency: 6,
-        maxFPS: 9,
-      );
-      final highPerformance = YOLOStreamingConfig.highPerformance(
-        inferenceFrequency: 45,
-      );
-      final customOptions = Map<String, bool>.of({
-        'includeOriginalImage': true,
-      });
+    test('custom is the one streaming configuration (FaunaPulse fork: no presets)', () {
+      final customOptions = Map<String, bool>.of({'includeOriginalImage': true});
       final custom = YOLOStreamingConfig.custom(
         includeOriginalImage: customOptions['includeOriginalImage'],
       );
 
-      expect(minimal.includeMasks, isFalse);
-      expect(masks.includeMasks, isTrue);
-      expect(masks.includePoses, isFalse);
-      expect(poses.includePoses, isTrue);
-      expect(full.includeOBB, isTrue);
-      expect(debug.includeOriginalImage, isTrue);
-      expect(throttled.maxFPS, 12);
-      expect(throttled.includeOBB, isTrue);
-      expect(throttled.skipFrames, 2);
-      expect(powerSaving.maxFPS, 9);
-      expect(powerSaving.inferenceFrequency, 6);
-      expect(highPerformance.inferenceFrequency, 45);
-      expect(custom.includeDetections, isTrue);
       expect(custom.includeOriginalImage, isTrue);
-      expect(debug.toString(), contains('originalImage: true'));
+      expect(custom.includeDetections, isTrue);
+      expect(custom.includeMasks, isFalse);
+      expect(custom.includePoses, isFalse);
+      expect(custom.includeOBB, isFalse);
     });
   });
 
@@ -622,29 +511,6 @@ void main() {
   });
 
   group('All Tasks', () {
-    test('different task types work correctly', () {
-      final detectYolo = YOLO(
-        modelPath: 'detect_model.tflite',
-        task: YOLOTask.detect,
-      );
-      final segmentYolo = YOLO(
-        modelPath: 'segment_model.tflite',
-        task: YOLOTask.segment,
-      );
-      final classifyYolo = YOLO(
-        modelPath: 'classify_model.tflite',
-        task: YOLOTask.classify,
-      );
-      final poseYolo = YOLO(
-        modelPath: 'pose_model.tflite',
-        task: YOLOTask.pose,
-      );
-
-      expect(detectYolo.task, YOLOTask.detect);
-      expect(segmentYolo.task, YOLOTask.segment);
-      expect(classifyYolo.task, YOLOTask.classify);
-      expect(poseYolo.task, YOLOTask.pose);
-    });
   });
 
   group('Error Handling', () {
@@ -928,20 +794,6 @@ void main() {
       expect(yolo.instanceId, isNot('default'));
     });
 
-    test('YOLO constructor with classifier options', () {
-      final yolo = YOLO.withClassifierOptions(
-        modelPath: 'classifier_model.tflite',
-        task: YOLOTask.classify,
-        classifierOptions: {
-          'enable1ChannelSupport': true,
-          'expectedChannels': 1,
-        },
-      );
-
-      expect(yolo.modelPath, 'classifier_model.tflite');
-      expect(yolo.task, YOLOTask.classify);
-    });
-
     test('YOLO setViewId works', () {
       final yolo = YOLO(modelPath: 'test.tflite', task: YOLOTask.detect);
       yolo.setViewId(123);
@@ -962,7 +814,7 @@ void main() {
         final setup = YOLOTestHelpers.createYOLOTestSetup(
           customResponses: {
             'inspectModel': (_) => {
-              'task': 'pose',
+              'task': 'detect',
               'labels': ['person'],
             },
           },
@@ -975,7 +827,7 @@ void main() {
         );
 
         expect(resolved.modelPath, 'custom-model.tflite');
-        expect(resolved.task, YOLOTask.pose);
+        expect(resolved.task, YOLOTask.detect);
         expect(resolved.metadata['labels'], ['person']);
         // FaunaPulse (round 326): a path is the user's own file, never an
         // official model (upstream matched the file name and expected true).

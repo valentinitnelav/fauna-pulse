@@ -39,6 +39,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import '../capture/roi_capture.dart';
 import '../capture/roi_video.dart';
 import '../models/model_catalog.dart';
+import '../models/model_file_kind.dart';
 import '../models/roi.dart';
 import '../models/schedule_window.dart';
 import '../models/session_config.dart';

@@ -164,14 +164,7 @@ void main() {
     });
 
     test('predict processes different task types', () async {
-      final tasks = [
-        YOLOTask.detect,
-        YOLOTask.segment,
-        YOLOTask.semantic,
-        YOLOTask.classify,
-        YOLOTask.pose,
-        YOLOTask.obb,
-      ];
+      final tasks = [YOLOTask.detect]; // FaunaPulse fork: detection only
 
       for (final task in tasks) {
         final inference = YOLOInference(
@@ -205,83 +198,5 @@ void main() {
       );
     });
 
-    test('predict includes OBB angle in detections', () async {
-      final inference = YOLOInference(
-        channel: YOLOTestHelpers.setupMockChannel(
-          customResponses: {
-            'predictSingleImage': (_) => {
-              'obb': [
-                {
-                  'points': [
-                    {'x': 0.1, 'y': 0.1},
-                    {'x': 0.2, 'y': 0.1},
-                    {'x': 0.2, 'y': 0.2},
-                    {'x': 0.1, 'y': 0.2},
-                  ],
-                  'class': 'ship',
-                  'confidence': 0.88,
-                  'angle': 0.5235987756,
-                },
-              ],
-            },
-          },
-        ),
-        instanceId: 'test_instance',
-        task: YOLOTask.obb,
-      );
-
-      final result = await inference.predict(Uint8List.fromList([1, 2, 3]));
-      final first =
-          (result['detections'] as List<dynamic>).first as Map<String, dynamic>;
-
-      expect(first['className'], 'ship');
-      expect(first['confidence'], 0.88);
-      expect(first['angle'], closeTo(0.5235987756, 1e-9));
-    });
-
-    test('predict preserves OBB polygon points and class index', () async {
-      final inference = YOLOInference(
-        channel: YOLOTestHelpers.setupMockChannel(
-          customResponses: {
-            'predictSingleImage': (_) => {
-              'obb': [
-                {
-                  'points': [
-                    {'x': 0.1, 'y': 0.2},
-                    {'x': 0.4, 'y': 0.2},
-                    {'x': 0.4, 'y': 0.5},
-                    {'x': 0.1, 'y': 0.5},
-                  ],
-                  'class': 'ship',
-                  'classIndex': 3,
-                  'confidence': 0.88,
-                },
-              ],
-            },
-          },
-        ),
-        instanceId: 'test_instance',
-        task: YOLOTask.obb,
-      );
-
-      final result = await inference.predict(Uint8List.fromList([1, 2, 3]));
-      final first =
-          (result['detections'] as List<dynamic>).first as Map<String, dynamic>;
-
-      expect(first['classIndex'], 3);
-      expect(first['className'], 'ship');
-      expect(first['polygon'], [
-        {'x': 0.1, 'y': 0.2},
-        {'x': 0.4, 'y': 0.2},
-        {'x': 0.4, 'y': 0.5},
-        {'x': 0.1, 'y': 0.5},
-      ]);
-      expect(first['boundingBox'], {
-        'left': 0.1,
-        'top': 0.2,
-        'right': 0.4,
-        'bottom': 0.5,
-      });
-    });
   });
 }

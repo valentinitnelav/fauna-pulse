@@ -113,7 +113,6 @@ class YOLOView @JvmOverloads constructor(
         // Line thickness and corner radius
         private const val BOX_LINE_WIDTH = 8f
         private const val BOX_CORNER_RADIUS = 12f
-        private const val KEYPOINT_LINE_WIDTH = 6f
 
         // Colors derived from Ultralytics
         private val ultralyticsColors = arrayOf(
@@ -137,65 +136,6 @@ class YOLOView @JvmOverloads constructor(
             Color.argb(153, 255, 27,  108),
             Color.argb(153, 252, 109, 47),
             Color.argb(153, 162, 255, 11)
-        )
-
-        // Pose
-        private val posePalette = arrayOf(
-            floatArrayOf(255f, 128f,  0f),
-            floatArrayOf(255f, 153f,  51f),
-            floatArrayOf(255f, 178f, 102f),
-            floatArrayOf(230f, 230f,   0f),
-            floatArrayOf(255f, 153f, 255f),
-            floatArrayOf(153f, 204f, 255f),
-            floatArrayOf(255f, 102f, 255f),
-            floatArrayOf(255f,  51f, 255f),
-            floatArrayOf(102f, 178f, 255f),
-            floatArrayOf( 51f, 153f, 255f),
-            floatArrayOf(255f, 153f, 153f),
-            floatArrayOf(255f, 102f, 102f),
-            floatArrayOf(255f,  51f,  51f),
-            floatArrayOf(153f, 255f, 153f),
-            floatArrayOf(102f, 255f, 102f),
-            floatArrayOf( 51f, 255f,  51f),
-            floatArrayOf(  0f, 255f,   0f),
-            floatArrayOf(  0f,   0f, 255f),
-            floatArrayOf(255f,   0f,   0f),
-            floatArrayOf(255f, 255f, 255f),
-        )
-
-        private val kptColorIndices = intArrayOf(
-            16,16,16,16,16,
-            9, 9, 9, 9, 9, 9,
-            0, 0, 0, 0, 0, 0
-        )
-
-        private val limbColorIndices = intArrayOf(
-            0, 0, 0, 0,
-            7, 7, 7,
-            9, 9, 9, 9, 9,
-            16,16,16,16,16,16,16
-        )
-
-        private val skeleton = arrayOf(
-            intArrayOf(16, 14),
-            intArrayOf(14, 12),
-            intArrayOf(17, 15),
-            intArrayOf(15, 13),
-            intArrayOf(12, 13),
-            intArrayOf(6, 12),
-            intArrayOf(7, 13),
-            intArrayOf(6, 7),
-            intArrayOf(6, 8),
-            intArrayOf(7, 9),
-            intArrayOf(8, 10),
-            intArrayOf(9, 11),
-            intArrayOf(2, 3),
-            intArrayOf(1, 2),
-            intArrayOf(1, 3),
-            intArrayOf(2, 4),
-            intArrayOf(3, 5),
-            intArrayOf(4, 6),
-            intArrayOf(5, 7)
         )
     }
 
@@ -1000,11 +940,6 @@ class YOLOView @JvmOverloads constructor(
             try {
                 val newPredictor = when (task) {
                     YOLOTask.DETECT -> ObjectDetector(context = context, modelPath = modelPath, labels = emptyList(), useGpu = useGpu, cpuThreads = cpuThreads)
-                    YOLOTask.SEGMENT -> Segmenter(context, modelPath, labels = emptyList(), useGpu = useGpu, cpuThreads = cpuThreads)
-                    YOLOTask.SEMANTIC -> SemanticSegmenter(context, modelPath, labels = emptyList(), useGpu = useGpu, cpuThreads = cpuThreads)
-                    YOLOTask.CLASSIFY -> Classifier(context, modelPath, labels = emptyList(), useGpu = useGpu, cpuThreads = cpuThreads)
-                    YOLOTask.POSE -> PoseEstimator(context, modelPath, labels = emptyList(), useGpu = useGpu, cpuThreads = cpuThreads)
-                    YOLOTask.OBB -> ObbDetector(context, modelPath, labels = emptyList(), useGpu = useGpu, cpuThreads = cpuThreads)
                 }
 
                 // Apply thresholds to all predictor types
@@ -3059,7 +2994,6 @@ class YOLOView @JvmOverloads constructor(
                 (p as? BasePredictor)?.let { basePredictor ->
                     basePredictor.isFrontCamera = isFrontCamera
                     basePredictor.cameraRotationDegrees = rotationDegrees
-                    basePredictor.includeRawMaskData = streamConfig?.includeMasks == true
                     // FaunaPulse: crop inference to the ROI when one is set.
                     basePredictor.inferenceRoi = inferenceRoi
                 }
@@ -3340,201 +3274,6 @@ class YOLOView @JvmOverloads constructor(
                         drawLabel(canvas, labelText(box.cls, box.conf), newColor, rect.left, rect.top, rect.right, vw, vh)
                     }
                 }
-                // ----------------------------------------
-                // SEGMENT
-                // ----------------------------------------
-                YOLOTask.SEGMENT -> {
-                    // Bounding boxes & labels
-                    for (box in result.boxes) {
-                        val newColor = colorFor(box.index, box.conf)
-
-                        val rect = mapRect(box.xywh)
-
-                        paint.color = newColor
-                        paint.style = Paint.Style.STROKE
-                        paint.strokeWidth = BOX_LINE_WIDTH
-                        canvas.drawRoundRect(
-                            rect.left, rect.top, rect.right, rect.bottom,
-                            BOX_CORNER_RADIUS, BOX_CORNER_RADIUS,
-                            paint
-                        )
-
-                        drawLabel(canvas, labelText(box.cls, box.conf), newColor, rect.left, rect.top, rect.right, vw, vh)
-                    }
-
-                    // Segmentation mask
-                    result.masks?.combinedMask?.let { maskBitmap ->
-                        val src = Rect(0, 0, maskBitmap.width, maskBitmap.height)
-                        val maskPaint = Paint().apply {
-                            alpha = 128
-                            isFilterBitmap = true
-                        }
-                        
-                        if (isFrontCamera) {
-                            // For front camera, flip the mask horizontally
-                            canvas.save()
-                            // Translate to center, flip horizontally, translate back
-                            canvas.translate(vw / 2f, 0f)
-                            canvas.scale(-1f, 1f)
-                            canvas.translate(-vw / 2f, 0f)
-                            canvas.drawBitmap(maskBitmap, src, imageRect, maskPaint)
-                            canvas.restore()
-                        } else {
-                            canvas.drawBitmap(maskBitmap, src, imageRect, maskPaint)
-                        }
-                    }
-                }
-                // ----------------------------------------
-                // SEMANTIC
-                // ----------------------------------------
-                YOLOTask.SEMANTIC -> {
-                    result.semanticMask?.maskImage?.let { maskBitmap ->
-                        val src = Rect(0, 0, maskBitmap.width, maskBitmap.height)
-                        val maskPaint = Paint().apply {
-                            alpha = 128
-                            isFilterBitmap = true
-                        }
-
-                        if (isFrontCamera) {
-                            canvas.save()
-                            canvas.translate(vw / 2f, 0f)
-                            canvas.scale(-1f, 1f)
-                            canvas.translate(-vw / 2f, 0f)
-                            canvas.drawBitmap(maskBitmap, src, imageRect, maskPaint)
-                            canvas.restore()
-                        } else {
-                            canvas.drawBitmap(maskBitmap, src, imageRect, maskPaint)
-                        }
-                    }
-                }
-                // ----------------------------------------
-                // CLASSIFY
-                // ----------------------------------------
-                YOLOTask.CLASSIFY -> {
-                    result.probs?.let { probs ->
-                        val newColor = colorFor(probs.top1Index, probs.top1Conf)
-
-                        drawLabel(
-                            canvas,
-                            labelText(probs.top1Label, probs.top1Conf),
-                            newColor,
-                            16f,
-                            16f,
-                            16f,
-                            vw,
-                            vh,
-                            centered = true
-                        )
-                    }
-                }
-                // ----------------------------------------
-                // POSE
-                // ----------------------------------------
-                YOLOTask.POSE -> {
-                    // Bounding boxes
-                    for (box in result.boxes) {
-                        val newColor = colorFor(box.index, box.conf)
-
-                        val rect = mapRect(box.xywh)
-
-                        paint.color = newColor
-                        paint.style = Paint.Style.STROKE
-                        paint.strokeWidth = BOX_LINE_WIDTH
-                        canvas.drawRoundRect(
-                            rect.left, rect.top, rect.right, rect.bottom,
-                            BOX_CORNER_RADIUS, BOX_CORNER_RADIUS,
-                            paint
-                        )
-                        
-                        drawLabel(canvas, labelText(box.cls, box.conf), newColor, rect.left, rect.top, rect.right, vw, vh)
-                    }
-
-                    // Keypoints & skeleton
-                    for (person in result.keypointsList) {
-                        val points = arrayOfNulls<PointF>(person.xyn.size)
-                        for (i in person.xyn.indices) {
-                            val kp = person.xyn[i]
-                            val conf = person.conf[i]
-                            if (conf > 0.25f) {
-                                val point = mapPoint(kp.first * iw, kp.second * ih)
-
-                                val colorIdx = if (i < kptColorIndices.size) kptColorIndices[i] else 0
-                                val rgbArray = posePalette[colorIdx % posePalette.size]
-                                paint.color = Color.argb(
-                                    255,
-                                    rgbArray[0].toInt().coerceIn(0,255),
-                                    rgbArray[1].toInt().coerceIn(0,255),
-                                    rgbArray[2].toInt().coerceIn(0,255)
-                                )
-                                paint.style = Paint.Style.FILL
-                                canvas.drawCircle(point.x, point.y, 8f, paint)
-
-                                points[i] = point
-                            }
-                        }
-
-                        // Skeleton connection
-                        paint.style = Paint.Style.STROKE
-                        paint.strokeWidth = KEYPOINT_LINE_WIDTH
-                        for ((idx, bone) in skeleton.withIndex()) {
-                            val i1 = bone[0] - 1  // 1-indexed to 0-indexed
-                            val i2 = bone[1] - 1
-                            val p1 = points.getOrNull(i1)
-                            val p2 = points.getOrNull(i2)
-                            if (p1 != null && p2 != null) {
-                                val limbColorIdx = if (idx < limbColorIndices.size) limbColorIndices[idx] else 0
-                                val rgbArray = posePalette[limbColorIdx % posePalette.size]
-                                paint.color = Color.argb(
-                                    255,
-                                    rgbArray[0].toInt().coerceIn(0,255),
-                                    rgbArray[1].toInt().coerceIn(0,255),
-                                    rgbArray[2].toInt().coerceIn(0,255)
-                                )
-                                canvas.drawLine(p1.x, p1.y, p2.x, p2.y, paint)
-                            }
-                        }
-                    }
-                }
-                // ----------------------------------------
-                // OBB
-                // ----------------------------------------
-                YOLOTask.OBB -> {
-                    for (obbRes in result.obb) {
-                        val newColor = colorFor(obbRes.index, obbRes.confidence)
-
-                        paint.color = newColor
-                        paint.style = Paint.Style.STROKE
-                        paint.strokeWidth = BOX_LINE_WIDTH
-
-                        // Draw rotated rectangle (polygon) using path
-                        val polygon = obbRes.box.toPolygon(iw, ih).map { pt -> mapPoint(pt.x * iw, pt.y * ih) }
-                        if (polygon.size >= 4) {
-                            val path = Path().apply {
-                                moveTo(polygon[0].x, polygon[0].y)
-                                for (p in polygon.drop(1)) {
-                                    lineTo(p.x, p.y)
-                                }
-                                close()
-                            }
-                            canvas.drawPath(path, paint)
-
-                            // Find bounding box of the OBB polygon
-                            val minX = polygon.map { it.x }.minOrNull() ?: 0f
-                            val maxX = polygon.map { it.x }.maxOrNull() ?: 0f
-                            val minY = polygon.map { it.y }.minOrNull() ?: 0f
-                            drawLabel(
-                                canvas,
-                                labelText(obbRes.cls, obbRes.confidence),
-                                newColor,
-                                minX,
-                                minY,
-                                maxX,
-                                vw,
-                                vh
-                            )
-                        }
-                    }
-                }
             }
         }
         
@@ -3668,24 +3407,6 @@ class YOLOView @JvmOverloads constructor(
     }
     
     /**
-     * Flattens keypoints data into a single array format: [x1, y1, conf1, x2, y2, conf2, ...]
-     */
-    private fun flattenKeypoints(keypoints: Keypoints): List<Double> {
-        val flattened = mutableListOf<Double>()
-        for (i in keypoints.xy.indices) {
-            flattened.add(keypoints.xy[i].first.toDouble())
-            flattened.add(keypoints.xy[i].second.toDouble())
-            val confidence = if (i < keypoints.conf.size) {
-                keypoints.conf[i].toDouble()
-            } else {
-                0.0
-            }
-            flattened.add(confidence)
-        }
-        return flattened
-    }
-
-    /**
      * Convert YOLOResult to a Map for streaming (ported from archived YOLOPlatformView)
      * Uses detection index correctly to avoid class index confusion
      */
@@ -3699,51 +3420,10 @@ class YOLOView @JvmOverloads constructor(
         if (config.includeDetections) {
             val detections = ArrayList<Map<String, Any>>(result.boxes.size)
 
-            if (config.includePoses && result.keypointsList.isNotEmpty() && result.boxes.isEmpty()) {
-                for ((poseIndex, keypoints) in result.keypointsList.withIndex()) {
-                    val detection = HashMap<String, Any>()
-                    detection["classIndex"] = 0
-                    detection["className"] = result.names.getOrNull(0)?.takeIf { it.isNotBlank() } ?: "class 0"
-                    detection["confidence"] = 1.0
-                    var minX = Float.MAX_VALUE
-                    var minY = Float.MAX_VALUE
-                    var maxX = Float.MIN_VALUE
-                    var maxY = Float.MIN_VALUE
-                    
-                    for (kp in keypoints.xy) {
-                        if (kp.first > 0 && kp.second > 0) {
-                            minX = minOf(minX, kp.first)
-                            minY = minOf(minY, kp.second)
-                            maxX = maxOf(maxX, kp.first)
-                            maxY = maxOf(maxY, kp.second)
-                        }
-                    }
-                    val boundingBox = HashMap<String, Any>()
-                    boundingBox["left"] = minX.toDouble()
-                    boundingBox["top"] = minY.toDouble()
-                    boundingBox["right"] = maxX.toDouble()
-                    boundingBox["bottom"] = maxY.toDouble()
-                    detection["boundingBox"] = boundingBox
-                    
-                    // Normalized bounding box
-                    val normalizedBox = HashMap<String, Any>()
-                    normalizedBox["left"] = (minX / result.origShape.width).toDouble()
-                    normalizedBox["top"] = (minY / result.origShape.height).toDouble()
-                    normalizedBox["right"] = (maxX / result.origShape.width).toDouble()
-                    normalizedBox["bottom"] = (maxY / result.origShape.height).toDouble()
-                    detection["normalizedBox"] = normalizedBox
-                    
-                    val keypointsFlat = flattenKeypoints(keypoints)
-                    detection["keypoints"] = keypointsFlat
-
-                    detections.add(detection)
-                }
-            }
-            
-            // Convert detection boxes - CRITICAL: use detectionIndex, not class index
+            // Convert detection boxes
             // These maps are built per detection on the camera thread, so they are
             // pre-sized to their known entry counts to avoid rehashing (perf review A6).
-            for ((detectionIndex, box) in result.boxes.withIndex()) {
+            for (box in result.boxes) {
                 val detection = HashMap<String, Any>(12)
                 detection["classIndex"] = box.index
                 detection["className"] = box.cls
@@ -3765,175 +3445,12 @@ class YOLOView @JvmOverloads constructor(
                 normalizedBox["bottom"] = box.xywhn.bottom.toDouble()
                 detection["normalizedBox"] = normalizedBox
                 
-                // Add mask data for segmentation (if available and enabled)
-                if (config.includeMasks && result.masks != null && detectionIndex < result.masks!!.masks.size) {
-                    val maskData = result.masks!!.masks[detectionIndex] // Get mask for this detection
-                    // Convert List<List<Float>> to List<List<Double>> for Flutter compatibility
-                    val maskDataDouble = maskData.map { row ->
-                        row.map { it.toDouble() }
-                    }
-                    detection["mask"] = maskDataDouble
-                }
-                
-                // Add pose keypoints (if available and enabled)
-                if (config.includePoses && result.keypointsList.isNotEmpty()) {
-                    if (detectionIndex < result.keypointsList.size) {
-                        val keypoints = result.keypointsList[detectionIndex]
-                        val keypointsFlat = flattenKeypoints(keypoints)
-                        detection["keypoints"] = keypointsFlat
-                    }
-                }
-                
-                detections.add(detection)
-            }
-            
-            // Handle OBB results directly (same pattern as overlay: for obbRes in result.obb)
-            for (obbRes in result.obb) {
-                val detection = HashMap<String, Any>()
-                detection["classIndex"] = obbRes.index
-                detection["className"] = obbRes.cls
-                detection["confidence"] = obbRes.confidence.toDouble()
-                
-                // Get OBB polygon points (4 corners of rotated rectangle)
-                val imgWidth = result.origShape.width.toFloat()
-                val imgHeight = result.origShape.height.toFloat()
-                val polygon = obbRes.box.toPolygon(imgWidth, imgHeight)
-                
-                // Convert polygon points to pixel coordinates  
-                val polygonPixels = polygon.map { point ->
-                    mapOf(
-                        "x" to (point.x * imgWidth).toDouble(),
-                        "y" to (point.y * imgHeight).toDouble()
-                    )
-                }
-                
-                // Store polygon points directly for precise OBB cropping
-                detection["polygon"] = polygonPixels
-
-                // Normalized (0-1) corners and rotation angle, always present so custom overlays
-                // can transform OBB detections without enabling includeOBB (#506)
-                val pointsNormalized = polygon.map { point ->
-                    mapOf(
-                        "x" to point.x.toDouble(),
-                        "y" to point.y.toDouble()
-                    )
-                }
-                detection["polygonNormalized"] = pointsNormalized
-                detection["angle"] = obbRes.box.angle.toDouble()
-
-                // Also calculate AABB as fallback for compatibility (but Flutter should use polygon)
-                var minX = Float.MAX_VALUE
-                var maxX = Float.MIN_VALUE  
-                var minY = Float.MAX_VALUE
-                var maxY = Float.MIN_VALUE
-                
-                for (point in polygon) {
-                    if (point.x < minX) minX = point.x
-                    if (point.x > maxX) maxX = point.x
-                    if (point.y < minY) minY = point.y
-                    if (point.y > maxY) maxY = point.y
-                }
-                
-                // Fallback bounding box (enlarged) - only use if polygon cropping fails
-                val boundingBox = HashMap<String, Any>()
-                boundingBox["left"] = (minX * imgWidth).toDouble()
-                boundingBox["top"] = (minY * imgHeight).toDouble()
-                boundingBox["right"] = (maxX * imgWidth).toDouble()
-                boundingBox["bottom"] = (maxY * imgHeight).toDouble()
-                detection["boundingBox"] = boundingBox
-                
-                // Normalized bounding box (0-1) - fallback
-                val normalizedBox = HashMap<String, Any>()
-                normalizedBox["left"] = minX.toDouble()
-                normalizedBox["top"] = minY.toDouble()
-                normalizedBox["right"] = maxX.toDouble()
-                normalizedBox["bottom"] = maxY.toDouble()
-                detection["normalizedBox"] = normalizedBox
-                
-                // Add OBB-specific data
-                if (config.includeOBB) {
-                    val obbDataMap = mapOf(
-                        "centerX" to obbRes.box.cx.toDouble(),
-                        "centerY" to obbRes.box.cy.toDouble(),
-                        "width" to obbRes.box.w.toDouble(),
-                        "height" to obbRes.box.h.toDouble(),
-                        "angle" to obbRes.box.angle.toDouble(),
-                        "angleDegrees" to (obbRes.box.angle * 180.0 / Math.PI),
-                        "area" to obbRes.box.area.toDouble(),
-                        "points" to pointsNormalized,
-                        "confidence" to obbRes.confidence.toDouble(),
-                        "className" to obbRes.cls,
-                        "classIndex" to obbRes.index
-                    )
-                    
-                    detection["obb"] = obbDataMap
-                }
-                
                 detections.add(detection)
             }
             
             map["detections"] = detections
         }
 
-        if (config.includeMasks) {
-            result.semanticMask?.let { semanticMask ->
-                map["semanticMask"] = mapOf(
-                    "classMap" to semanticMask.classMap,
-                    "width" to semanticMask.width,
-                    "height" to semanticMask.height
-                )
-            }
-        }
-
-        // Add classification results (if available and enabled for CLASSIFY task)
-        if (config.includeClassifications && result.probs != null && result.boxes.isEmpty()) {
-            val probs = result.probs!!
-
-            val top5Count = minOf(
-                probs.top5Indices.size,
-                probs.top5Labels.size,
-                probs.top5Confs.size
-            )
-            val top5List = (0 until top5Count).map { index ->
-                val classIdx = probs.top5Indices[index]
-                val name = probs.top5Labels[index]
-                val conf = probs.top5Confs[index]
-                mapOf(
-                    "class" to classIdx,
-                    "name" to name,
-                    "confidence" to conf.toDouble()
-                )
-            }
-
-            // Add classification result to detections array (for compatibility with YOLOResult.fromMap)
-            val detections = (map["detections"] as? List<Map<String, Any>>)?.toMutableList() ?: ArrayList()
-
-            val classificationDetection = HashMap<String, Any>()
-            classificationDetection["class"] = probs.top1Index
-            classificationDetection["name"] = probs.top1Label
-            classificationDetection["confidence"] = probs.top1Conf.toDouble()
-            classificationDetection["top5"] = top5List
-
-            // Full image bounding box for classification
-            val boundingBox = HashMap<String, Any>()
-            boundingBox["left"] = 0.0
-            boundingBox["top"] = 0.0
-            boundingBox["right"] = result.origShape.width.toDouble()
-            boundingBox["bottom"] = result.origShape.height.toDouble()
-            classificationDetection["boundingBox"] = boundingBox
-
-            // Normalized bounding box (full image)
-            val normalizedBox = HashMap<String, Any>()
-            normalizedBox["left"] = 0.0
-            normalizedBox["top"] = 0.0
-            normalizedBox["right"] = 1.0
-            normalizedBox["bottom"] = 1.0
-            classificationDetection["normalizedBox"] = normalizedBox
-
-            detections.add(classificationDetection)
-            map["detections"] = detections
-        }
-        
         // Add performance metrics (if enabled)
         if (config.includeProcessingTimeMs) {
             val processingTimeMs = result.speed.toDouble()
@@ -3967,7 +3484,7 @@ class YOLOView @JvmOverloads constructor(
     // endregion
     
     /**
-     * Capture current camera frame. When [withOverlays] is true the overlay bitmap (bounding boxes / mask / pose) is
+     * Capture current camera frame. When [withOverlays] is true the overlay bitmap (bounding boxes) is
      * composited on top of the preview snapshot before encoding. Used as the fallback path when [capturePhoto]'s
      * preferred ImageCapture binding is unavailable. Returns the captured image as a ByteArray (JPEG format).
      */

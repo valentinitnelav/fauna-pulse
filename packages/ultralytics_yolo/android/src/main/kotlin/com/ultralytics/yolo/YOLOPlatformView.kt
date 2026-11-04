@@ -112,7 +112,7 @@ class YOLOPlatformView(
         try {
             // Resolve model path
             modelPath = resolveModelPath(context, modelPath)
-            val task = YOLOTask.valueOf(taskString.uppercase())
+            val task = YOLOTask.fromName(taskString)
 
             // Set up model loading callback
             yoloView.setOnModelLoadCallback { success ->
@@ -160,9 +160,14 @@ class YOLOPlatformView(
             // Load model
             val useGpu = creationParams?.get("useGpu") as? Boolean ?: true
             val cpuThreads = (creationParams?.get("cpuThreads") as? Number)?.toInt() ?: 0
-            if (modelPath.isEmpty()) {
+            if (task == null) {
+                Log.e(TAG, YOLOTask.unsupportedTaskMessage(taskString))
+            }
+            if (modelPath.isEmpty() || task == null) {
                 // FaunaPulse (round 270): no detection model on the phone (none ships with the
                 // app). The camera starts without one; a later setModel call loads one in place.
+                // A task this app cannot run starts the same way, so motion and time-lapse
+                // capture still work.
                 initialized = true
                 startStreaming()
                 yoloView.startWithoutModel()
@@ -184,12 +189,8 @@ class YOLOPlatformView(
         val streamConfig = if (streamingConfigParam != null) {
             YOLOStreamConfig(
                 includeDetections = streamingConfigParam["includeDetections"] as? Boolean ?: true,
-                includeClassifications = streamingConfigParam["includeClassifications"] as? Boolean ?: true,
                 includeProcessingTimeMs = streamingConfigParam["includeProcessingTimeMs"] as? Boolean ?: true,
                 includeFps = streamingConfigParam["includeFps"] as? Boolean ?: true,
-                includeMasks = streamingConfigParam["includeMasks"] as? Boolean ?: false,
-                includePoses = streamingConfigParam["includePoses"] as? Boolean ?: false,
-                includeOBB = streamingConfigParam["includeOBB"] as? Boolean ?: false,
                 includeOriginalImage = streamingConfigParam["includeOriginalImage"] as? Boolean ?: false,
                 maxFPS = (streamingConfigParam["maxFPS"] as? Number)?.toInt(),
                 throttleIntervalMs = (streamingConfigParam["throttleIntervalMs"] as? Number)?.toInt(),
@@ -203,12 +204,8 @@ class YOLOPlatformView(
             // This ensures onResult callback receives detection data
             YOLOStreamConfig(
                 includeDetections = true,
-                includeClassifications = true,
                 includeProcessingTimeMs = true,
                 includeFps = true,
-                includeMasks = false,
-                includePoses = false,
-                includeOBB = false,
                 includeOriginalImage = false
             )
         }
@@ -435,7 +432,11 @@ class YOLOPlatformView(
                     }
 
                     modelPath = resolveModelPath(context, modelPath)
-                    val task = YOLOTask.valueOf(taskString.uppercase())
+                    val task = YOLOTask.fromName(taskString)
+                    if (task == null) {
+                        result.error(YOLOTask.UNSUPPORTED_TASK_CODE, YOLOTask.unsupportedTaskMessage(taskString), null)
+                        return
+                    }
 
                     yoloView.setModel(modelPath, task, useGpu, cpuThreads) { success ->
                         if (success) {
@@ -477,12 +478,8 @@ class YOLOPlatformView(
                     if (configMap != null) {
                         val streamConfig = YOLOStreamConfig(
                             includeDetections = configMap["includeDetections"] as? Boolean ?: true,
-                            includeClassifications = configMap["includeClassifications"] as? Boolean ?: true,
                             includeProcessingTimeMs = configMap["includeProcessingTimeMs"] as? Boolean ?: true,
                             includeFps = configMap["includeFps"] as? Boolean ?: true,
-                            includeMasks = configMap["includeMasks"] as? Boolean ?: false,
-                            includePoses = configMap["includePoses"] as? Boolean ?: false,
-                            includeOBB = configMap["includeOBB"] as? Boolean ?: false,
                             includeOriginalImage = configMap["includeOriginalImage"] as? Boolean ?: false,
                             maxFPS = (configMap["maxFPS"] as? Number)?.toInt(),
                             throttleIntervalMs = (configMap["throttleIntervalMs"] as? Number)?.toInt(),

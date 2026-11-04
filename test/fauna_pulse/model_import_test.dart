@@ -36,6 +36,31 @@ void main() {
   }
 
   final detector = fakeTflite([[1, 640, 640, 3]], [[1, 5, 8400]]);
+
+  /// Round 354: the plugin's model inspection, as the app reads the export's task word.
+  const yoloChannel = MethodChannel('yolo_single_image_channel');
+  void answerInspect(Map<String, Object?> Function(String path) meta) {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      yoloChannel,
+      (call) async => call.method == 'inspectModel' ? meta((call.arguments as Map)['modelPath'] as String) : null,
+    );
+    addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(yoloChannel, null));
+  }
+
+  test('round 354: a pose or rotated-box export is refused by its task word; a detector without metadata passes', () async {
+    answerInspect((path) => {'task': path.contains('pose') ? 'pose' : path.contains('obb') ? 'obb' : 'detect'});
+    final r = await ModelImport.importFiles(
+      [pick('yolo26n-pose_int8.tflite', detector), pick('yolo26n-obb_int8.tflite', detector), pick('bees_640.tflite', detector)],
+      replace: (_, _, _) async => true,
+    );
+    expect(r.imported.map((e) => e.$1), ['bees_640.tflite']);
+    expect(r.rejected, hasLength(2));
+    expect(r.rejected.first, contains('yolo26n-pose_int8.tflite: is a pose model (keypoints): this app runs detection models only'));
+    expect(r.rejected.last, contains('rotated-box (OBB) model'));
+    answerInspect((_) => {});
+    final again = await ModelImport.importFiles([pick('plain_640.tflite', detector)], replace: (_, _, _) async => true);
+    expect(again.imported.map((e) => e.$1), ['plain_640.tflite']);
+  });
   final classifier = fakeTflite([[1, 3, 224, 224]], [[1, 164]]);
   final pack = File('test/fauna_pulse/fixtures/tiny_pack.fpack').readAsBytesSync();
 

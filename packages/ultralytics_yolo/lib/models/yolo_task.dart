@@ -7,23 +7,9 @@
 /// YOLO models can be trained for various computer vision tasks, and this enum
 /// allows specifying which task a particular model is designed to perform.
 enum YOLOTask {
-  /// Object detection - identifies objects and their locations with bounding boxes
+  // FaunaPulse fork: detection only (the other tasks' native code is gone,
+  // see FAUNAPULSE_FORK.md); `tryParse` gives null for their names.
   detect,
-
-  /// Instance segmentation - provides pixel-level masks for detected objects
-  segment,
-
-  /// Semantic segmentation - assigns a class label to each image pixel
-  semantic,
-
-  /// Image classification - categorizes the main subject of an image
-  classify,
-
-  /// Pose estimation - detects human body keypoints and poses
-  pose,
-
-  /// Oriented Bounding Box detection - detects rotated bounding boxes for objects
-  obb,
 }
 
 extension YOLOTaskParsing on YOLOTask {

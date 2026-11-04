@@ -9909,3 +9909,38 @@ Checked: analyzer (whole project); the settings tests (`settings_fields_test.dar
 every control of every settings screen, the video bursts, screen-off and tracker tuning tests,
 the saved-settings and extremes stress tests) and the summary tests. Open: Part H continues with
 H9 after H7 (owner decision).
+
+## Round 354 (2026-11-04): Detection models only: other tasks refused at import, their native code deleted (perf review H7)
+
+Asked: continue the efficiency plan (private perf review notes, Part H), item H7, after the
+owner's decision: the app runs object detection models and nothing else (segmentation would be
+slow anyway; no need for pose or rotated boxes for now). The app only ever asked for detection,
+but an imported segment, pose or OBB `.tflite` ran through the plugin's other predictors, and
+without them such a file would fall through to the detector and give wrong boxes without an
+error (mask numbers read as class scores). So, first the guards (option A): the import refuses
+a segmentation export by its shapes (a mask table next to the box table) and a pose or
+rotated-box export by the `task` word of its metadata (their box table looks like a detector's),
+each with a plain reason; the Models screen marks a file of another task imported earlier for
+deletion; the camera's model choice and the settings sheet refuse to pick one; the plugin's
+Dart resolver refuses a model whose metadata names another task at load. Then the deletion: on
+the Android side `Segmenter.kt`, `PoseEstimator.kt`, `ObbDetector.kt`, `SemanticSegmenter.kt`,
+`Classifier.kt`, `OBB.kt`, the task branches of `YOLO.kt`, `YOLOPlugin.kt` and `YOLOView.kt`
+(predictor factory, result maps, overlay drawing, stream conversion), the mask, keypoint, OBB
+and classification results, the OBB and pose helpers, the classifier options and the unused
+streaming keys (about 2,900 lines, done by a helper agent from a written brief and checked
+here: nothing of the deleted names is left, the Kotlin unit tests pass); on the Dart side
+`YOLOTask` keeps `detect` only, the streaming presets, `YOLO.withClassifierOptions` and the
+official-model list of the other tasks are gone (about 500 lines), and `FAUNAPULSE_FORK.md`
+records all of it. A call naming another task now gets a plain error result (code
+`unsupported_task`) instead of an exception, and a platform view created with one starts like
+the "no model" case instead of a black camera. Checked: analyzer (whole project, integration
+tests included); new tests for the segmentation shape, the task note and the import refusal
+(the plugin's model inspection mocked), the Models screen warning; the plugin's 162 Dart tests
+after their rewrite; the app's full suite (1,727 passed; one FaunaLapse import stress test
+timed out while a Gradle build ran alongside and passed alone); on the Xiaomi 11T Pro the
+arm64 debug build installed, the camera ran the owner's detection model on the GPU at about
+14 fps, a 25-second recording wrote its session without an `app_error` record, the test
+session was deleted and the settings compared byte for byte. Not tested with a real pose or
+OBB file (none on this computer): the refusal rests on the metadata word, which is what
+Ultralytics exports write. Open: Part H keeps only H9 (small items, each in a round that touches
+the file anyway).

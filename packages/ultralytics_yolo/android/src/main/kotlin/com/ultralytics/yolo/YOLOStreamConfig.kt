@@ -9,14 +9,8 @@ package com.ultralytics.yolo
 data class YOLOStreamConfig(
     // Basic inference data (always useful)
     val includeDetections: Boolean = true,
-    val includeClassifications: Boolean = true,
     val includeProcessingTimeMs: Boolean = true,
     val includeFps: Boolean = true,
-    
-    // Task-specific advanced data - default to false for performance
-    val includeMasks: Boolean = false,
-    val includePoses: Boolean = false,
-    val includeOBB: Boolean = false,
     
     // Original image data.
     // ⚠️ FOOTGUN — do not enable casually. When true, YOLOView JPEG-encodes the FULL
@@ -53,12 +47,8 @@ data class YOLOStreamConfig(
         /** Full features configuration - includes all detection features */
         val FULL = YOLOStreamConfig(
             includeDetections = true,
-            includeClassifications = true,
             includeProcessingTimeMs = true,
             includeFps = true,
-            includeMasks = true,
-            includePoses = true,
-            includeOBB = true,
             includeOriginalImage = false,
             maxFPS = null  // No limit, but will be slower due to data processing
         )
@@ -66,30 +56,20 @@ data class YOLOStreamConfig(
         /** Debug configuration - includes everything for development */
         val DEBUG = YOLOStreamConfig(
             includeDetections = true,
-            includeClassifications = true,
             includeProcessingTimeMs = true,
             includeFps = true,
-            includeMasks = true,
-            includePoses = true,
-            includeOBB = true,
             includeOriginalImage = true,
             maxFPS = 10  // Limited FPS due to heavy data
         )
         
         /** Custom builder for specific needs */
         fun custom(
-            includeMasks: Boolean = false,
-            includePoses: Boolean = false,
-            includeOBB: Boolean = false,
             includeOriginalImage: Boolean = false,
             maxFPS: Int? = null,
             throttleIntervalMs: Int? = null,
             inferenceFrequency: Int? = null,
             skipFrames: Int? = null
         ) = YOLOStreamConfig(
-            includeMasks = includeMasks,
-            includePoses = includePoses,
-            includeOBB = includeOBB,
             includeOriginalImage = includeOriginalImage,
             maxFPS = maxFPS,
             throttleIntervalMs = throttleIntervalMs,

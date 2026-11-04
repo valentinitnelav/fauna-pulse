@@ -52,18 +52,11 @@ class YOLOModelResolver {
   static const int _maxRemoteArtifactBytes = 512 * 1024 * 1024;
 
   static const List<String> _yolo26Sizes = ['n', 's', 'm', 'l', 'x'];
-  static const List<({YOLOTask task, String suffix})> _yolo26Tasks = [
-    (task: YOLOTask.detect, suffix: ''),
-    (task: YOLOTask.segment, suffix: '-seg'),
-    (task: YOLOTask.semantic, suffix: '-sem'),
-    (task: YOLOTask.classify, suffix: '-cls'),
-    (task: YOLOTask.pose, suffix: '-pose'),
-    (task: YOLOTask.obb, suffix: '-obb'),
-  ];
+  // FaunaPulse fork: detection only (upstream lists six tasks).
+  static const List<({YOLOTask task, String suffix})> _yolo26Tasks = [(task: YOLOTask.detect, suffix: '')];
 
-  // Canonical YOLO26 task x size matrix. Keep generated so the app, docs, and export script all represent the same
-  // 6-task x 5-size official asset set. YOLO11 assets still exist on older releases but are no longer maintained for
-  // autodownload — load them as custom paths/URLs instead.
+  // The official YOLO26 detection assets, one per size. YOLO11 assets still exist on older releases but are no
+  // longer maintained for autodownload: load them as custom paths/URLs instead.
   static final List<_OfficialModelArtifact> _officialModels = [
     for (final task in _yolo26Tasks)
       for (final size in _yolo26Sizes)
@@ -123,7 +116,18 @@ class YOLOModelResolver {
   }) async {
     final resolvedPath = await preparePath(modelPath);
     final metadata = await inspect(resolvedPath);
-    final metadataTask = YOLOTaskParsing.tryParse(metadata['task'] as String?);
+    final taskWord = (metadata['task'] as String?)?.trim().toLowerCase();
+    final metadataTask = YOLOTaskParsing.tryParse(taskWord);
+
+    // FaunaPulse fork: a model exported for another task (segment, pose, OBB,
+    // classify) is refused here as well as at the app's import, so such a
+    // file can never run through the detector and give wrong boxes.
+    if (taskWord != null && taskWord.isNotEmpty && metadataTask == null) {
+      throw ModelLoadingException(
+        'Model task mismatch for $modelPath: this app runs detection models '
+        'only, metadata says $taskWord.',
+      );
+    }
 
     if (task != null && metadataTask != null && task != metadataTask) {
       throw ModelLoadingException(

@@ -184,6 +184,10 @@ class ModelsInventory {
   /// path: what they really are.
   final Map<String, ModelFileKind> wrongKind;
 
+  /// Detection models of another task (pose, rotated boxes), imported before
+  /// round 354 refused them, by path: why they cannot run.
+  final Map<String, String> unsupportedTask;
+
   const ModelsInventory({
     this.detectors = const [],
     this.idModels = const [],
@@ -193,6 +197,7 @@ class ModelsInventory {
     this.storage = '',
     this.downloads = const ModelDownloads(),
     this.wrongKind = const {},
+    this.unsupportedTask = const {},
   });
 
   /// The name lists on the phone made for the identification model [model].
@@ -258,8 +263,12 @@ class ModelsInventory {
       }
     }
 
+    final unsupportedTask = <String, String>{};
     for (final m in detectors) {
-      if (m.source == ModelSource.imported) await check(m.id, ModelFileKind.detection);
+      if (m.source != ModelSource.imported) continue;
+      await check(m.id, ModelFileKind.detection);
+      final note = unsupportedTaskNote(m.task);
+      if (note != null) unsupportedTask[m.id] = note;
     }
     for (final f in idModels) {
       await check(f.path, ModelFileKind.identification);
@@ -273,6 +282,7 @@ class ModelsInventory {
       storage: (await DeviceStorage.read()).label,
       downloads: await ModelDownloads.load(),
       wrongKind: wrongKind,
+      unsupportedTask: unsupportedTask,
     );
   }
 }
@@ -1146,12 +1156,17 @@ class _ModelsScreenState extends State<ModelsScreen> {
 
   Widget _detectorTile(ModelEntry m, ModelsInventory inv) {
     final wrong = inv.wrongKind[m.id];
+    final task = inv.unsupportedTask[m.id];
     return _tile(
       kDetectionIcon,
       m.name,
       () => _detectorCard(m, inv),
       path: m.source == ModelSource.imported ? m.id : null,
-      warning: wrong == null ? null : _wrongKindText(wrong, ModelFileKind.detection),
+      warning: wrong != null
+          ? _wrongKindText(wrong, ModelFileKind.detection)
+          : task == null
+          ? null
+          : '⚠ This file $task. Delete it here.',
     );
   }
 

@@ -117,6 +117,8 @@ void main() {
     );
     await refused('text.tflite', fakeTflite([[1, 77]], [[1, 768]]), 'not a model for pictures');
     await refused('mask.tflite', fakeTflite([[1, 640, 640, 3]], [[1, 32, 160, 160]]), 'neither boxes');
+    // Round 354: a segmentation export (boxes plus a mask table) is not a detector for this app.
+    await refused('seg.tflite', fakeTflite([[1, 640, 640, 3]], [[1, 116, 8400], [1, 160, 160, 32]]), 'a segmentation model');
     await refused('none.tflite', fakeTflite([[1, 640, 640, 3]], []), 'neither boxes');
     await refused('junk.tflite', List.filled(64, 7), 'could not be read as a TFLite model');
     final cut = fakeTflite([[1, 640, 640, 3]], [[1, 5, 8400]]);
@@ -146,6 +148,18 @@ void main() {
     await refused('huge.tflite', fakeTflite([[1, 640, 640, 3]], [[1, 5, 1 << 24]]), 'too large for this app');
     await refused('list.fpack', [1, 2, 3, 4, 5, 6, 7, 8], 'not a name list');
     await refused('notes.txt', [1], 'not a model file');
+  });
+
+  test('round 354: the export\'s task word says why a model of another task cannot be used', () {
+    expect(unsupportedTaskNote(null), isNull);
+    expect(unsupportedTaskNote(''), isNull);
+    expect(unsupportedTaskNote('detect'), isNull);
+    expect(unsupportedTaskNote(' Detect '), isNull);
+    expect(unsupportedTaskNote('pose'), 'is a pose model (keypoints): this app runs detection models only (plain boxes)');
+    expect(unsupportedTaskNote('OBB'), contains('rotated-box'));
+    expect(unsupportedTaskNote('segment'), contains('segmentation model'));
+    expect(unsupportedTaskNote('classify'), contains('classification model'));
+    expect(unsupportedTaskNote('other'), contains("a 'other' model"));
   });
 
   test('name lists by their header, NPU exports by their name', () async {

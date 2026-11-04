@@ -37,6 +37,7 @@ import '../logging/error_reporter.dart';
 import '../logging/roi_update_debouncer.dart';
 import '../logging/session_logger.dart';
 import '../models/model_catalog.dart';
+import '../models/model_file_kind.dart';
 import '../models/roi.dart';
 import '../models/schedule_window.dart';
 import '../models/session_config.dart';

@@ -157,6 +157,26 @@ The headline changes, with the round that introduced each (full rationale in
   the app or the plugin used them. `yolo_controller.dart` stays
   (`YOLOViewController`, `LensInfo`). Fewer lines to read, search and diff at
   each upstream sync; the AGPL allows the removal (as for `YOLO.predict(imageUrl)`).
+- **Detection only (r354):** the app runs object detection models and nothing
+  else, so the native code of the other tasks is gone: `Segmenter.kt`,
+  `PoseEstimator.kt`, `ObbDetector.kt`, `SemanticSegmenter.kt`, `Classifier.kt`
+  and `OBB.kt`, the task branches of `YOLO.kt`, `YOLOPlugin.kt` and
+  `YOLOView.kt` (predictor factory, result maps, overlay drawing, stream
+  conversion), the mask, keypoint, OBB and classification fields and classes of
+  `YOLOResult.kt`, the OBB and pose helpers of `GeometryUtils.kt`,
+  `Predictor.kt` and `ImageUtils.kt`, the `includeMasks` / `includePoses` /
+  `includeOBB` / `includeClassifications` keys of `YOLOStreamConfig.kt` (now
+  ignored), and the classifier options (the `loadModel` argument is ignored).
+  `YOLOTask` has `DETECT` only on both sides: a call naming another task gets a
+  plain error result (code `unsupported_task`) instead of an exception, and a
+  platform view created with one starts like the "no model" case instead of a
+  black camera. The Dart resolver refuses a model whose metadata names another
+  task, and the app refuses such files at import (`model_file_kind.dart`). The
+  Dart side lost the streaming presets (`minimal`, `withMasks`, `withPoses`,
+  `full`, `debug`, `throttled`, `powerSaving`, `highPerformance`; the app uses
+  `custom`), `YOLO.withClassifierOptions`, and the official-model list of the
+  other tasks. About 2,900 Kotlin and 500 Dart lines. The AGPL allows the
+  removal; upstream's headers stay on every file.
 - **Diagnostics:** `FRAMEPERF` per-second pipeline log line, the FPS resume
   guard after gate sleeps (r85, mirrored in the app's Dart side), and
   sensor-timestamp mapping `sensorNanosToEpochMs` (r114).

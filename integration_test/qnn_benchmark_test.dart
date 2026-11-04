@@ -24,13 +24,9 @@ const String _releaseBase =
 const bool _runBench = bool.fromEnvironment('RUN_BENCH');
 const bool _runSoak = bool.fromEnvironment('RUN_SOAK');
 
+// FaunaPulse fork (round 354): detection only; the other tasks' native code is gone.
 const Map<String, (String, YOLOTask)> _tasks = {
   'detect': ('yolo26n', YOLOTask.detect),
-  'segment': ('yolo26n-seg', YOLOTask.segment),
-  'semantic': ('yolo26n-sem', YOLOTask.semantic),
-  'classify': ('yolo26n-cls', YOLOTask.classify),
-  'pose': ('yolo26n-pose', YOLOTask.pose),
-  'obb': ('yolo26n-obb', YOLOTask.obb),
 };
 
 Future<Uint8List> _download(String url) async {
@@ -144,10 +140,11 @@ void main() {
       }
       await tester.runAsync(() async {
         final image = await _download('https://ultralytics.com/images/bus.jpg');
-        // Worst case: semantic logits are the largest output tensors in the model zoo.
+        // Detection only in this fork (upstream soaked the semantic model, whose logits are the
+        // largest output tensors in the model zoo).
         final yolo = YOLO(
-          modelPath: '$_releaseBase/yolo26n-sem_v73_qnn.onnx',
-          task: YOLOTask.semantic,
+          modelPath: '$_releaseBase/yolo26n_v73_qnn.onnx',
+          task: YOLOTask.detect,
         );
         expect(await yolo.loadModel(), isTrue);
         for (var i = 0; i < 150; i++) {

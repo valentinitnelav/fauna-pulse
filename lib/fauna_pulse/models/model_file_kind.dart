@@ -9,7 +9,10 @@
 // small reads, also in a 1.3 GB file.
 //   • Detection model: the first output is a table of boxes, 3 numbers deep:
 //     [1, 4 + classes, candidates] (e.g. [1, 5, 8400]), or [1, 300, 6] for
-//     end-to-end exports such as MegaDetector V6.
+//     end-to-end exports such as MegaDetector V6. A segmentation export adds
+//     a mask table 4 numbers deep ([1, 160, 160, 32]): refused (round 354,
+//     the app runs plain detection only; the export's own task word catches
+//     the pose and rotated-box models, whose box table looks like a detector's).
 //   • Identification model: every output is one row of numbers per picture,
 //     [1, n]: the class scores of a classifier (insectDCT [1, 164]) or the
 //     BioCLIP embedding ([1, 768]).
@@ -102,11 +105,35 @@ ModelFileKind kindFromShapes(TfliteShapes s) {
   if (_values(s.inputs) > kMaxModelValues || _values(s.outputs) > kMaxModelValues) {
     throw Exception('is too large for this app (it would need more memory than the app may use).');
   }
-  if (s.outputs.isNotEmpty && s.outputs.first.length == 3) return ModelFileKind.detection;
+  if (s.outputs.isNotEmpty && s.outputs.first.length == 3) {
+    if (s.outputs.any((o) => o.length == 4)) throw Exception('${unsupportedTaskNote('segment')}.');
+    return ModelFileKind.detection;
+  }
   if (s.outputs.isNotEmpty && s.outputs.every((o) => o.length == 2)) return ModelFileKind.identification;
   throw Exception(
     'gives neither boxes (a detection model) nor one answer per picture (an identification model).',
   );
+}
+
+/// Why a model of [task] (the `task` word of its metadata, written by the
+/// export) cannot be used, as a sentence fragment after the file's name, or
+/// null for a detection model. Round 354: the app runs detection models only;
+/// the native code for the other tasks is gone, and such a file through the
+/// detector would give wrong boxes without an error (mask numbers read as
+/// class scores). Checked at import, on the Models screen and when a model is
+/// picked for the camera.
+String? unsupportedTaskNote(String? task) {
+  final t = task?.trim().toLowerCase();
+  if (t == null || t.isEmpty || t == 'detect') return null;
+  final what = switch (t) {
+    'segment' => 'a segmentation model (boxes with masks)',
+    'semantic' => 'a semantic segmentation model',
+    'classify' => 'a classification model',
+    'pose' => 'a pose model (keypoints)',
+    'obb' => 'a rotated-box (OBB) model',
+    _ => "a '$t' model",
+  };
+  return 'is $what: this app runs detection models only (plain boxes)';
 }
 
 /// Reads [TfliteShapes] from [file]; throws a FormatException when it is not

@@ -40,7 +40,7 @@ void main() {
       );
       final yolo2 = YOLO(
         modelPath: 'model2.tflite',
-        task: YOLOTask.segment,
+        task: YOLOTask.detect,
         useMultiInstance: true,
       );
 
@@ -134,7 +134,7 @@ void main() {
       // Create a new instance and manually register with same ID
       final yolo2 = YOLO(
         modelPath: 'model2.tflite',
-        task: YOLOTask.segment,
+        task: YOLOTask.detect,
         useMultiInstance: true,
       );
 
