@@ -149,6 +149,14 @@ The headline changes, with the round that introduced each (full rationale in
 - **Security alerts:** the app's dependency graph workflow reports this
   plugin's Android libraries to GitHub, so that Dependabot security alerts
   cover them (r339).
+- **Showcase removed (r352):** upstream's demo UI (`YOLOShowcase` and the nine
+  widgets only it used: camera toolbar, lens picker, focus reticle, zoom
+  indicator, logo overlay, performance label, threshold slider row, task and
+  model-size segmented controls), its four tests and its two image assets are
+  deleted; the app builds its own screens around `YOLOView`, and nothing in
+  the app or the plugin used them. `yolo_controller.dart` stays
+  (`YOLOViewController`, `LensInfo`). Fewer lines to read, search and diff at
+  each upstream sync; the AGPL allows the removal (as for `YOLO.predict(imageUrl)`).
 - **Diagnostics:** `FRAMEPERF` per-second pipeline log line, the FPS resume
   guard after gate sleeps (r85, mirrored in the app's Dart side), and
   sensor-timestamp mapping `sensorNanosToEpochMs` (r114).

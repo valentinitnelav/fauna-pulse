@@ -269,15 +269,8 @@ YOLOView(
 await controller.switchModel('assets/models/custom.tflite', YOLOTask.detect);
 ```
 
-Use `YOLOShowcase` when you want the complete Ultralytics camera UI:
-
-```dart
-YOLOShowcase(
-  initialTask: YOLOTask.detect,
-  initialModelSize: 'n',
-  onCapture: (bytes) {},
-)
-```
+Upstream's `YOLOShowcase` demo UI and the widgets only it used are not in this fork:
+FaunaPulse builds its own screens around `YOLOView` (see `FAUNAPULSE_FORK.md`).
 
 ## 🔄 Migrating From 0.3.x UI APIs
 
@@ -286,8 +279,8 @@ Version 0.4.0 removes the old Dart-side overlay/control layer. Camera detections
 | Removed 0.3.x API                                | 0.4.0 replacement                                                                                                         |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
 | `YOLOOverlay`, `YOLOOverlayTheme`                | Remove these widgets. Use native `YOLOView` overlays, or consume `onResult`/`YOLO.predict()` data.                        |
-| `YOLOControls`                                   | Use `YOLOShowcase` for the full UI, or compose the exported Material widgets directly.                                    |
-| `YOLOView.showNativeUI`                          | Use `YOLOShowcase` for built-in controls; use bare `YOLOView` when building your own UI.                                  |
+| `YOLOControls`                                   | Compose your own Material widgets around `YOLOView` (this fork has no `YOLOShowcase`).                                    |
+| `YOLOView.showNativeUI`                          | Build your own controls around bare `YOLOView`.                                                                           |
 | `YOLOView.showOverlays`, `YOLOView.overlayTheme` | No constructor replacement. Camera overlay drawing is native and not themed from Dart.                                    |
 | `YOLOViewController.setShowUIControls()`         | Show/hide your own Flutter controls around `YOLOView`.                                                                    |
 | `YOLOViewController.setShowOverlays()`           | Still available: toggles native overlay rendering. `capturePhoto(withOverlays: false)` only affects captured JPEG output. |

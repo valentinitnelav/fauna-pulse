@@ -9876,3 +9876,20 @@ Checked: the arm64 APK installed on the Xiaomi 11T Pro with `adb install -r`; a 
 after the Jetifier change; the short suite; the ripgrep check (a broad search over `docs/` no
 longer lists the changelog, a search naming it finds the same 75 lines). Open: Part H continues
 with H6.
+
+## Round 352 (2026-11-04): Plugin showcase tree deleted (perf review H6)
+
+Asked: continue the efficiency plan (private perf review notes, Part H), item H6. The Ultralytics
+plugin copy carried upstream's demo UI (`YOLOShowcase`) and the nine widgets only it used
+(camera toolbar, lens picker, focus reticle, zoom indicator, logo overlay, performance label,
+threshold slider row, task and model-size segmented controls), four tests of them and two image
+assets: 2,597 Dart lines that nothing in the app or the plugin used (checked with a whole-word
+search of every symbol over `lib/`, `test/`, `integration_test/` and the plugin; the only ties
+were the barrel exports, the plugin's own tests and one code comment). All of it is deleted; the
+barrel, the plugin's `pubspec.yaml` (asset list), README (the showcase section and two rows of
+the migration table) and the comment are updated, and `FAUNAPULSE_FORK.md` records the removal
+(the AGPL allows it, as for `YOLO.predict(imageUrl)`). `yolo_controller.dart` stays
+(`YOLOViewController`, `LensInfo`). The APK does not shrink (Dart's AOT build already dropped
+unused code); the gain is less to read, search, analyze and diff at each upstream sync. Checked:
+analyzer (whole project); the plugin's remaining tests; the app's full suite. Open: Part H
+continues with H7, which starts with an owner decision.

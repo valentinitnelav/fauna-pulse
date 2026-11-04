@@ -27,7 +27,7 @@ class DownloadProgress {
 
 class YOLOModelManager {
   // Broadcast sink for in-progress model downloads. Fed by the resolver's download path; consumers (e.g.
-  // YOLOShowcase) subscribe to surface a `LinearProgressIndicator` overlay on the active model chip. Kept as a
+  // a model screen) subscribe to show the download's progress. Kept as a
   // singleton because downloads are global (one URL, one filesystem path) and the resolver is also stateless.
   static final StreamController<DownloadProgress> _downloadProgressController =
       StreamController<DownloadProgress>.broadcast();

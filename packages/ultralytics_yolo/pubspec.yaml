@@ -47,6 +47,3 @@ flutter:
       # iOS is intentionally out of scope for this Android-only repository.
       # A separate iOS repository is planned for a later phase; restore the
       # `ios:` platform entry (and the ios/ folder) there.
-  assets:
-    - assets/ultralytics_yolo_logotype.png
-    - assets/focus_reticle.png
