@@ -79,7 +79,7 @@ void main() {
     expect(find.text('Video (MP4), find animals later'), findsOneWidget);
     await tester.scrollUntilVisible(find.textContaining('per hour of video'), 200, scrollable: list);
     expect(find.text('Video frame rate'), findsOneWidget);
-    expect(find.textContaining('The camera is capped at 10 frames per second'), findsOneWidget);
+    expect(find.textContaining('The camera runs at 10 frames per second'), findsOneWidget);
     expect(find.textContaining('A 60 min session records about 15 min of video'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Not used for video bursts: a clip keeps every frame.'), 200, scrollable: list);
     expect(find.text('Burst duration (clip length)'), findsOneWidget);
@@ -112,7 +112,7 @@ void main() {
     await tester.tap(find.text('Video (MP4), find animals later').last);
     await tester.pumpAndSettle();
     expect(find.text('Video frame rate'), findsOneWidget);
-    expect(find.textContaining('The camera is capped'), findsNothing, reason: 'the default video rate (5) is under the default cap (15)');
+    expect(find.textContaining('The camera runs at'), findsNothing, reason: 'the default video rate (5) is under the default cap (15)');
     expect(tester.takeException(), isNull);
   });
 
@@ -134,7 +134,7 @@ void main() {
     await tester.scrollUntilVisible(find.text('Also record the ROI as video'), 300, scrollable: list);
     await tester.scrollUntilVisible(find.textContaining('A 60 min session records about 60 min of video'), 200, scrollable: list);
     expect(find.text('Video frame rate'), findsOneWidget);
-    expect(find.textContaining('The camera is capped at 10 frames per second'), findsOneWidget);
+    expect(find.textContaining('The camera runs at 10 frames per second'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

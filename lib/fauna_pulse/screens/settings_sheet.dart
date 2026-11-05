@@ -76,6 +76,10 @@ class SettingsSheet extends StatefulWidget {
   /// empty the sheet falls back to a standard preset list.
   final List<String> streamResolutions;
 
+  /// The frame rates the active lens offers, lowest first, from the HAL. Empty
+  /// when the camera gave no list: the Power tab then shows the stored rate only.
+  final List<int> cameraFrameRates;
+
   /// Estimated ceiling for what CameraX ImageAnalysis can actually stream on this
   /// phone (the [streamResolutions] above are photo/preview sizes and over-promise
   /// — see round 56). Keys: `hardwareLevel`, `recommendedMax` ("WxH"),
@@ -100,6 +104,7 @@ class SettingsSheet extends StatefulWidget {
     required this.config,
     this.draft,
     this.streamResolutions = const [],
+    this.cameraFrameRates = const [],
     this.analysisCeiling = const {},
     this.sensorWidth = 0,
     this.sensorHeight = 0,

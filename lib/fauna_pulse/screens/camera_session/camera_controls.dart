@@ -278,6 +278,18 @@ extension _CameraControls on _CameraSessionScreenState {
         .catchError((Object e) => _logAsyncError('set_camera_fps_cap', e));
   }
 
+  /// Once the lens's rates are known, replaces a stored rate it does not offer
+  /// with the one that really runs. In memory only, so going back to a lens
+  /// that has the saved rate still finds it until the user applies settings.
+  /// Not during a recording, whose settings stay as they started.
+  void _fitCameraRateToLens() {
+    if (_recording) return;
+    final fitted = _config.fittedToCameraRates(_probes.cameraFrameRates);
+    if (fitted.cameraFpsCap == _config.cameraFpsCap) return;
+    _config = fitted;
+    _rebuildThrottle();
+  }
+
   void _pushStillZsl(SessionConfig c) {
     _controller
         .setStillZsl(_stillZslFor(c))

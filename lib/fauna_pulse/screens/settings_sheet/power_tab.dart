@@ -15,6 +15,42 @@ part of '../settings_sheet.dart';
 extension _SettingsPowerTab on _SettingsSheetState {
   // --- Tab 4: Power — heat, battery and rates -----------------------------
 
+  /// Round 355: a list instead of a number box. Each lens offers only certain
+  /// rates, and a typed 20 on a lens with 15 and 30 ran at 15 without a word.
+  /// Without a list from the camera, only the stored rate is shown: offering
+  /// standard rates here could promise one this camera does not have.
+  Widget _cameraRateDropdown() {
+    final offered = widget.cameraFrameRates;
+    final cap = _c.cameraFpsCap;
+    // The rate the sheet opened with, not the current one: choosing "No limit"
+    // must not take the old rate off the list.
+    final opened = widget.config.normalizedFpsCaps().cameraFpsCap;
+    final rates = offered.isNotEmpty ? offered : [if (opened > 0) opened];
+    const itemStyle = TextStyle(color: Colors.white);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DropdownButton<int>(
+          value: SessionConfig.cameraRateFor(cap, offered),
+          isExpanded: true,
+          dropdownColor: Colors.black87,
+          items: [
+            for (final rate in rates) DropdownMenuItem(value: rate, child: Text('$rate FPS', style: itemStyle)),
+            const DropdownMenuItem(value: 0, child: Text('No limit (the phone chooses)', style: itemStyle)),
+          ],
+          onChanged: (v) {
+            if (v != null) setState(() => _c = _c.withCameraFpsCap(v));
+          },
+        ),
+        if (offered.isEmpty)
+          const Text(
+            'The rates of this camera are shown once its picture is on screen.',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+      ],
+    );
+  }
+
   Widget _powerTab() => ListView(
     children: [
       const HelpLabel(
@@ -99,8 +135,10 @@ extension _SettingsPowerTab on _SettingsSheetState {
             : null,
       ),
       if (_c.detectorEnabled) ...[
-        // This is the inference-FPS ceiling. A positive camera cap is also the
+        // This is the inference-FPS ceiling. A positive camera rate is also the
         // input's upper bound because the model cannot analyze absent frames.
+        // It stays a typed number: unlike the camera, the detector can run at
+        // any rate up to the camera's by skipping frames.
         NumericSettingField(
           // One name in both switch states (it is a ceiling either way), so
           // other help texts can refer to it by a single label.
@@ -110,19 +148,22 @@ extension _SettingsPowerTab on _SettingsSheetState {
           max: SessionConfig.maximumInferenceFps.toDouble(),
           isInt: true,
           unitSuffix: 'FPS',
+          zeroMeans: 'same as the camera',
           warning: _c.effectiveInferenceFps < _c.inferenceFps
-              ? 'Used: ${_c.effectiveInferenceFps} FPS, the Camera frame rate cap below.'
+              ? 'Used: ${_c.effectiveInferenceFps} FPS, the Camera frame rate below.'
               : null,
+          note: _c.inferenceFps == 0 ? 'Same as the camera: ${_c.effectiveInferenceFps} FPS.' : null,
           // The "ceiling, not a guarantee" paragraph used to sit as its own
           // text block under this section; merged into the ⓘ (round 181).
           helperText:
               'The most camera frames per second the detector may analyze '
-              '(not the frame rate of the camera picture). ${_c.autoThrottle ? 'Auto-adjust may lower it when the phone is hot. ' : ''}'
-              '${_c.cameraFpsCap > 0 ? 'It never runs above the Camera frame rate cap below (currently ${_c.cameraFpsCap} FPS): the detector cannot analyze frames the camera did not capture. ' : 'The camera cap below is removed, so up to ${SessionConfig.maximumInferenceFps} FPS can be used. '}'
+              '(not the frame rate of the camera picture). 0 (the default) '
+              'means the same as the Camera frame rate below, so the detector '
+              'follows it when you choose another rate. ${_c.autoThrottle ? 'Auto-adjust may lower it when the phone is hot. ' : ''}'
+              '${_c.cameraFpsCap > 0 ? 'It never runs above the Camera frame rate (now ${_c.cameraFpsCap} FPS): the detector cannot analyze frames the camera did not capture. ' : 'The camera has no limit below, so up to ${SessionConfig.maximumInferenceFps} FPS can be used. '}'
               'This is a ceiling, not a guaranteed speed: the real rate is '
-              'also limited by the camera, the phone, and the selected '
-              'model. Default 15 FPS; lower rates use less power and are '
-              'often steadier during long sessions.',
+              'also limited by the phone and the selected model. Lower rates '
+              'use less power and are often steadier during long sessions.',
           onChanged: (v) {
             setState(() => _c = _c.withInferenceFps(v.round()));
           },
@@ -170,36 +211,26 @@ extension _SettingsPowerTab on _SettingsSheetState {
       ],
       const Divider(color: Colors.white24),
 
-      // 0 = uncapped (the camera's own full rate, ~30/s); 5..30 asks the
-      // camera hardware itself to capture slower. Different from the
+      // Asks the camera hardware itself to capture slower. Different from the
       // inference rate cap above, which only skips frames in software after
       // the camera already produced them. Heat territory, so it lives here
       // next to that cap (round 159; it sat on the Camera tab before).
-      NumericSettingField(
-        label: 'Camera frame rate cap',
-        value: _c.cameraFpsCap.toDouble(),
-        min: SessionConfig.minimumCameraFpsCap.toDouble(),
-        max: SessionConfig.maximumCameraFpsCap.toDouble(),
-        zeroMeans: 'no cap',
-        isInt: true,
-        unitSuffix: 'FPS',
-        // Round 110 wording: the old text said "0 = device default" and then
-        // "Default 15", using "default" for two different things (the
-        // camera's own uncapped rate vs the app's factory setting) — the
-        // owner found it confusing in the field. Keep the two ideas in
-        // separate, differently-worded sentences.
+      HelpLabel(
+        label: 'Camera frame rate',
+        // Round 110 wording: the old text used "default" for two different
+        // things (the camera's own uncapped rate vs the app's factory
+        // setting), which confused in the field. Keep the two ideas apart.
         helperText:
-            'How many pictures per second the camera takes (0 = no limit, '
-            'about 30 on most phones). Default 15, because the running camera '
-            'is the main source of heat, even while the detector sleeps. '
-            'Lower = cooler phone but a less smooth picture; the detector '
-            'never runs faster than this'
+            'How many pictures per second the camera takes. Each phone and '
+            'each lens offers only certain rates, so this list shows what this '
+            'camera can do. ${SessionConfig.defaultCameraFpsCap} FPS is the '
+            'starting choice because the running camera is the main source of '
+            'heat, even while the detector sleeps. Lower = cooler phone but a '
+            'less smooth picture. The detector never runs faster than this'
             '${_c.detectorEnabled ? ' (a note under "Max detector rate" says when this limits it)' : ''}. '
-            'The phone uses the nearest rate it supports.',
-        onChanged: (v) {
-          setState(() => _c = _c.withCameraFpsCap(v.round()));
-        },
+            '"No limit" lets the phone choose, about 30 on most phones.',
       ),
+      _cameraRateDropdown(),
       const Divider(color: Colors.white24),
 
       // The capture trigger itself (AI detector / motion photos / time-lapse)

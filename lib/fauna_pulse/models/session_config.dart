@@ -254,7 +254,7 @@ List<String> notApplicableConfigKeys(
 class SessionConfig {
   /// User-facing inference-rate bounds. A positive camera cap is an upstream
   /// ceiling because the detector can only analyze frames the camera supplies.
-  static const int defaultInferenceFps = 15;
+  static const int defaultInferenceFps = 0;
   static const int minimumInferenceFps = 5;
   static const int maximumInferenceFps = 30;
   static const int defaultCameraFpsCap = 15;
@@ -336,10 +336,10 @@ class SessionConfig {
   final int cpuThreads;
 
   /// Cap on how many camera frames per second the detector analyzes. This is
-  /// the inference FPS, not the camera preview FPS. It is always a positive,
-  /// explicit value so the setting never needs an ambiguous "0 = Max" mode.
-  /// A positive [cameraFpsCap] is its upper bound because the detector cannot
-  /// analyze frames the camera did not capture. Default 15 FPS.
+  /// the inference FPS, not the camera preview FPS. 0 (the default) means the
+  /// same rate as the camera, so choosing another camera rate needs no second
+  /// change. A positive [cameraFpsCap] is its upper bound because the detector
+  /// cannot analyze frames the camera did not capture.
   final int inferenceFps;
 
   /// Cap on the CAMERA's own frame rate (round 82). Unlike [inferenceFps] —
@@ -348,10 +348,12 @@ class SessionConfig {
   /// image processor capture and process ~30 frames every second even while
   /// the motion gate has the detector asleep, which is the main reason a
   /// "sleeping" phone still warms up. Lower = cooler but a less smooth
-  /// preview. 0 = device default (uncapped). The phone only supports certain
-  /// rates; the closest supported one at or below this is used. Default 15:
-  /// it matches the inference default and roughly halves the standing camera
-  /// load on phones whose uncapped camera runs at ~30 FPS.
+  /// preview. 0 = device default (uncapped). Each lens offers only certain
+  /// rates, so Settings lists those and [cameraRateFor] says which one runs
+  /// for any other stored value. Default 15: it roughly halves the standing
+  /// camera load on phones whose uncapped camera runs at ~30 FPS. A lens that
+  /// does not offer 15 uses its next rate up, which is cooler than the device
+  /// default.
   final int cameraFpsCap;
 
   /// Minutes after the last touch at which a recording lets the screen go
@@ -974,12 +976,14 @@ class SessionConfig {
       ? cameraFpsCap.clamp(minimumInferenceFps, maximumInferenceFps).toInt()
       : maximumInferenceFps;
 
-  /// Applies a user-entered inference cap. Round 313: only this setting
-  /// changes; the camera cap and the throttle floor limit it where the values
-  /// are used ([effectiveInferenceFps]), so typing a two-digit number (which
-  /// passes through one digit) can never lower another stored setting.
-  SessionConfig withInferenceFps(int requested) =>
-      copyWith(inferenceFps: requested.clamp(minimumInferenceFps, maximumInferenceFps).toInt());
+  /// Applies a user-entered inference cap: 0 = same as the camera. Round 313:
+  /// only this setting changes; the camera cap and the throttle floor limit it
+  /// where the values are used ([effectiveInferenceFps]), so typing a two-digit
+  /// number (which passes through one digit) can never lower another stored
+  /// setting.
+  SessionConfig withInferenceFps(int requested) => copyWith(
+    inferenceFps: requested <= 0 ? 0 : requested.clamp(minimumInferenceFps, maximumInferenceFps).toInt(),
+  );
 
   /// Applies a user-entered camera cap: 0 = uncapped, 1 to 4 count as
   /// [minimumCameraFpsCap]. Only this setting changes (round 313).
@@ -987,23 +991,36 @@ class SessionConfig {
     cameraFpsCap: requested <= 0 ? 0 : requested.clamp(minimumCameraFpsCap, maximumCameraFpsCap).toInt(),
   );
 
-  /// The inference cap the detector really runs at: the user's value, never
-  /// above the camera cap (the detector cannot analyze frames the camera did
-  /// not capture). The Settings sheet shows it when it differs.
+  /// The rate the camera really runs at for [cap], given the rates the lens
+  /// offers ([offered], lowest first): the highest one at or below the cap, or
+  /// the lowest one when all are above it. 0 and an unknown list stay as they
+  /// are. KEEP IN SYNC with `chooseAeFpsRange` in the plugin's YOLOView.kt.
+  static int cameraRateFor(int cap, List<int> offered) {
+    if (cap <= 0 || offered.isEmpty) return cap;
+    final atOrBelow = offered.where((r) => r <= cap);
+    return atOrBelow.isEmpty ? offered.first : atOrBelow.last;
+  }
+
+  /// This config with the camera rate the lens really runs, so everything that
+  /// reads [cameraFpsCap] (the detector ceiling, the warnings, the session
+  /// record) tells the truth about a value saved before the list existed or
+  /// on another lens.
+  SessionConfig fittedToCameraRates(List<int> offered) =>
+      copyWith(cameraFpsCap: cameraRateFor(cameraFpsCap, offered));
+
+  /// The inference cap the detector really runs at: the user's value or, for
+  /// 0, the camera's rate; never above the camera cap (the detector cannot
+  /// analyze frames the camera did not capture). The Settings sheet shows it.
   int get effectiveInferenceFps =>
-      (inferenceFps > 0 ? inferenceFps : defaultInferenceFps).clamp(minimumInferenceFps, maximumAllowedInferenceFps).toInt();
+      (inferenceFps > 0 ? inferenceFps : maximumAllowedInferenceFps).clamp(minimumInferenceFps, maximumAllowedInferenceFps).toInt();
 
   /// The auto-adjust floor really used: never above [effectiveInferenceFps].
   int get effectiveMinInferenceFps => minInferenceFps.clamp(1, effectiveInferenceFps).toInt();
 
-  /// Migrates invalid stored values: the former inference value `0` becomes
-  /// the 15 FPS default, values outside the boxes' ranges are brought into
-  /// them, and a camera cap of 1 to 4 becomes 5. The user's inference values
-  /// are not lowered to the camera cap any more (round 313).
-  SessionConfig normalizedFpsCaps() => withCameraFpsCap(cameraFpsCap).copyWith(
-    inferenceFps: inferenceFps > 0
-        ? inferenceFps.clamp(minimumInferenceFps, maximumInferenceFps).toInt()
-        : defaultInferenceFps,
+  /// Migrates invalid stored values: values outside the boxes' ranges are
+  /// brought into them, and a camera cap of 1 to 4 becomes 5. The user's
+  /// inference values are not lowered to the camera cap any more (round 313).
+  SessionConfig normalizedFpsCaps() => withCameraFpsCap(cameraFpsCap).withInferenceFps(inferenceFps).copyWith(
     minInferenceFps: minInferenceFps.clamp(1, maximumInferenceFps).toInt(),
   );
 

@@ -693,6 +693,10 @@ class YOLOPlatformView(
                 "getStreamResolutions" -> {
                     result.success(yoloView.supportedStreamResolutions())
                 }
+                "getCameraFrameRates" -> {
+                    // FaunaPulse: the rates of the active lens, for the Settings list.
+                    result.success(yoloView.supportedCameraFrameRates())
+                }
                 "getAnalysisStreamCeiling" -> {
                     // FaunaPulse: estimated max size CameraX ImageAnalysis can actually
                     // stream on this device (+ hardware level), so the UI stops over-promising.

@@ -133,6 +133,11 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   Check: `integration_test/view_recreate_check_test.dart`.
 - **`applyInteropOptions()` (`YOLOView.kt`) is the only caller of `setCaptureRequestOptions`**
   (it replaces the whole option set, so manual focus and the fps cap go together).
+- **A camera runs only at the rates its lens offers:** Settings lists them
+  (`CameraDiagnosticsController.cameraFrameRates`, read again after a lens switch), and the camera
+  screen fits `_config.cameraFpsCap` to them so every reader sees the rate that runs. The rule for
+  any other value exists twice: `chooseAeFpsRange` (`YOLOView.kt`) and `SessionConfig.cameraRateFor`.
+  `inferenceFps` 0 = same as the camera (the default).
 - **Plugin lifecycle:** `YOLOView.stop()` is restartable (never shut executors there);
   `release()` is terminal. Model loads go through the one `modelLoadExecutor` + generation token.
 - **No model:** the camera runs without one (`modelPath ''`, ~1 Hz `noModel` heartbeat so the

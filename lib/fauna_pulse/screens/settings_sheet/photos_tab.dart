@@ -78,10 +78,10 @@ extension _SettingsPhotosTab on _SettingsSheetState {
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
-              'The camera is capped at $cap frames per second (Power tab → '
-              '"Camera frame rate cap"), so the clips get at most $cap. Raise '
-              'the cap to ${_c.timeLapseVideoFps} or lower the video frame '
-              'rate. A higher cap also warms the phone between bursts, unless '
+              'The camera runs at $cap frames per second (Power tab → '
+              '"Camera frame rate"), so the clips get at most $cap. Choose a '
+              'higher camera rate or lower the video frame rate. A higher '
+              'camera rate also warms the phone between bursts, unless '
               '"Turn camera off between bursts" is on.',
               style: const TextStyle(color: Colors.amberAccent, fontSize: 12),
             ),

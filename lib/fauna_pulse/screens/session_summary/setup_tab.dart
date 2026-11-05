@@ -172,11 +172,11 @@ extension _SummarySetupTab on _SessionSummaryScreenState {
       // Camera hardware rate cap (round 82) — distinct from the inference cap.
       final camFps = _setting('cameraFpsCap');
       add(
-        'Camera frame rate cap',
+        'Camera frame rate',
         camFps == null
             ? null
             : (camFps is num && camFps == 0
-                  ? 'device default'
+                  ? 'no limit'
                   : '${_numStr(camFps)} /s'),
       );
       if (noAi) {

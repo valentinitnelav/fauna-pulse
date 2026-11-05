@@ -2118,6 +2118,14 @@ class YOLOView @JvmOverloads constructor(
     }
 
     /**
+     * The frame rates this camera offers, lowest first: the upper bounds of its AE ranges,
+     * each rate once. Settings lists only these, because a rate between two of them cannot
+     * run. Every lens has its own list, so read it again after a lens switch.
+     */
+    fun supportedCameraFrameRates(): List<Int> =
+        supportedAeFpsRanges().map { it.upper }.distinct().sorted()
+
+    /**
      * Round 166 (perf review E4 step 1): logs the HAL's complete AE fps-range menu, plus the
      * requested cap and the range actually applied, once per lens. This one logcat line is the
      * evidence the E4 experiment (drop the camera rate while the motion gate sleeps) hangs on:
@@ -2148,6 +2156,7 @@ class YOLOView @JvmOverloads constructor(
      * actually supports. Prefers the highest upper bound that stays <= [cap] (the strongest
      * legal cap not exceeding the wish); when none exists, the smallest upper bound available.
      * Ties prefer a narrower range (fixed rate = steadier, and AE can't speed back up).
+     * KEEP IN SYNC with `SessionConfig.cameraRateFor`, which shows this choice in Settings.
      */
     private fun chooseAeFpsRange(cap: Int): android.util.Range<Int>? {
         if (cap <= 0) return null

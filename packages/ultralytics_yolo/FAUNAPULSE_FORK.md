@@ -72,7 +72,8 @@ The headline changes, with the round that introduced each (full rationale in
 - **Camera2 interop funnel**, `applyInteropOptions()` in `YOLOView.kt` (r82):
   the single place manual focus and the camera-hardware FPS cap are applied
   (the API replaces the whole option set, so a second call site would silently
-  erase the other setting). Includes the per-lens AE fps-range menu logging
+  erase the other setting). `getCameraFrameRates` (r355) gives Settings the rates
+  of the active lens. Includes the per-lens AE fps-range menu logging
   (r166, review E4).
 - **Preview detach**, `setPreviewEnabled()` (r82): unbinds only the preview
   use case for the app's blackout power-save mode.

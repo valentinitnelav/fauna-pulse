@@ -55,7 +55,6 @@ const ranges = <Range>[
   Range('screenOffAfterMin', 0, 10, 'Screen off by itself after'),
   Range('lowBatteryStopPercent', 0, 50, 'Stop at battery level'),
   Range('storageReserveMb', 50, 5000, 'Keep free storage'),
-  Range('inferenceFps', 5, 30, 'Max detector rate'),
   Range('minInferenceFps', 1, 30, 'Min detector rate'),
   Range('throttleDutyTarget', 0.3, 0.8, 'Target processor load'),
   Range('motionGateWakeSeconds', 0.5, 60, 'Wake duration after motion'),
@@ -344,6 +343,13 @@ void main() {
       for (final (saved, want) in [(1, 5), (4, 5), (0, 0), (-3, 0), (999, 30), (17, 17)]) {
         final c = await loadWith(savedConfig()..['cameraFpsCap'] = saved);
         expect(c.cameraFpsCap, want, reason: 'saved $saved');
+      }
+    });
+
+    test('detector rate 1..4 becomes 5, 0 stays "same as the camera", 999 becomes 30', () async {
+      for (final (saved, want) in [(1, 5), (4, 5), (0, 0), (-3, 0), (999, 30), (17, 17)]) {
+        final c = await loadWith(savedConfig()..['inferenceFps'] = saved);
+        expect(c.inferenceFps, want, reason: 'saved $saved');
       }
     });
 

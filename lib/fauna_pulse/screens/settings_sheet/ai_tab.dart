@@ -550,8 +550,8 @@ extension _SettingsAiTab on _SettingsSheetState {
             isInt: true,
             unitSuffix: 'FPS',
             helperText:
-                'Frames per second in the clips (1 to 30). Default 15, the same as the default '
-                '"Camera frame rate cap" (Power tab), so the camera delivers every frame the clip '
+                'Frames per second in the clips (1 to 30). Default 15, the same as the starting '
+                '"Camera frame rate" (Power tab), so the camera delivers every frame the clip '
                 'needs. Lower rates save storage and heat.',
             onChanged: (v) => setState(() => _c = _c.copyWith(liveAiVideoFps: v.round())),
           ),
@@ -559,8 +559,8 @@ extension _SettingsAiTab on _SettingsSheetState {
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
-                'The camera is capped at $cap frames per second (Power tab → "Camera frame rate '
-                'cap"), so the clips get at most $cap.',
+                'The camera runs at $cap frames per second (Power tab → "Camera frame rate"), so '
+                'the clips get at most $cap.',
                 style: const TextStyle(color: Colors.amberAccent, fontSize: 12),
               ),
             ),

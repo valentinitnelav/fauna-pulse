@@ -62,7 +62,7 @@ void main() {
     await tester.pumpWidget(
       _host(
         NumericSettingField(
-          label: 'Camera frame rate cap',
+          label: 'Max detector rate',
           value: 15,
           min: 0,
           max: 30,
@@ -152,7 +152,7 @@ void main() {
       StatefulBuilder(
         builder: (context, setState) => _host(
           NumericSettingField(
-            label: 'Camera frame rate cap',
+            label: 'Max detector rate',
             value: stored,
             min: 0,
             max: 30,

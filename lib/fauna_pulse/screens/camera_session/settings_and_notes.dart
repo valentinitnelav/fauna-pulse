@@ -115,6 +115,7 @@ extension _CameraSettingsAndNotes on _CameraSessionScreenState {
         config: _config,
         draft: draft,
         streamResolutions: _streamResolutions,
+        cameraFrameRates: _probes.cameraFrameRates,
         analysisCeiling: _analysisCeiling,
         sensorWidth: _captureWidth,
         sensorHeight: _captureHeight,

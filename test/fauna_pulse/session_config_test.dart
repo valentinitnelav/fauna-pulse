@@ -95,21 +95,47 @@ void main() {
   });
 
   group('linked inference and camera FPS caps', () {
-    test('both defaults are explicit 15 FPS', () {
-      expect(const SessionConfig().inferenceFps, 15);
+    test('the camera starts at 15 FPS and the detector follows it', () {
+      expect(const SessionConfig().inferenceFps, 0);
       expect(const SessionConfig().cameraFpsCap, 15);
-      expect(SessionConfig.fromJson(const {}).inferenceFps, 15);
+      expect(const SessionConfig().effectiveInferenceFps, 15);
+      expect(SessionConfig.fromJson(const {}).inferenceFps, 0);
       expect(
         SessionConfig.maximumInferenceFps,
         SessionConfig.maximumCameraFpsCap,
       );
     });
 
-    test('legacy inference 0 migrates to the explicit 15 FPS default', () {
+    test('detector 0 means the rate of the camera, whatever it is (r355)', () {
+      expect(const SessionConfig(cameraFpsCap: 24).effectiveInferenceFps, 24);
+      expect(const SessionConfig(cameraFpsCap: 0).effectiveInferenceFps, 30, reason: 'no limit: the shared maximum');
+      expect(SessionConfig.fromJson(const {'inferenceFps': 0}).inferenceFps, 0);
       expect(
-        SessionConfig.fromJson(const {'inferenceFps': 0}).inferenceFps,
-        15,
+        const SessionConfig(inferenceFps: 20, cameraFpsCap: 30).effectiveInferenceFps,
+        20,
+        reason: 'a typed rate stays below the camera, by skipping frames',
       );
+    });
+
+    test('the rate that runs follows the rates the lens offers (r355)', () {
+      const main = [12, 15, 30];
+      expect(SessionConfig.cameraRateFor(15, main), 15);
+      expect(SessionConfig.cameraRateFor(20, main), 15, reason: 'the highest at or below');
+      expect(SessionConfig.cameraRateFor(29, main), 15, reason: 'not the nearest: 30 would be above the wish');
+      expect(SessionConfig.cameraRateFor(5, main), 12, reason: 'all above: the lowest');
+      expect(SessionConfig.cameraRateFor(15, const [16, 30]), 16, reason: 'no 15 on this lens: the next rate up');
+      expect(SessionConfig.cameraRateFor(0, main), 0, reason: 'no limit stays');
+      expect(SessionConfig.cameraRateFor(20, const []), 20, reason: 'an unknown list changes nothing');
+    });
+
+    test('a fitted config tells the truth; the typed detector rate stays (r355)', () {
+      final c = const SessionConfig(inferenceFps: 20, cameraFpsCap: 20).fittedToCameraRates(const [12, 15, 30]);
+      expect(c.cameraFpsCap, 15);
+      expect(c.inferenceFps, 20, reason: 'stored as typed');
+      expect(c.effectiveInferenceFps, 15);
+      final back = c.fittedToCameraRates(const [12, 15, 30]);
+      expect(back.toJson(), c.toJson(), reason: 'fitting twice changes nothing');
+      expect(const SessionConfig(cameraFpsCap: 0).fittedToCameraRates(const [15, 30]).cameraFpsCap, 0);
     });
 
     test('the inference rate used never exceeds a positive camera cap; the stored one stays (r313)', () {
@@ -153,6 +179,7 @@ void main() {
       expect([lowered.effectiveInferenceFps, lowered.effectiveMinInferenceFps], [12, 8]);
       expect(lowered.withCameraFpsCap(6).effectiveMinInferenceFps, 6, reason: 'the floor never above the rate');
       expect(lowered.withCameraFpsCap(3).cameraFpsCap, 5, reason: '1 to 4 count as 5');
+      expect(lowered.withInferenceFps(0).inferenceFps, 0, reason: '0 means the same as the camera');
       // Max inference typed as "12" passes through "1" (refused by its box,
       // and stored as 5 here): the floor is never touched.
       expect(c.withInferenceFps(1).withInferenceFps(12).minInferenceFps, 8);

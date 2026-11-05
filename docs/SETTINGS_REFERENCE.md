@@ -169,7 +169,7 @@ saves.
 | Setting | Default | What it does / when to change |
 |---|---|---|
 | **Also record the ROI as video** | `off` | *(Detection tab → Check live detection (advanced); live detection only)* Records the ROI square as MP4 clips while live detection runs, a new clip every 5 minutes, in the session's `videos/` folder. Costs storage and heat (also while the motion gate lets the detector sleep). |
-| **Video frame rate** (live detection video) | `15 FPS` | Frames per second of those clips, 1 to 30. A positive *Camera frame rate cap* below it limits the clips to the cap (amber note). |
+| **Video frame rate** (live detection video) | `15 FPS` | Frames per second of those clips, 1 to 30. A *Camera frame rate* below it limits the clips to that rate (amber note). |
 
 **Time-lapse bursts:** these sit on the Setup tab, under *Capture trigger* and the photo timing.
 They show only when the capture trigger is time-lapse.
@@ -247,8 +247,8 @@ scales it by burst ÷ (burst + break). Records: `timelapse_video_start`, `video_
 
 **Video frame rate (time-lapse video only)** (round 238; default 15 until round 290). Default 5:
 the rate *Find animals in videos* reads by default, so no stored frame goes unused (FaunaLapse
-records 5 too). A positive *Camera frame rate cap* below this rate limits the clips to the cap,
-and an amber note says so (raise the cap, or lower this).
+records 5 too). A *Camera frame rate* below this rate limits the clips to it, and an amber note
+says so (choose a higher camera rate, or lower this).
 
 </details>
 
@@ -368,21 +368,26 @@ recording goes on), or use the screen-off (moon) button on the camera screen.
 | **Screen off by itself after** | `0` (never) | During a recording the screen stays on until this many minutes (0 to 10) after the last touch; then the black power-save screen comes up and the phone's own screen timeout switches it off. Recording goes on. `0` keeps the screen on for the whole recording. 3 minutes suits unattended runs. |
 | **Stop at battery level** | `15 %` | On the phone's own battery, the recording stops cleanly at this level instead of the phone dying mid-file. A power bank counts as plugged in. `0` = never; range 0 to 50. |
 | **Keep free storage** | `200 MB` | The recording stops cleanly when free storage drops below this many megabytes (50 to 5000). A recording also does not start while free storage is already below it. |
-| **Max detector rate** | `15 FPS` | The most camera frames per second the detector may analyse (the **detector rate**, also called inference FPS, not the frame rate of the camera picture). A ceiling, not a promise: the camera, phone and model may be slower. 5 to 30 FPS. Shown in live detection mode only. |
+| **Max detector rate** | `0` (same as the camera) | The most camera frames per second the detector may analyse (the **detector rate**, also called inference FPS, not the frame rate of the camera picture). A ceiling, not a promise: the phone and model may be slower. `0` means the same rate as the camera, so the detector follows when you choose another camera rate; a line under the box shows that rate. Or type 5 to 30 FPS: the detector can run at any rate up to the camera's by skipping frames. Shown in live detection mode only. |
 | **Auto-adjust detector rate (reduces heat)** | `on` | Lowers the detector rate during the session to keep the phone cool and the rate steady, instead of overheating into a ~3 fps collapse. On: *Max detector rate* is the ceiling. Off: it is a fixed manual value. Leave on for field use. Outside live detection it is greyed out ("Live detection mode only; the detector does not run in this mode."). |
 | **Min detector rate** | `3 FPS` | *(Advanced (detector rate tuning) fold)* The lowest rate auto-adjust will drop to, so the session stays usable even when hot (1 to 30). The fold shows only when auto-adjust is on. |
 | **Target processor load** | `0.50` | *(Advanced (detector rate tuning) fold)* How busy (0.3 to 0.8) auto-adjust lets the processor stay on detection; 0.50 = about half the time. Lower = cooler and steadier but fewer FPS; higher = more FPS but more heat. The fold shows only when auto-adjust is on. |
-| **Camera frame rate cap** | `15 FPS` | How many frames per second the camera *hardware* captures. The detector never runs faster than this cap. Allowed: 0 or 5 to 30. `0` removes the cap (~30 FPS on most phones). |
+| **Camera frame rate** | `15 FPS` | How many frames per second the camera *hardware* captures. The list shows only the rates this camera offers: each phone and each lens has its own, for example 12, 15 or 30 on one phone and 15, 20, 24 or 30 on another. *No limit* lets the phone choose (~30 FPS on most phones). The detector never runs faster than this. |
 | **Use the GPU when it can run the model** | `on` | *(Detection tab → Advanced (engine & thresholds))* Prefer the GPU for the model. The app falls back to the CPU by itself if the GPU can't run the model. |
 
-**Detector rate and camera cap.** The camera frame rate cap is different from the detector rate.
-The detector rate only decides how many delivered frames the detector analyses; without a cap,
-the sensor and image processor keep running at full rate the whole session.
+**Detector rate and camera rate.** The camera frame rate is different from the detector rate.
+The detector rate only decides how many delivered frames the detector analyses; with no limit on
+the camera, the sensor and image processor keep running at full rate the whole session.
 
-When the camera cap is
-positive, the detector never runs above it: the *Max detector rate* box keeps the value typed and
-an amber note shows the rate used. With the cap at `0`, the *Max detector rate* may be set higher,
-up to 30 FPS.
+**Why a list.** A camera runs only at the rates it offers, so a rate between two of them cannot
+run. The list changes with the lens. A saved rate the lens does not offer (saved on another lens,
+or by an older version of the app) shows as the rate that really runs: the highest one below it.
+A lens without 15 FPS starts at its next rate up, which is cooler than *No limit*. The list appears
+once the camera picture is on screen; until then only the saved rate is shown.
+
+The detector never runs above the camera rate: the *Max detector rate* box keeps the value typed
+and an amber note shows the rate used. With *No limit* on the camera, the *Max detector rate* may
+be set up to 30 FPS.
 
 *Min detector rate* is never above the detector rate used (an amber note says when
 it is limited).
@@ -429,15 +434,15 @@ new clip under 1 GB free. When the recording stops, the camera screen says why f
 ("Recording stopped: less than 200 MB free storage …") and the summary's Setup tab has a *Stopped
 by itself* row. Record `guard_stop` (`storage_low`). Config key `storageReserveMb`.
 
-**Max detector rate.** Both rate inputs have a 30 FPS maximum, with no `0 = Max` shortcut for the
-detector rate. Round 313: the box keeps the value typed and an amber note shows the rate used;
-before, the cap rewrote this value, also from the first digit of a cap being typed.
+**Max detector rate.** It has a 30 FPS maximum, and `0` means the same as the camera (config key
+`inferenceFps`). Round 313: the box keeps the value typed and an amber note shows the rate used;
+before, the camera rate rewrote this value.
 
 **Auto-adjust detector rate:** config key `autoThrottle`. **Min detector rate:** config key
 `minInferenceFps`. **Target processor load:** config key `throttleDutyTarget`.
 
-**Camera frame rate cap** (round 82). The Max detector rate keeps its own value and shows the
-rate used (round 313). Capping also delays high-res photos (~0.4 s content lag at 15 FPS vs
+**Camera frame rate** (round 82, config key `cameraFpsCap`, `0` = no limit). The Max detector rate
+keeps its own value and shows the rate used (round 313). A lower rate also delays high-res photos (~0.4 s content lag at 15 FPS vs
 ~0.17 s uncapped on the test phone, round 110); the `_live.jpg` companion covers the trigger
 moment either way.
 

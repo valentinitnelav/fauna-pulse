@@ -610,7 +610,7 @@ Find your problem in the bold lines below. The problems are grouped:
 **FPS dropped a lot after ~30 seconds.** Under direct sun the phone's own heat management slows
 the processor. The phone protects itself; this is not an app bug. Shade the phone if you can.
 
-The app defends against it with **Max detector rate** (Power tab, default 15 FPS) and the switch
+The app defends against it with **Max detector rate** (Power tab, by default the same as the camera, which starts at 15 FPS) and the switch
 **Auto-adjust detector rate (reduces heat)**, which is on by default. A steady lower rate
 collects better data than a fast rate that collapses.
 

@@ -18,6 +18,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import '../logging/app_error_hooks.dart';
 
 import '../capture/roi_capture.dart';
+import '../models/session_config.dart';
 import 'capture_calibration_cache.dart';
 
 /// The focus preset every session starts on (round 164): 7.5 dioptres
@@ -64,6 +65,10 @@ class CameraDiagnosticsController {
   /// Camera-supported analysis stream resolutions ("WxH"), for the settings
   /// menu. Empty until probed (settings falls back to a standard preset list).
   List<String> streamResolutions = const [];
+
+  /// The frame rates the active lens offers, lowest first, within the range
+  /// the settings accept. Empty until probed, or if the camera gave no list.
+  List<int> cameraFrameRates = const [];
 
   /// Estimated ceiling for what CameraX ImageAnalysis can actually stream on
   /// this phone (the photo/preview sizes advertise more than the analysis
@@ -149,6 +154,7 @@ class CameraDiagnosticsController {
     _probeCaptureResolution(analysisDims, preferredLensZoom);
     _probeFocusSupport();
     _fetchStreamResolutions();
+    _fetchCameraFrameRates();
     _fetchAnalysisCeiling();
     _fetchAvailableLenses(preferredLensZoom);
     _fetchCameraDiagnostics();
@@ -165,11 +171,12 @@ class CameraDiagnosticsController {
 
   /// The camera has (probably) rebound on the new lens: re-read its focus
   /// range, which re-fires [onFocusRangeKnown] → the screen re-applies the
-  /// focus preset against the new lens.
+  /// focus preset against the new lens, and its list of frame rates.
   void _settleFocusReprobe() {
     _awaitingLensSettle = false;
     if (_disposed) return;
     _probeFocusSupport();
+    _fetchCameraFrameRates();
   }
 
   /// Advances to the next available rear lens (cycles round), updating
@@ -299,6 +306,24 @@ class CameraDiagnosticsController {
     } catch (e) {
       // Leave empty; settings falls back to a standard preset list.
       logSwallowed('stream_resolutions_probe', e);
+    }
+  }
+
+  /// Asks the camera which frame rates this lens offers, so Settings can list
+  /// only those. Re-run after every lens switch: each lens has its own list.
+  Future<void> _fetchCameraFrameRates() async {
+    try {
+      final list = await controller.getCameraFrameRates();
+      final usable = list.where(
+        (r) => r >= SessionConfig.minimumCameraFpsCap && r <= SessionConfig.maximumCameraFpsCap,
+      );
+      if (!_disposed && usable.isNotEmpty) {
+        cameraFrameRates = usable.toList(growable: false);
+        _notify();
+      }
+    } catch (e) {
+      // Leave as it was; Settings then shows only the stored rate.
+      logSwallowed('camera_frame_rates_probe', e);
     }
   }
 

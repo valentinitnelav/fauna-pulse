@@ -294,6 +294,13 @@ class YOLOViewController {
     return r?.whereType<String>().toList(growable: false) ?? const <String>[];
   }
 
+  /// The frame rates the active camera offers, lowest first, from the camera
+  /// HAL. Each lens has its own list. Empty where unavailable. Android only.
+  Future<List<int>> getCameraFrameRates() async {
+    final r = await _invoke<List<dynamic>>('getCameraFrameRates');
+    return r?.whereType<int>().toList(growable: false) ?? const <int>[];
+  }
+
   /// The realistic ceiling for the live analysis stream on the active camera —
   /// what CameraX `ImageAnalysis` can actually deliver, which is usually smaller
   /// than [getStreamResolutions] (those are still/preview sizes). Keys:

@@ -89,6 +89,10 @@ class NumericSettingField extends StatefulWidget {
   /// field says "1 s to 24 h").
   final String? rangeText;
 
+  /// A plain line under the box that says what the value means now; for a
+  /// limit that takes effect use [warning].
+  final String? note;
+
   /// False greys the box out and ignores typing (e.g. while a run uses it).
   final bool enabled;
 
@@ -111,6 +115,7 @@ class NumericSettingField extends StatefulWidget {
     this.warning,
     this.rangeNote,
     this.rangeText,
+    this.note,
     this.enabled = true,
     this.zeroMeans,
   });
@@ -255,6 +260,7 @@ class _NumericSettingFieldState extends State<NumericSettingField> {
       if (_error != null) (_error!, kFieldErrorColor),
       if (_error == null && _adjusted != null) (_adjusted!, kFieldWarningColor),
       if (widget.warning != null) (widget.warning!, kFieldWarningColor),
+      if (widget.note != null) (widget.note!, Colors.white54),
     ];
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),

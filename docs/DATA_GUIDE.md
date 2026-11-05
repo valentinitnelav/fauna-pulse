@@ -265,7 +265,7 @@ When each field arrived (sessions recorded with older builds do not have it):
 - Round 297: the `field` block. Round 298: `phone_state`. Round 301: `custom`. Round 302:
   `site_photos_about`, `site_photos`, and `uncertainty_goal_m` default 10 since round 302.
 - Round 313: in a motion session the trigger no longer stores the `motionGateEnabled` switch
-  on; the top-level `inference_fps` is the rate that ran, `config.inferenceFps` the value typed.
+  on; the top-level `inference_fps` is the rate that ran, `config.inferenceFps` the value typed (0 = same as the camera).
 - Round 335: FaunaPulse's help suggested an own field named `Device ID`, as FaunaLapse's help
   does. Round 336: the `device_id` key (the *Device ID* field).
 

@@ -162,6 +162,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     controller: _controller,
     onChanged: () {
       if (!mounted) return;
+      _fitCameraRateToLens();
       _maybeApplyAutoStreamDefault();
       setState(() {});
     },
