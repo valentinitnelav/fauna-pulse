@@ -106,6 +106,13 @@ The headline changes, with the round that introduced each (full rationale in
   threads (`LiteRtModel.automaticCpuThreads`); LiteRT's own default is 1,
   upstream 0.6.12 uses up to 4. Measured on both test phones with
   `integration_test/cpu_threads_check_test.dart`.
+- **LiteRT 2.2.0 and 16-bit CPU maths** (r356): under 2.1.5 XNNPACK left the
+  144 matrix multiplications of BioCLIP 2 (96 % of its work) to the slower
+  built-in kernels; 2.2.0 takes the whole graph. 2.2.0 splits the Kotlin API
+  into `litert-api`, which shares its Android namespace with `litert`, so the
+  app's `gradle.properties` sets `android.uniquePackageNames=false`.
+  `LiteRtModel` gained `cpuFp16` (XNNPACK's `FORCE_FP16`): the embedder uses
+  it (`Embedder.CPU_FP16`), the detectors do not.
 - **Native lifecycle overhaul** (r161, review E2): real `YOLO.close()`,
   remove-then-close instance dispose, a plugin-owned cancellable scope instead
   of `GlobalScope`, one owned model-load executor with a generation token, and

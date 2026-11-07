@@ -34,6 +34,10 @@ class LiteRtModel(
     // this only tunes how many threads those kernels may spread across. More threads can be
     // faster but also draws more power/heat - benchmark before changing (see benchmarkAccelerators).
     cpuThreads: Int = 0,
+    // CPU maths in 16-bit (XNNPACK's FORCE_FP16): on ARMv8.2 cores (Cortex-A55, A76 and newer) a
+    // 16-bit-weights model then keeps its weights in 16-bit (half the memory) and computes in
+    // 16-bit; on older cores XNNPACK ignores the flag. Slightly less precise, like the GPU.
+    private val cpuFp16: Boolean = false,
 ) : InferenceModel {
     private data class PreparedModel(
         val model: CompiledModel,
@@ -197,12 +201,14 @@ class LiteRtModel(
     private fun prepareModel(modelPath: String, accelerator: Accelerator, gpuCacheDir: java.io.File): PreparedModel {
         val options = CompiledModel.Options(accelerator)
         if (accelerator == Accelerator.CPU) {
-            // litert 2.1.5 exposes numThreads / xnnPackFlags / xnnPackWeightCachePath. Only
-            // numThreads is set here: flags are exotic, and the weight cache is deliberately
-            // skipped - a cache file corrupted by a mid-write kill would be read back by
-            // native code on the next launch, and unlike the GPU program cache above there
-            // is no crash-guard around it yet.
-            options.cpuOptions = CompiledModel.CpuOptions(numThreads = cpuThreads)
+            // litert 2.2.0 exposes numThreads / xnnPackFlags / xnnPackWeightCachePath. The weight
+            // cache is deliberately skipped - a cache file corrupted by a mid-write kill would be
+            // read back by native code on the next launch, and unlike the GPU program cache above
+            // there is no crash-guard around it yet.
+            options.cpuOptions = CompiledModel.CpuOptions(
+                numThreads = cpuThreads,
+                xnnPackFlags = if (cpuFp16) XNNPACK_FORCE_FP16 else null,
+            )
         }
         if (accelerator == Accelerator.GPU) {
             // Serialize compiled GPU programs so subsequent model opens skip CL compilation entirely.
@@ -227,7 +233,7 @@ class LiteRtModel(
         try {
             // Round 155: read the input shape by name. Legacy onnx2tf exports name the input `images`;
             // litert-torch (format=litert) exports name it `args_0`. Custom (non-Ultralytics) TFLite models
-            // may use other signature input names, so a few common ones are probed too — litert 2.1.5
+            // may use other signature input names, so a few common ones are probed too — litert 2.2.0
             // exposes the input shape only by name (no by-index lookup).
             var nativeDims = sequenceOf("images", "args_0", "input", "input_1", "serving_default_input")
                 .firstNotNullOfOrNull { name ->
@@ -305,7 +311,7 @@ class LiteRtModel(
     // output would allocate a fresh FloatArray every inference. Float outputs (all official
     // assets) CANNOT reuse a buffer — LiteRT 2.x TensorBuffer only exposes readFloat():
     // FloatArray, which allocates a new array inside the runtime on every call (verified
-    // against litert 2.1.5; no read-into-existing-array variant like ONNX Runtime's).
+    // against litert 2.2.0; no read-into-existing-array variant like ONNX Runtime's).
     // Revisit if the API grows one.
     private var widenTargets = arrayOfNulls<FloatArray>(0)
 
@@ -342,6 +348,9 @@ class LiteRtModel(
     }
 
     companion object {
+        /** TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16 of TensorFlow Lite's xnnpack_delegate.h. */
+        const val XNNPACK_FORCE_FP16 = 4
+
         /**
          * Thread count behind "0 = automatic". LiteRT's own default is ONE thread (round 226: 0 and 1
          * timed the same on both test phones). Upstream 0.6.12 moved to up to 4; measured on the Xiaomi

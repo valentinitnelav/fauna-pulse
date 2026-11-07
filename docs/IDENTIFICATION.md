@@ -835,10 +835,11 @@ the app reached 2.7 GB while BioCLIP 2 was being set up there, and Android close
 
 Since round 243 the app first compares the need, about 4.5 × the file size, with the phone's
 memory, and tries the GPU only when that stays under 60 % of it. Otherwise it runs on the CPU
-with a note such as "GPU not used: This phone has 3.9 GB of memory; setting this model up on
-the GPU needs about 2.7 GB, so it runs on the CPU." On that phone the CPU takes about 15.5 s per crop (2
-threads; 10 crops in about 3 minutes), so identification there is a job to leave running on the
-charger.
+with a note such as "GPU not used: This phone has 3.9 GB of memory, of which Android lets one
+app use about 2.3 GB; setting this model up on the GPU takes about 2.7 GB, so it runs on the
+CPU." (The share is the guard's 60 %: "needs 2.7 of 3.9 GB" alone read as if the model fitted.)
+On that phone the CPU takes a few seconds per crop (see *The CPU engine* below), so
+identification there is a job to leave running on the charger.
 
 `identify_start` records `accelerator`, `gpu_note` (why the GPU was not used) and
 `gpu_agreement` (DATA_GUIDE §8). Since round 211 the reason is shown on the screen after loading
@@ -851,6 +852,25 @@ the session's own crops after a warm-up, one at a time with a progress line ("Cr
 about 40 s left"; round 247, was 8 in one call with no feedback), and reports seconds per crop.
 So GPU on/off and thread counts can be compared in a minute each (a few minutes on an older
 phone's CPU); the app does not claim a speed it has not measured.
+
+**The CPU engine.** The app loads models with LiteRT 2.2.0, whose CPU kernels (XNNPACK) take
+the whole BioCLIP 2 graph; the earlier 2.1.5 left its 144 matrix multiplications (96 % of the
+work) to slower built-in kernels. On phones whose cores have 16-bit maths (ARMv8.2: Cortex-A55,
+A76 and newer, so nearly every phone of the last years) the CPU copy computes in 16-bit, which
+halves its memory (about 0.75 instead of 1.25 GB for BioCLIP 2) and is 1.6 to 2.5 times faster
+than 32-bit. Its embedding of the test picture agreed with 32-bit maths to 0.9993 (the GPU check
+asks 0.995; the GPU's 16-bit maths gave 0.9995). Measured with **Test speed** on the two 4 GB
+test phones, seconds per crop:
+
+| Phone, threads | 2.1.5, 32-bit | 2.2.0, 32-bit | 2.2.0, 16-bit |
+|---|---|---|---|
+| Redmi Note 9S (Snapdragon 720G: 2 fast + 6 slow cores), 2 / 4 / 8 threads | 3.9 / 4.4 / 3.8 | 3.4 / 3.8 / 3.6 | 1.5 / 1.4 / 1.2 |
+| Samsung Galaxy M12 (Exynos 850: 8 equal slow cores), 2 / 4 / 8 threads | 11.8 / 7.6 / 5.3 | 23.9 / 15.1 / 8.9 | 8.8 / 5.1 / 3.3 |
+
+So with 2.2.0 the 32-bit kernels alone would have made the Samsung slower than before; the
+16-bit maths is what makes the bump a gain on both. In 16-bit, 8 threads were the fastest on
+both phones (in 32-bit the Redmi's 2 fast cores alone were better); "0 = automatic" still means
+2 threads, so **Test speed** with 4 or 8 is worth a minute on a long run.
 
 </details>
 

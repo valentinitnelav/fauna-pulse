@@ -59,7 +59,9 @@ class Embedder(
         const val GPU_MEMORY_FACTOR = 4.5
 
         /** Largest share of the phone's memory that estimate may take (the rest is Android and
-         *  other apps; the 7.4 GB Xiaomi runs BioCLIP 2 on the GPU, the 3.8 GB Samsung cannot). */
+         *  other apps; the 7.4 GB Xiaomi runs BioCLIP 2 on the GPU, the 3.8 GB Samsung cannot).
+         *  The note below names this share as what Android lets one app use: "needs 2.7 of 3.8 GB"
+         *  alone read as if the model fitted. */
         const val GPU_MEMORY_SHARE = 0.6
 
         /** Why [modelPath] should not be set up on this phone's GPU, or null when it fits. */
@@ -68,8 +70,9 @@ class Embedder(
             val info = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
             val need = File(modelPath).length() * GPU_MEMORY_FACTOR
             if (info.totalMem <= 0 || need <= info.totalMem * GPU_MEMORY_SHARE) return null
-            return "this phone has %.1f GB of memory; setting this model up on the GPU needs about %.1f GB, so it runs on the CPU"
-                .format(info.totalMem / 1e9, need / 1e9)
+            return ("this phone has %.1f GB of memory, of which Android lets one app use about %.1f GB; " +
+                "setting this model up on the GPU takes about %.1f GB, so it runs on the CPU")
+                .format(info.totalMem / 1e9, info.totalMem * GPU_MEMORY_SHARE / 1e9, need / 1e9)
         }
 
         /** Memory the CPU copy of a model takes, as a multiple of the file's size (round 319, part
@@ -77,6 +80,14 @@ class Embedder(
          *  (2.05x: the CPU engine holds the weights as 32-bit numbers). A 32-bit file (1.22 GB)
          *  took the same 1.25 GB, so for such files this over-estimates (the check is stricter). */
         const val CPU_MEMORY_FACTOR = 2.15
+
+        /** The CPU copy computes in 16-bit (XNNPACK's FORCE_FP16, see LiteRtModel). Measured on the
+         *  two 4 GB test phones (ARMv8.2 cores, LiteRT 2.2.0, BioCLIP 2): the model's memory halved
+         *  (about 0.75 instead of 1.25 GB) and a crop took 1.5 instead of 3.4 s (Redmi Note 9S,
+         *  2 threads) and 3.3 instead of 8.9 s (Galaxy M12, 8 threads); the embedding of the test
+         *  picture agreed with 32-bit to 0.9993 (the GPU check asks 0.995). Cores without 16-bit
+         *  maths ignore the flag. */
+        const val CPU_FP16 = true
 
         /**
          * Round 319, part 2: what loading [modelPath] would need and what Android has free now, for
@@ -112,7 +123,7 @@ class Embedder(
     private val memoryNote: String? = if (useGpu) gpuMemoryNote(context, modelPath) else null
 
     private var rt: InferenceModel =
-        InferenceModel.create(context, modelPath, useGpu && memoryNote == null, "Embedder", cpuThreads)
+        InferenceModel.create(context, modelPath, useGpu && memoryNote == null, "Embedder", cpuThreads, CPU_FP16)
 
     /** Cosine of the GPU and CPU embeddings of the test picture, when the GPU check ran or
      *  was remembered; null when the model runs on the CPU without a GPU verdict. */
@@ -171,15 +182,15 @@ class Embedder(
         var agreement = known[key]
         if (agreement == null) {
             // One model at a time (a large model twice in memory can get the app killed): the GPU
-            // result first, then the CPU copy, then the GPU model again (its compiled program is
-            // cached, so the second GPU load is quicker).
+            // result first, then the CPU copy (in the mode the app really uses, [CPU_FP16]), then
+            // the GPU model again (its compiled program is cached, so the second GPU load is quicker).
             val picture = testPicture()
             val onGpu = embed(picture)
             rt.close()
-            rt = InferenceModel.create(context, modelPath, false, "Embedder", cpuThreads)
+            rt = InferenceModel.create(context, modelPath, false, "Embedder", cpuThreads, CPU_FP16)
             val onCpu = embed(picture)
             rt.close()
-            rt = InferenceModel.create(context, modelPath, true, "Embedder", cpuThreads)
+            rt = InferenceModel.create(context, modelPath, true, "Embedder", cpuThreads, CPU_FP16)
             // Cosine with explicit lengths: a classifier's raw scores are not unit vectors.
             var dot = 0.0
             var gg = 0.0
@@ -198,7 +209,7 @@ class Embedder(
         if (rt.accelerator != "GPU") return // the GPU reload failed; the ladder's note says why
         if (agreement < GPU_MIN_AGREEMENT) {
             rt.close()
-            rt = InferenceModel.create(context, modelPath, false, "Embedder", cpuThreads)
+            rt = InferenceModel.create(context, modelPath, false, "Embedder", cpuThreads, CPU_FP16)
             checkNote = "the GPU's results differed from the CPU's on this phone (agreement %.3f, needs %.3f)"
                 .format(agreement, GPU_MIN_AGREEMENT)
             Log.w(TAG, "GPU check failed for ${file.name}; running on the CPU")

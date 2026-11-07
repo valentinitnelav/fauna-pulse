@@ -320,7 +320,8 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   alerts only (no `dependabot.yml`, security updates off); check open alerts before a
   release, library updates are made in a round (`docs/CONTRIBUTING.md`, *Library updates*).
 - **Toolchain:** Gradle, AGP, Kotlin and SDK levels are pinned in `android/`; keep
-  `android.builtInKotlin=false` and `android.newDsl=false`; `file_picker` stays `^10.3.10`. App id
+  `android.builtInKotlin=false`, `android.newDsl=false` and `android.uniquePackageNames=false`
+  (LiteRT's `litert` and `litert-api` share one Android namespace); `file_picker` stays `^10.3.10`. App id
   `com.faunapulse.app`; native classes stay in `com.ultralytics.yolo`. Keep the tracked Gradle
   wrapper files.
 - **Release:** release builds fail without a keystore (`scripts/create_release_keystore.sh`);

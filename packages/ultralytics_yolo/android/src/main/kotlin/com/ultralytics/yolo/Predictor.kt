@@ -50,9 +50,16 @@ interface InferenceModel {
          * no CPU fallback (the context binary is precompiled Hexagon code), so failures here should be handled by
          * falling back to a TFLite model.
          */
-        fun create(context: Context, modelPath: String, useGpu: Boolean, tag: String, cpuThreads: Int = 0): InferenceModel {
+        fun create(
+            context: Context,
+            modelPath: String,
+            useGpu: Boolean,
+            tag: String,
+            cpuThreads: Int = 0,
+            cpuFp16: Boolean = false,
+        ): InferenceModel {
             val lower = modelPath.lowercase()
-            if (!lower.endsWith(".onnx")) return LiteRtModel(context, modelPath, useGpu, tag, cpuThreads)
+            if (!lower.endsWith(".onnx")) return LiteRtModel(context, modelPath, useGpu, tag, cpuThreads, cpuFp16)
             require(lower.endsWith("_qnn.onnx")) {
                 "Generic ONNX models are not supported; use an Ultralytics QNN context-binary export (*_qnn.onnx) " +
                     "or a .tflite model"

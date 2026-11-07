@@ -56,7 +56,8 @@ void main() {
     final blocked = gpuNoteText('on the GPU blocklist after repeated failed GPU compiles');
     expect(blocked, startsWith('The GPU failed with this model several times before'));
     expect(blocked, isNot(contains('convert it again')));
-    const memory = 'this phone has 3.5 GB of memory; setting this model up on the GPU needs about 4.0 GB, so it runs on the CPU';
+    const memory = 'this phone has 3.5 GB of memory, of which Android lets one app use about 2.1 GB; '
+        'setting this model up on the GPU takes about 4.0 GB, so it runs on the CPU';
     expect(gpuNoteText(memory), 'T${memory.substring(1)}.');
   });
 }

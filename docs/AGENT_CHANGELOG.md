@@ -9948,3 +9948,36 @@ the file anyway).
 
 The owner set both rates to 20 on the Xiaomi 11T Pro and never saw more than 15 FPS. Cause: its main camera offers only 12, 15 and 30, and the app takes the highest rate at or below the wish, so 16 to 29 ran at 15 with no word on screen. Other phones differ (Samsung M12: 15, 20, 24, 30; Redmi Note 9S: 15, 30), so the owner chose a list of what each camera offers. Rejected: rounding up to 30, which doubles camera heat unasked. Decisions: a lens without 15 uses its next rate up, not the device default (cooler; the owner allowed a better idea than the default they suggested). The detector stays a typed number because the deadline scheduler can run any rate up to the camera's; its new default 0 follows the camera, so one change is enough. Saved rates are fitted in memory, so the ceiling, warnings and session record show the rate that runs. Above 15 only flatbug-n gains (about 23 FPS at camera 30); insectDCT-v8s and flatbug-s stay near 15 or drop, from frame time and CPU limits when warm, which is not a bug. Checked: unit and widget tests; every rate chosen through the screen on all three phones. Delivered: 11T Pro 12 and 15, Samsung 20, 24, 30 (no model), Redmi 15 and only about 23 of 30. The lens without 15 cannot be reached on the 11T Pro (MIUI shows other apps one back camera), so that path has unit tests only. Saved rates on existing installs stay: type 0 to follow the camera.
 
+
+## Round 356 (2026-11-07): LiteRT 2.2.0, 16-bit CPU maths for identification, memory note wording
+
+Asked (hand-off from the calibration work on the three-phone benchmark): the BioCLIP 2 CPU path
+was slow because LiteRT 2.1.5's XNNPACK left the 144 matrix multiplications (96 % of the work) to
+the built-in kernels ("Replacing 1102 out of 1392 node(s)"). Bump the runtime, measure on the
+two 4 GB phones, check memory, reword the GPU memory note, and think about the automatic thread
+count. The Xiaomi 11T Pro was not available: its GPU re-check (agreement, the 57-minute run) and
+its detectors are still owed, and the owner decides the open points below.
+
+Done: LiteRT 2.2.0 (2.3.x splits the GPU into another Maven artifact, not tried). 2.2.0 ships
+`litert` and `litert-api` with one Android namespace, which AGP 9 refuses at manifest merging:
+`android.uniquePackageNames=false` in gradle.properties. XNNPACK now takes all 1392 nodes in one
+partition on both phones, but its 32-bit kernels were only 9 % faster on the Redmi Note 9S and
+70 % slower on the Galaxy M12 (Cortex-A55 only). XNNPACK's FORCE_FP16 (16-bit weights and maths
+on ARMv8.2 cores) fixed that: `LiteRtModel.cpuFp16`, used by the embedder (`Embedder.CPU_FP16`),
+not by the detectors. Seconds per crop (Test speed, BioCLIP 2): Redmi 2 threads 3.85 (2.1.5) →
+3.44 (2.2.0) → 1.42 to 1.54 (16-bit), 8 threads 1.18; Samsung 8 threads 5.26 → 8.90 → 3.29,
+2 threads 11.78 → 23.85 → 8.79. The model's memory halved (RSS 1.48 → 0.98 GB, native heap
+about 0.75 GB). 16-bit and 32-bit embeddings of the test picture agree to cosine 0.9993 (the GPU
+check asks 0.995; the GPU gave 0.9995); both phones give identical 16-bit vectors. The GPU note
+now says what one app may use ("3.8 GB of memory, of which Android lets one app use about
+2.3 GB; setting this model up on the GPU takes about 2.7 GB"). Detectors re-checked with the
+engine benchmark on both phones: flatbug and yolo26n on the GPU as before; MDV6 fails to compile
+on the GPU as it did before the bump (private review notes, Part F). Checked: analyzer, 1113
+unit tests, both phones' settings restored.
+
+Open (owner): (1) keep 16-bit CPU maths as a constant, make it a setting, or go back to 32-bit;
+(2) `CPU_MEMORY_FACTOR` 2.15 could drop to about 1.4 with 16-bit, which softens the "needs a lot
+of memory" rule; (3) automatic threads: in 16-bit 8 threads won on both phones (2 fast cores:
+1.18 vs 1.42 s; 8 slow cores: 3.29 vs 8.79 s), so either count the cores of the fastest cluster
+or time 2, 4 and 8 once per phone; (4) a "try the GPU anyway" switch for 4 GB phones (crashes the
+app, not the phone); (5) the Xiaomi numbers in IDENTIFICATION.md date from the old runtime.

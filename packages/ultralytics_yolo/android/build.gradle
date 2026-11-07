@@ -89,7 +89,10 @@ android {
         // S26: a non-end2end fp16 YOLO26 model runs at ~4.7ms/inf on GPU vs ~29ms CPU. litert-gpu/-support have no 2.x
         // release and are dropped (GPU is in core). litert-metadata stays (self-contained: only flatbuffers-java) so we
         // can read standard embedded TFLite metadata as a fallback to Ultralytics' appended-ZIP metadata.
-        implementation("com.google.ai.edge.litert:litert:2.1.5")
+        // 2.2.0: under 2.1.5 XNNPACK (LiteRT's CPU kernels) left the 144 matrix multiplications of BioCLIP 2 (96 % of
+        // its work) to the slower built-in kernels (logcat "Replacing 1102 out of 1392 node(s)"); 2.2.0 takes the whole
+        // graph. The GPU accelerator ships in the same AAR, so a bump re-checks detectors and BioCLIP GPU on every phone.
+        implementation("com.google.ai.edge.litert:litert:2.2.0")
         implementation("com.google.ai.edge.litert:litert-metadata:1.4.2")
         // Optional Snapdragon NPU support: runs Ultralytics QNN context-binary ONNX exports (*_qnn.onnx) via the
         // ONNX Runtime QNN Execution Provider. compileOnly so consumers don't pay the ~70MB arm64 runtime by
