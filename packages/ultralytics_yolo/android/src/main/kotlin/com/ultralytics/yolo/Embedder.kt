@@ -75,11 +75,13 @@ class Embedder(
                 .format(info.totalMem / 1e9, info.totalMem * GPU_MEMORY_SHARE / 1e9, need / 1e9)
         }
 
-        /** Memory the CPU copy of a model takes, as a multiple of the file's size (round 319, part
-         *  2): BioCLIP 2 (16-bit file, 0.61 GB) grew the native heap by 1.25 GB on the 3.6 GB Redmi
-         *  (2.05x: the CPU engine holds the weights as 32-bit numbers). A 32-bit file (1.22 GB)
-         *  took the same 1.25 GB, so for such files this over-estimates (the check is stricter). */
-        const val CPU_MEMORY_FACTOR = 2.15
+        /** Memory the CPU copy of a model takes, as a multiple of the file's size. With 16-bit CPU
+         *  maths ([CPU_FP16], round 357) BioCLIP 2 (16-bit file, 0.61 GB) grew the native heap by
+         *  0.74 to 0.78 GB on the two 4 GB test phones (1.2 to 1.3x: the weights stay 16-bit); 1.4
+         *  keeps a margin. In 32-bit maths (round 319, part 2) it was 1.25 GB (2.05x, factor 2.15),
+         *  and a 32-bit file (1.22 GB) took the same 1.25 GB; such a file is not re-measured, but
+         *  1.4 x 1.22 GB = 1.7 GB still covers that (the check is stricter). */
+        const val CPU_MEMORY_FACTOR = 1.4
 
         /** The CPU copy computes in 16-bit (XNNPACK's FORCE_FP16, see LiteRtModel). Measured on the
          *  two 4 GB test phones (ARMv8.2 cores, LiteRT 2.2.0, BioCLIP 2): the model's memory halved
@@ -88,6 +90,42 @@ class Embedder(
          *  picture agreed with 32-bit to 0.9993 (the GPU check asks 0.995). Cores without 16-bit
          *  maths ignore the flag. */
         const val CPU_FP16 = true
+
+        /** Thread counts the self-test behind "0 = automatic" tries ([chooseCpuThreads]): 2, 4 and
+         *  every core (fewer on a phone with fewer cores). */
+        fun threadCandidates(): List<Int> {
+            val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+            return listOf(2, 4, cores).map { it.coerceAtMost(cores) }.distinct().sorted()
+        }
+
+        /** The self-test's verdicts, one line per model, phone build and app version: key, the
+         *  chosen count, then "threads:seconds" per candidate. */
+        private const val THREADS_STORE = "embedder_cpu_threads.txt"
+        /** The self-test keeps the fewest threads within this share of the fastest time. */
+        private const val THREADS_TIE_MARGIN = 0.05
+
+        /** What a remembered verdict (GPU check, thread self-test) is tied to: the model file, the
+         *  phone's Android build and the app's version. The app's version is part of it because an
+         *  update can bring a new runtime (round 357, LiteRT 2.2.0 to 2.3.2), so the checks run
+         *  once more after it (a few seconds, the self-test about a minute). */
+        private fun checkKey(context: Context, modelPath: String): String {
+            val file = File(modelPath)
+            val appVersion = runCatching {
+                val info = context.packageManager.getPackageInfo(context.packageName, 0)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) info.longVersionCode
+                else @Suppress("DEPRECATION") info.versionCode.toLong()
+            }.getOrDefault(0L)
+            return "${file.name}_${file.length()}|${Build.FINGERPRINT}|v$appVersion"
+        }
+
+        private fun rememberedThreads(context: Context, key: String): Int? = runCatching {
+            val store = File(context.filesDir, THREADS_STORE)
+            if (!store.exists()) null
+            else store.readLines().mapNotNull { line ->
+                val parts = line.split('\t')
+                if (parts.size >= 2 && parts[0] == key) parts[1].toIntOrNull() else null
+            }.lastOrNull()
+        }.getOrNull()
 
         /**
          * Round 319, part 2: what loading [modelPath] would need and what Android has free now, for
@@ -120,10 +158,23 @@ class Embedder(
         }
     }
 
+    private val checkKey: String = checkKey(context, modelPath)
+
+    /** "0 = automatic": the self-test's remembered choice for this model and phone, or null when
+     *  [chooseCpuThreads] still has to run (null as well when the setting is not 0). */
+    private val rememberedThreads: Int? = if (cpuThreads > 0) null else rememberedThreads(context, checkKey)
+
+    /** The thread setting, else the remembered choice, else the self-test's first candidate. */
+    private val cpuThreadCount: Int =
+        if (cpuThreads > 0) cpuThreads else rememberedThreads ?: threadCandidates().first()
+
+    /** Whether the self-test still has to choose the count ("0 = automatic", nothing remembered). */
+    private val threadsToChoose: Boolean = cpuThreads <= 0 && rememberedThreads == null
+
     private val memoryNote: String? = if (useGpu) gpuMemoryNote(context, modelPath) else null
 
     private var rt: InferenceModel =
-        InferenceModel.create(context, modelPath, useGpu && memoryNote == null, "Embedder", cpuThreads, CPU_FP16)
+        InferenceModel.create(context, modelPath, useGpu && memoryNote == null, "Embedder", cpuThreadCount, CPU_FP16)
 
     /** Cosine of the GPU and CPU embeddings of the test picture, when the GPU check ran or
      *  was remembered; null when the model runs on the CPU without a GPU verdict. */
@@ -160,7 +211,8 @@ class Embedder(
             dim = rt.outputElementCounts.firstOrNull() ?: 0
             require(dim > 0) { "Embedder model produced no output" }
             input = FloatArray(inputWidth * inputHeight * 3)
-            if (rt.accelerator == "GPU") checkGpu(context, modelPath, cpuThreads)
+            if (rt.accelerator == "GPU") checkGpu(context, modelPath, cpuThreadCount)
+            if (rt.accelerator == "CPU" && threadsToChoose) chooseCpuThreads(context, modelPath)
         } catch (t: Throwable) {
             runCatching { rt.close() }
             throw t
@@ -171,7 +223,7 @@ class Embedder(
      *  build it also loads the model on the CPU for one embedding (a few seconds). */
     private fun checkGpu(context: Context, modelPath: String, cpuThreads: Int) {
         val file = File(modelPath)
-        val key = "${file.name}_${file.length()}|${Build.FINGERPRINT}"
+        val key = checkKey
         val store = File(context.filesDir, "embedder_gpu_checks.txt")
         val known = runCatching {
             if (store.exists()) store.readLines().mapNotNull { line ->
@@ -214,6 +266,50 @@ class Embedder(
                 .format(agreement, GPU_MIN_AGREEMENT)
             Log.w(TAG, "GPU check failed for ${file.name}; running on the CPU")
         }
+    }
+
+    /**
+     * "0 = automatic" on the CPU (round 357): times the test picture with each of
+     * [threadCandidates], once per model, phone build and app version, keeps the fewest threads
+     * within [THREADS_TIE_MARGIN] of the fastest (fewer busy cores, less heat on a long run) and
+     * remembers it in [THREADS_STORE]. No fixed rule fitted the three test phones with 16-bit
+     * maths: the Redmi Note 9S (2 fast + 6 slow cores) and the Galaxy M12 (8 equal cores) were
+     * clearly fastest with all 8 threads; on the Xiaomi 11T Pro (1 + 3 fast + 4 slow cores) 4 and
+     * 8 tied at 0.73 s per crop (0.99 s with 8 in one earlier run: XNNPACK splits the work evenly,
+     * so threads on slow cores finish last). Costs about a minute once on a slow phone (one model
+     * copy at a time). The detectors keep [LiteRtModel.automaticCpuThreads] (2): they run beside
+     * the camera.
+     */
+    private fun chooseCpuThreads(context: Context, modelPath: String) {
+        val picture = testPicture()
+        val timings = LinkedHashMap<Int, Double>()
+        var current = (rt as? LiteRtModel)?.cpuThreads ?: cpuThreadCount
+        for (n in threadCandidates()) {
+            if (n != current) {
+                rt.close()
+                rt = InferenceModel.create(context, modelPath, false, "Embedder", n, CPU_FP16)
+                current = n
+            }
+            embed(picture) // warm-up: the first pass packs weights and grows buffers
+            var best = Double.MAX_VALUE
+            repeat(2) {
+                val t0 = System.nanoTime()
+                embed(picture)
+                best = minOf(best, (System.nanoTime() - t0) / 1e9)
+            }
+            timings[n] = best
+        }
+        val fastest = timings.values.minOrNull() ?: Double.MAX_VALUE
+        val chosen = timings.entries.firstOrNull { it.value <= fastest * (1 + THREADS_TIE_MARGIN) }?.key ?: current
+        if (chosen != current) {
+            rt.close()
+            rt = InferenceModel.create(context, modelPath, false, "Embedder", chosen, CPU_FP16)
+        }
+        val timed = timings.entries.joinToString(" ") { "${it.key}:%.3f".format(it.value) }
+        runCatching { File(context.filesDir, THREADS_STORE).appendText("$checkKey\t$chosen\t$timed\n") }
+        Log.i(TAG, "CPU thread self-test for ${File(modelPath).name}: " +
+            timings.entries.joinToString(", ") { "${it.key} threads %.2f s".format(it.value) } +
+            "; keeping $chosen (fewest within ${(THREADS_TIE_MARGIN * 100).toInt()} % of the fastest)")
     }
 
     /** The fixed test picture: smooth colour waves, the same on every phone. */

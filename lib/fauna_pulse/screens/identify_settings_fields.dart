@@ -50,11 +50,13 @@ class IdentifySettingsFields extends StatelessWidget {
           isInt: true,
           onChanged: (v) => onEdit(() => prefs.cpuThreads = v.round()),
           helperText:
-              'How many processor cores the model may use on the CPU. 0 = automatic, which uses 2: '
-              'on the phones it was tested on, that was almost twice as fast as 1. 4 was about a quarter faster '
-              'again but keeps twice as many cores busy, so the phone warms up sooner (which '
-              'triggers the pause). "Test speed" on the Identify organisms screen shows the real effect of a '
-              'value on this phone.',
+              'How many processor cores the model may use on the CPU. 0 = automatic: the first time a '
+              'model runs on this phone\'s CPU, the app times 2, 4 and all cores on a test picture and keeps '
+              'the fastest, or the fewest that come within 5 % of it: fewer busy cores mean less heat '
+              '(about a minute, once per model and app version). No single number suited the phones it '
+              'was tested on: two were clearly fastest with all 8 cores, on one 4 and 8 cores tied (its 4 '
+              'slow cores held the fast ones back). "Test speed" on the Identify organisms screen shows '
+              'the real effect of a value on this phone.',
         ),
         HelpSwitchTile(
           title: 'Square crops',

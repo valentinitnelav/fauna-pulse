@@ -60,13 +60,15 @@ If you choose **Not now** under **To name them**, the animals are found and coun
 
 | Model | What it does | Size | Time per crop |
 |---|---|---|---|
-| **[BioCLIP 2][bioclip]** | Names any organism, choosing from a name list. | 0.6 GB | 0.27 s (GPU), 2.6 s (CPU) |
+| **[BioCLIP 2][bioclip]** | Names any organism, choosing from a name list. | 0.6 GB | 0.22 s (GPU), 0.7 s (CPU) on the Xiaomi test phone; 1.2 and 3.3 s on the CPU of the two 4 GB test phones |
 | **BioCLIP 2.5** | The larger successor of BioCLIP 2. | 1.27 GB | 5.3 to 5.6 s (CPU; the test phone's GPU has too little memory for it) |
 | **insectDCT classifier** | Names insects in 104 fixed classes of flower visitors, from order down to species where it can. | 42 MB | 0.02 s (GPU), 0.15 s (CPU) |
 
 The times were measured on a test phone (Xiaomi 11T Pro, plugged in). GPU means the graphics
-processor, CPU the main processor. BioCLIP 2.5 is an overnight job on the charger (about 1.5
-hours per 1000 crops). The insectDCT classifier also needs its class list (14 kB).
+processor, CPU the main processor. A whole session of 9,193 crops took that phone's GPU 62 minutes
+with BioCLIP 2 (51 for the model, 11 for the scoring and the result files). BioCLIP 2.5 is an
+overnight job on the charger (about 1.5 hours per 1000 crops). The insectDCT classifier also needs
+its class list (14 kB).
 
 It is not yet tested which model names this project's pollinators best (BioCLIP 2, BioCLIP 2.5
 or insectDCT).
@@ -226,7 +228,7 @@ session:
 4. When the run has finished, tap **View results**.
 
 > **Keep FaunaPulse on the screen until the run ends.** Identification is the heaviest step:
-> BioCLIP 2 needs more than 1 GB of memory. The screen says so above **Start** and during the
+> with BioCLIP 2 the app takes about 1 GB of memory (0.75 GB of it is the model). The screen says so above **Start** and during the
 > run: "Identification needs a lot of memory. Keep FaunaPulse on the screen until it ends: if you
 > switch to another app, Android may stop it." Swiping FaunaPulse away from the recent apps ends
 > the run (what is done is kept).
@@ -503,7 +505,7 @@ from BioCLIP's documentation and from the `insect-detect-post` pipeline. The ful
 | Setting | Default | Notes |
 |---|---|---|
 | **Use the GPU when it can run the model** | on | Much faster when the phone's GPU can run the model. The app checks each phone and uses the CPU otherwise, with the reason on the screen. |
-| **CPU threads (0 = automatic)** | 0 = 2 threads | 4 threads are about a quarter faster but keep twice as many cores busy, so the heat pause comes sooner. Try other values with **Test speed**. |
+| **CPU threads (0 = automatic)** | 0 = a one-time self-test | The first time a model runs on this phone's CPU, the app times 2, 4 and all cores on a test picture and keeps the fastest (about a minute, once per model and app version). No single number suited the test phones: two were fastest with all 8 cores, one with 4. Try values with **Test speed**. |
 | **Square crops** | on | The crop is the detector box made square on its longer side, so the insect is not distorted. Off: the box (plus the margin) is stretched to a square, so a long, thin insect looks squeezed. Which works better on pollinator photos is not yet tested. |
 | **Crop margin** | 0 | The box itself, so the model sees as little flower or background as possible. |
 | **Smallest box to identify** | 48 px | A smaller box is enlarged more than 4 times to the model's 224 px and is mostly blur. |
@@ -853,24 +855,33 @@ about 40 s left"; round 247, was 8 in one call with no feedback), and reports se
 So GPU on/off and thread counts can be compared in a minute each (a few minutes on an older
 phone's CPU); the app does not claim a speed it has not measured.
 
-**The CPU engine.** The app loads models with LiteRT 2.2.0, whose CPU kernels (XNNPACK) take
-the whole BioCLIP 2 graph; the earlier 2.1.5 left its 144 matrix multiplications (96 % of the
-work) to slower built-in kernels. On phones whose cores have 16-bit maths (ARMv8.2: Cortex-A55,
+**The CPU engine.** The app loads models with LiteRT 2.3.2 (round 357; 2.2.0 in round 356),
+whose CPU kernels (XNNPACK) take the whole BioCLIP 2 graph; the earlier 2.1.5 left its 144 matrix
+multiplications (96 % of the work) to slower built-in kernels. On phones whose cores have 16-bit maths (ARMv8.2: Cortex-A55,
 A76 and newer, so nearly every phone of the last years) the CPU copy computes in 16-bit, which
 halves its memory (about 0.75 instead of 1.25 GB for BioCLIP 2) and is 1.6 to 2.5 times faster
 than 32-bit. Its embedding of the test picture agreed with 32-bit maths to 0.9993 (the GPU check
-asks 0.995; the GPU's 16-bit maths gave 0.9995). Measured with **Test speed** on the two 4 GB
-test phones, seconds per crop:
+asks 0.995; the GPU's 16-bit maths gave 0.9995 against 32-bit and 0.9993 against the 16-bit
+CPU). Measured with **Test speed** on the three test phones, seconds per crop (2.3.2 gave the
+same numbers as 2.2.0: 1.19 and 3.13 s at 8 threads on the two 4 GB phones):
 
 | Phone, threads | 2.1.5, 32-bit | 2.2.0, 32-bit | 2.2.0, 16-bit |
 |---|---|---|---|
 | Redmi Note 9S (Snapdragon 720G: 2 fast + 6 slow cores), 2 / 4 / 8 threads | 3.9 / 4.4 / 3.8 | 3.4 / 3.8 / 3.6 | 1.5 / 1.4 / 1.2 |
 | Samsung Galaxy M12 (Exynos 850: 8 equal slow cores), 2 / 4 / 8 threads | 11.8 / 7.6 / 5.3 | 23.9 / 15.1 / 8.9 | 8.8 / 5.1 / 3.3 |
+| Xiaomi 11T Pro (Snapdragon 888: 1 + 3 fast + 4 slow cores), 2 / 4 / 8 threads | 2.6 (2 threads, round 250) | not measured | 1.0 / 0.7 / 1.0 (2.3.2: 1.1 / 0.7 / 0.7) |
 
 So with 2.2.0 the 32-bit kernels alone would have made the Samsung slower than before; the
-16-bit maths is what makes the bump a gain on both. In 16-bit, 8 threads were the fastest on
-both phones (in 32-bit the Redmi's 2 fast cores alone were better); "0 = automatic" still means
-2 threads, so **Test speed** with 4 or 8 is worth a minute on a long run.
+16-bit maths is what makes the bump a gain on both. In 16-bit, 8 threads were clearly the fastest
+on the two 4 GB phones (in 32-bit the Redmi's 2 fast cores alone were better), but on the Xiaomi
+11T Pro (1 + 3 fast + 4 slow cores) 4 threads were as fast as 8, and in one run faster: the CPU
+engine splits the work evenly over the threads, so threads on slow cores finish last. No fixed
+rule fits all three, so since round 357 "0 = automatic" means a one-time self-test: the first time
+a model runs on a phone's CPU, the app times 2, 4 and all cores on its test picture and keeps the
+fastest, or the fewest threads within 5 % of it (fewer busy cores mean less heat on a long run;
+about a minute on a slow phone, once per model and app version; the verdict is in the app's
+`embedder_cpu_threads.txt`). The
+detectors keep 2 threads: they run beside the camera, for hours.
 
 </details>
 
@@ -894,9 +905,11 @@ Round 226 had measured about 3.5 times longer at every thread count (23.4, 9.4, 
 with the same ratios. The cause is not known (probably a phone slowed by heat, as the Snapdragon
 888 throttles hard under long loads), so those absolute numbers should not be used.
 
-"0 = automatic" means 2 threads, the same as for the detectors. 4 is about a quarter faster but
-keeps twice as many cores busy. On a long run the extra heat can cost more in thermal pauses
-than it saves, so it is left for users to try with "Test speed" rather than made the default.
+Until round 356 "0 = automatic" meant 2 threads, the same as for the detectors: 4 was about a
+quarter faster but kept twice as many cores busy. With the 16-bit CPU maths of round 357 the best
+count differs by phone (table in *The CPU engine* above), so "0 = automatic" now means a one-time
+self-test of 2, 4 and all cores (the fewest within 5 % of the fastest wins); the heat pause protects
+a long run.
 
 </details>
 
@@ -914,9 +927,13 @@ Measured on the Xiaomi test phone (Xiaomi 11T Pro, Snapdragon 888, 7.4 GB, plugg
 | | BioCLIP 2 (fp16) | BioCLIP 2.5 (fp16) |
 |---|---|---|
 | GPU | 0.27 s per crop | not possible on this phone (memory, below) |
-| CPU, 2 threads (the automatic choice) | 2.6 s per crop | **5.3 to 5.6 s per crop** (load 9 s) |
+| CPU, 2 threads (the automatic choice then) | 2.6 s per crop | **5.3 to 5.6 s per crop** (load 9 s) |
 | CPU, 4 threads | | 16.6 s per crop (slower) |
 | app memory while running on the CPU | | 2.8 GB (3.4 GB at the peak) |
+
+Those CPU times are from round 264 (32-bit CPU maths); since round 357 the CPU computes in
+16-bit and BioCLIP 2 takes 0.7 s per crop on this phone with 4 threads (BioCLIP 2.5 is not
+re-measured; expect about half of the times above).
 
 Why no GPU: setting BioCLIP 2 up on this phone's GPU took the app to 3.8 GB for a moment (6
 times its 0.6 GB file) and left 0.55 GB free on the phone. BioCLIP 2.5 would need about 7.8 GB,

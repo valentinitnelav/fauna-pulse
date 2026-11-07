@@ -108,11 +108,23 @@ The headline changes, with the round that introduced each (full rationale in
   `integration_test/cpu_threads_check_test.dart`.
 - **LiteRT 2.2.0 and 16-bit CPU maths** (r356): under 2.1.5 XNNPACK left the
   144 matrix multiplications of BioCLIP 2 (96 % of its work) to the slower
-  built-in kernels; 2.2.0 takes the whole graph. 2.2.0 splits the Kotlin API
-  into `litert-api`, which shares its Android namespace with `litert`, so the
-  app's `gradle.properties` sets `android.uniquePackageNames=false`.
-  `LiteRtModel` gained `cpuFp16` (XNNPACK's `FORCE_FP16`): the embedder uses
-  it (`Embedder.CPU_FP16`), the detectors do not.
+  built-in kernels; 2.2.0 takes the whole graph. (2.2.0 split the Kotlin API
+  into `litert-api` with the same Android namespace as `litert`, which needed
+  `android.uniquePackageNames=false` in the app's `gradle.properties`; 2.3.2
+  does not.) `LiteRtModel` gained `cpuFp16` (XNNPACK's `FORCE_FP16`): the
+  embedder uses it (`Embedder.CPU_FP16`), the detectors do not.
+- **LiteRT 2.3.2, thread self-test, memory factor** (r357): 2.3.2 moves the
+  GPU accelerator into its own artifact, `litert-gpu`, listed next to `litert`
+  (without it every model silently runs on the CPU). Same speed and results as
+  2.2.0 on the three test phones. "0 = automatic" for the embedder is now a
+  one-time self-test (`Embedder.chooseCpuThreads`: 2, 4 and all cores on the
+  test picture, the fewest within 5 % of the fastest wins, verdict kept in the
+  app's `embedder_cpu_threads.txt`), because no fixed count suited all three
+  phones in 16-bit maths (two clearly best with 8, one tied at 4 and 8); the detectors keep
+  `LiteRtModel.automaticCpuThreads` (2). The GPU check's and the self-test's
+  verdicts are keyed by the app version too, so an update re-checks once.
+  `Embedder.CPU_MEMORY_FACTOR` 2.15 to 1.4 (the 16-bit copy of BioCLIP 2 grows
+  the heap by 0.75 GB, not 1.25).
 - **Native lifecycle overhaul** (r161, review E2): real `YOLO.close()`,
   remove-then-close instance dispose, a plugin-owned cancellable scope instead
   of `GlobalScope`, one owned model-load executor with a generation token, and

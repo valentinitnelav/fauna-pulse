@@ -201,7 +201,7 @@ class LiteRtModel(
     private fun prepareModel(modelPath: String, accelerator: Accelerator, gpuCacheDir: java.io.File): PreparedModel {
         val options = CompiledModel.Options(accelerator)
         if (accelerator == Accelerator.CPU) {
-            // litert 2.2.0 exposes numThreads / xnnPackFlags / xnnPackWeightCachePath. The weight
+            // litert 2.3.2 exposes numThreads / xnnPackFlags / xnnPackWeightCachePath. The weight
             // cache is deliberately skipped - a cache file corrupted by a mid-write kill would be
             // read back by native code on the next launch, and unlike the GPU program cache above
             // there is no crash-guard around it yet.
@@ -311,7 +311,7 @@ class LiteRtModel(
     // output would allocate a fresh FloatArray every inference. Float outputs (all official
     // assets) CANNOT reuse a buffer — LiteRT 2.x TensorBuffer only exposes readFloat():
     // FloatArray, which allocates a new array inside the runtime on every call (verified
-    // against litert 2.2.0; no read-into-existing-array variant like ONNX Runtime's).
+    // against litert 2.3.2; no read-into-existing-array variant like ONNX Runtime's).
     // Revisit if the API grows one.
     private var widenTargets = arrayOfNulls<FloatArray>(0)
 

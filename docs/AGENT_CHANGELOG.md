@@ -9981,3 +9981,66 @@ of memory" rule; (3) automatic threads: in 16-bit 8 threads won on both phones (
 1.18 vs 1.42 s; 8 slow cores: 3.29 vs 8.79 s), so either count the cores of the fastest cluster
 or time 2, 4 and 8 once per phone; (4) a "try the GPU anyway" switch for 4 GB phones (crashes the
 app, not the phone); (5) the Xiaomi numbers in IDENTIFICATION.md date from the old runtime.
+
+## Round 357 (2026-11-07): LiteRT 2.3.2, CPU thread self-test for identification, memory factor, Xiaomi re-check
+
+Asked (the owner's prompt for the same hand-off, which had not reached round 356; all three
+phones connected): bump to 2.3.2 if it builds cleanly and behaves the same; measure on all three
+phones with the logcat partition line; lower `CPU_MEMORY_FACTOR` and soften the memory note if
+the weights stay 16-bit; re-check the GPU path on the Xiaomi 11T Pro (agreement, a run of its
+benchmark session) and the detectors on all three phones; decide "0 = automatic" after
+measuring; report in one table. Tests of 1 to 2 hours were fine, longer runs go overnight.
+
+Done: LiteRT 2.3.2 plus `litert-gpu` 2.3.2 (the GPU accelerator moved to its own Maven artifact;
+without it every model would silently run on the CPU). It builds without
+`android.uniquePackageNames=false`, so that flag is gone again. Same partition line on every phone,
+CPU and GPU ("Replacing 1392 out of 1392 node(s) ... 1 partitions"), same speed: Redmi Note 9S 8
+threads 1.19 s per crop (2.2.0: 1.18), Galaxy M12 8 threads 3.13 s (3.21 to 3.29), Xiaomi GPU 0.22 s
+(2.2.0: 0.28; 2.1.5: 0.35 in the owner's run, 0.27 in round 250); the GPU check gave 0.999323
+against the 16-bit CPU result under both versions. Detectors with the engine benchmark (10 runs):
+Redmi as under 2.2.0 (flatbug and yolo26n on the GPU at 58 to 62 ms, MDV6 without a GPU path as
+before), Samsung the same as well (flatbug and yolo26n on the GPU at 199 and 211 ms, the CPU within
+5 %, MDV6 without a GPU path), Xiaomi flatbug 14.5 ms and yolo26n 17 ms on the GPU, MDV6 int8 12 ms
+on the CPU with 2 threads and without a GPU path (first engine-benchmark numbers for this phone;
+round 264's model-time check gave 19 ms for the 16-bit flat-bug n at 640 on its GPU). The GPU path
+of every detector survived the bump.
+
+Threads: the Xiaomi's 16-bit CPU gave 1.03 / 0.71 / 0.99 s per crop at 2 / 4 / 8 threads under
+2.2.0 and 1.1 / 0.7 / 0.7 under 2.3.2 (2.6 s at 2 threads with 32-bit maths, round 250), so no
+fixed count suits all three phones: the Redmi and the Samsung are clearly fastest with all 8 cores,
+on the Xiaomi 4 threads equal 8 and once beat them (the CPU engine splits the work evenly, so
+threads on slow cores finish last). "0 = automatic" for the embedder is now a
+one-time self-test (`Embedder.chooseCpuThreads`): 2, 4 and all cores on the test picture (one
+warm-up, the better of two timed passes), the fewest threads within 5 % of the fastest kept per
+model, phone build and app version in the app's `embedder_cpu_threads.txt` (fewer busy cores mean
+less heat on a long run); about a minute once on the Samsung, seconds on the others
+(Redmi: 2 / 4 / 8 threads 1.57 / 1.40 / 1.31 s on the test picture, 21 s in all, keeps 8; Samsung:
+9.02 / 5.01 / 3.99 s, 79 s in all, keeps 8; Xiaomi: 1.27 / 0.69 / 0.70 s, 12 s in all, keeps 4, then
+0.69 to 0.72 s per crop in Test speed). The detectors keep 2 threads
+(`LiteRtModel.automaticCpuThreads`). The GPU check's verdict is keyed by the app version as well
+(the 2.1.5 verdict would otherwise have been kept across the runtime change). Helper text and
+IDENTIFICATION.md say so.
+
+Memory: `CPU_MEMORY_FACTOR` 2.15 to 1.4 (the 16-bit copy of the 0.61 GB BioCLIP 2 file grew the
+native heap by 0.74 to 0.78 GB on both 4 GB phones), so the background-wait rule needs about
+0.85 GB free for BioCLIP 2 instead of 1.31 GB. The on-screen sentence "Identification needs a
+lot of memory" stays: 1 GB is still a quarter of a 4 GB phone, and the GPU setup takes more; the
+doc's "more than 1 GB" became "about 1 GB (0.75 GB of it is the model)".
+
+Xiaomi run: 9,193 crops embedded on the GPU in 51 min 14 s (0.33 s per crop with crop reading, 0.29
+s model time; 185 crops under 48 px skipped, no heat pause), then 11 min of scoring and file
+writing: 62 min from the tap to the summary. Every vector is bit-identical to the run stored on
+2026-11-05 under 2.1.5, so all 2,299 track IDs keep their taxon, rank and confidence. It ran on a
+copy of the benchmark session without stored results (`zenodo15096610_first10photos_r357`, 800 MB,
+left on the phone), because "Continue / re-run" recomputes only crops without a stored result; the
+first tap on it, on the original session, recombined the stored embeddings (about six minutes, same
+vectors, same files written again). Checked: analyzer, 1737 (18 skipped) unit tests, the phones'
+settings compared with the session backups.
+
+Open (owner): (1) the 4 GB phones' full runs of the benchmark session with the new runtime: the
+Xiaomi's run says the loop costs 14 % more than the model time and the scoring step comes on top,
+so expect about 3.5 h on the Redmi (8 threads) and 9 to 10 h on the Samsung, heat pauses extra; the
+build is on both phones;
+(2) 16-bit CPU maths stays a constant (`CPU_FP16`); a setting would be a small round; (3) the
+"try the GPU anyway" switch for 4 GB phones is not made; (4) keep or delete the session copy on
+the Xiaomi.
