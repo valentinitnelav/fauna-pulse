@@ -583,6 +583,7 @@ void main() {
     ];
     final intKeys = [
       'identify_cpu_threads',
+      'identify_scoring_workers',
       'identify_min_crop_px',
       'identify_max_crops_per_track',
       'identify_flag_min_detections',
@@ -594,6 +595,7 @@ void main() {
         packName: 'p.json',
         useGpu: false,
         cpuThreads: 4,
+        scoringWorkers: 3,
         margin: 0.3,
         minCropPx: 64,
         maxCropsPerTrack: 7,

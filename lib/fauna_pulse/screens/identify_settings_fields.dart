@@ -58,6 +58,23 @@ class IdentifySettingsFields extends StatelessWidget {
               'slow cores held the fast ones back). "Test speed" on the Identify organisms screen shows '
               'the real effect of a value on this phone.',
         ),
+        NumericSettingField(
+          label: 'Cores for combining results (0 = automatic)',
+          value: prefs.scoringWorkers.toDouble(),
+          min: 0,
+          max: 8,
+          isInt: true,
+          onChanged: (v) => onEdit(() => prefs.scoringWorkers = v.round()),
+          helperText:
+              'How many processor cores work on the step after the model ("Combining crops per track ID '
+              'and writing results"), where every crop\'s vector is compared with all names of the list. '
+              '0 = automatic: all cores (up to 8) on a phone with at least 5 GB of memory, 4 on a phone '
+              'with less, because each core at work on this step needs about 60 MB and on a 4 GB test '
+              'phone 8 cores made Android close background apps while 4 did not. 8 cores were 1.6 times '
+              'faster than 4 on a phone whose 8 cores are all slow, 1.2 times on one with 2 fast and 6 slow '
+              'cores. Heat was the same either way (the step takes minutes, the model run before it '
+              'hours). Lower it if the phone runs short of memory; 1 runs the step on one core.',
+        ),
         HelpSwitchTile(
           title: 'Square crops',
           value: prefs.squareCrops,

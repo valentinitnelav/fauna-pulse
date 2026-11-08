@@ -1286,8 +1286,13 @@ void main() {
       await tester.enterText(_numberBox('CPU threads (0 = automatic)'), '4');
       await tester.pump();
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await _scrollTo(tester, find.text('Cores for combining results (0 = automatic)'), -200);
+      await tester.enterText(_numberBox('Cores for combining results (0 = automatic)'), '2');
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       final saved = await IdentifyPrefs.load();
       expect(saved.cpuThreads, 4);
+      expect(saved.scoringWorkers, 2);
       expect([saved.modelName, saved.packName], ['chosen.tflite', 'chosen.fpack'], reason: 'kept as stored');
       // Kept frames switched off here grey it at once.
       final keep = find.text('Keep frames of each track ID');

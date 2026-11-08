@@ -66,7 +66,7 @@ If you choose **Not now** under **To name them**, the animals are found and coun
 
 The times were measured on a test phone (Xiaomi 11T Pro, plugged in). GPU means the graphics
 processor, CPU the main processor. A whole session of 9,193 crops took that phone's GPU 51 minutes
-for the model with BioCLIP 2, plus a few minutes for the scoring and the result files; the CPUs of
+for the model with BioCLIP 2, plus 1.5 minutes for the scoring and the result files; the CPUs of
 the two 4 GB test phones needed 3 h 43 min and 9 h 56 min for the model (plus 3 and 6 minutes of
 scoring), without a heat pause. BioCLIP 2.5 is an overnight job on the charger (about 1.5 hours per
 1000 crops). The insectDCT classifier also needs its class list (14 kB).
@@ -507,6 +507,7 @@ from BioCLIP's documentation and from the `insect-detect-post` pipeline. The ful
 |---|---|---|
 | **Use the GPU when it can run the model** | on | Much faster when the phone's GPU can run the model. The app checks each phone and uses the CPU otherwise, with the reason on the screen. |
 | **CPU threads (0 = automatic)** | 0 = a one-time self-test | The first time a model runs on this phone's CPU, the app times 2, 4 and all cores on a test picture and keeps the fastest (about a minute, once per model and app version). No single number suited the test phones: two were fastest with all 8 cores, one with 4. Try values with **Test speed**. |
+| **Cores for combining results (0 = automatic)** | 0 = all cores up to 8 on a phone with at least 5 GB of memory, 4 below | The step after the model run compares every crop with all names of the list and pools the crops per track ID. More cores make it faster (8 against 4: 1.6 times on a phone with 8 equal slow cores, 1.2 times with 2 fast and 6 slow cores) and do not warm the phone more, but each needs about 60 MB of memory while the step runs; on a 4 GB test phone 8 made Android close background apps. |
 | **Square crops** | on | The crop is the detector box made square on its longer side, so the insect is not distorted. Off: the box (plus the margin) is stretched to a square, so a long, thin insect looks squeezed. Which works better on pollinator photos is not yet tested. |
 | **Crop margin** | 0 | The box itself, so the model sees as little flower or background as possible. |
 | **Smallest box to identify** | 48 px | A smaller box is enlarged more than 4 times to the model's 224 px and is mostly blur. |

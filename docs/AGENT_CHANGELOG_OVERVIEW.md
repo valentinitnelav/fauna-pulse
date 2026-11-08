@@ -259,8 +259,9 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
 ### Identification (`docs/IDENTIFICATION.md`)
 - Pipeline: crops per photo per track ID (`planCrop`) → crop in an isolate → native embedding
   (`Embedder.kt`) → append-only `embeddings_<model>.{jsonl,bin}` (resumable) → one score per
-  track ID (the model is closed first; the scoring runs in up to four isolates that each copy
-  the pack, about 140 MB per 35,000 names) → `tracks_<pack>.{csv,json}`, `crops_<pack>.csv`,
+  track ID (the model is closed first; the fusion runs in worker isolates, all cores up to 8 on a
+  phone with 5 GB of memory or more, 4 below, about 60 MB each, sharing one native-memory copy of
+  the pack matrix; a setting overrides the count) → `tracks_<pack>.{csv,json}`, `crops_<pack>.csv`,
   `summary_<pack>.json`. Method and credits (Dussert et al. 2025; suspect flags after
   insect-detect-post, Sittinger 2026) are in IDENTIFICATION.md. The defaults are not validated
   on pollinators.

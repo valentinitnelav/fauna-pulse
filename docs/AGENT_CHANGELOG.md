@@ -10107,5 +10107,32 @@ the pack as weights would make the dot products 50 to 100 times faster, but need
 pack (fauna-pulse-models), a platform channel from the scoring isolate, and leaves the other quarter
 of the step, so its gain over this round would be about 2x; noted for later.
 
-Open: more workers (about 40 MB each now; eight would help the Galaxy M12); the Xiaomi 11T Pro's
-step (11 minutes before) was not re-measured.
+Open: more workers (about 40 MB each now; eight would help the Galaxy M12). The Xiaomi 11T Pro was
+re-measured afterwards: 12 min to 1 min 33 s (peak PSS 999 MB), files identical.
+
+## Round 360 (2026-11-08): worker count for the scoring measured, automatic rule, user setting
+
+Asked: would more than four scoring workers speed up older phones, would they warm the phone more,
+and the count should be the user's choice too.
+
+Done: measured on the 9,193-crop benchmark session with the battery temperature, the CPU clocks and
+the app's PSS sampled every 10 s, each run after the phone had cooled to its start temperature.
+Galaxy M12 (8 equal slow cores): 4 workers 339 s, 8 workers 215 s (1.6 times faster), battery 23.4
+to 24.1 C with 4 and flat with 8, clocks at 2.0 GHz throughout, peak PSS 869 against 1,085 MB. Redmi
+Note 9S (2 fast + 6 slow cores): 168 against 137 s (1.2 times), battery +2.5 against +2.2 C, CPU
+zone peak 63 C, clocks at their maximum throughout, peak PSS 851 against 1,111 MB, and with 8
+workers Android closed a cached app at the start (direct reclaim), with 4 nothing. So heat is not
+the concern (the step lasts minutes, the model run before it hours, and the phones warmed by about 2
+C either way), memory is: about 60 MB per worker. Automatic rule
+(`IdentificationJob.scoringWorkersFor`): all cores up to 8 on a phone with at least 5 GB of memory
+(/proc/meminfo), 4 below or when unknown, 1 under 64 crops. New Identify setting "Cores for
+combining results (0 = automatic)" (`IdentifyPrefs.scoringWorkers`, saved, in the run settings as
+`scoring_workers`, read by the scoring), with the measured facts in its help text and a row in the
+identification doc. Result files stayed byte-identical in every run.
+
+Checked: the setting end to end on the Redmi (typed 4 into the field, the run's README records
+`scoring_workers: 4`, 167 s, CPU zone peak 61 C against 63 C with 8 workers, battery +2.1 against
++2.2 C, no app closed); unit test for the automatic rule; the full suite (1,740 tests); the
+identification tests with 3 workers on the fixture session.
+
+Open: nothing from this round; the LiteRT route for the dot products stays noted in round 359.

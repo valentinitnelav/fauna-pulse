@@ -72,6 +72,16 @@ void main() {
     minCropPx: 16,
   );
 
+  test('round 360: the automatic worker count follows the crop count, the cores and the memory', () {
+    const gb = 1024 * 1024 * 1024;
+    expect(IdentificationJob.scoringWorkersFor(10, cores: 8, totalMemBytes: 8 * gb), 1, reason: 'small session');
+    expect(IdentificationJob.scoringWorkersFor(5000, cores: 8, totalMemBytes: (3.9 * gb).round()), 4, reason: '4 GB phone');
+    expect(IdentificationJob.scoringWorkersFor(5000, cores: 8, totalMemBytes: (7.4 * gb).round()), 8, reason: '8 GB phone');
+    expect(IdentificationJob.scoringWorkersFor(5000, cores: 4, totalMemBytes: 8 * gb), 4, reason: 'never more than the cores');
+    expect(IdentificationJob.scoringWorkersFor(5000, cores: 8, totalMemBytes: null), 4, reason: 'unknown memory');
+    expect(IdentificationJob.scoringWorkersFor(5000, cores: 1, totalMemBytes: 2 * gb), 1);
+  });
+
   test('round 359: scoring in worker isolates writes the same files as the same-isolate scoring', () async {
     final session = makeSession('workers');
     final job = IdentificationJob(

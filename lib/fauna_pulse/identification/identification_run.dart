@@ -404,6 +404,7 @@ class IdentificationRun extends ChangeNotifier {
             extra: {
               'use_gpu': prefs.useGpu,
               'cpu_threads': prefs.cpuThreads,
+              'scoring_workers': prefs.scoringWorkers, // round 360: 0 = automatic
               'cpu_threads_used': ?info.cpuThreads,
               // Round 242: why the GPU was not used, and how closely it matched the CPU.
               'gpu_note': ?info.accelerationNote,

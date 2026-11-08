@@ -114,6 +114,8 @@ class IdentifyPrefs {
   String? packName;
   bool useGpu;
   int cpuThreads;
+  // Round 360: isolates for the scoring step (0 = automatic, see IdentificationJob.scoringWorkers).
+  int scoringWorkers;
   double margin;
   // Round 262: false = crop the box shape (stretched to the model's square).
   bool squareCrops;
@@ -141,6 +143,7 @@ class IdentifyPrefs {
     this.packName,
     this.useGpu = true,
     this.cpuThreads = 0,
+    this.scoringWorkers = 0,
     this.margin = kDefaultCropMargin,
     this.squareCrops = true,
     this.minCropPx = 48,
@@ -164,6 +167,7 @@ class IdentifyPrefs {
   static const _kPack = kIdentifyPackPref;
   static const _kGpu = 'identify_use_gpu';
   static const _kThreads = 'identify_cpu_threads';
+  static const _kWorkers = 'identify_scoring_workers';
   static const _kMargin = 'identify_margin';
   static const _kSquare = 'identify_square_crops';
   static const _kMinPx = 'identify_min_crop_px';
@@ -194,6 +198,7 @@ class IdentifyPrefs {
       packName: p.getString(_kPack),
       useGpu: p.getBool(_kGpu) ?? true,
       cpuThreads: p.getInt(_kThreads) ?? 0,
+      scoringWorkers: p.getInt(_kWorkers) ?? 0,
       margin: p.getDouble(_kMargin) ?? kDefaultCropMargin,
       squareCrops: p.getBool(_kSquare) ?? true,
       minCropPx: p.getInt(_kMinPx) ?? 48,
@@ -228,6 +233,7 @@ class IdentifyPrefs {
     }
     await p.setBool(_kGpu, useGpu);
     await p.setInt(_kThreads, cpuThreads);
+    await p.setInt(_kWorkers, scoringWorkers);
     await p.setDouble(_kMargin, margin);
     await p.setBool(_kSquare, squareCrops);
     await p.setInt(_kMinPx, minCropPx);
@@ -253,6 +259,7 @@ class IdentifyPrefs {
     'pack': packName,
     'use_gpu': useGpu,
     'cpu_threads': cpuThreads,
+    'scoring_workers': scoringWorkers,
     'margin': margin,
     'square_crops': squareCrops,
     'min_crop_px': minCropPx,

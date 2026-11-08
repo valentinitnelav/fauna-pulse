@@ -686,7 +686,9 @@ class IdentificationJob {
     SendPort? progress,
   ) => () async {
     final s = _Scoring.load(Directory(sessionPath), modelName: modelName, packFile: File(packPath), settings: settings);
-    final fused = await s.fuseInWorkers(workers ?? scoringWorkers(s.records.length), progress);
+    // Round 360: the "Cores for combining results" setting; 0 = automatic.
+    final chosen = (settings['scoring_workers'] as num?)?.toInt() ?? 0;
+    final fused = await s.fuseInWorkers(workers ?? (chosen > 0 ? chosen : scoringWorkers(s.records.length)), progress);
     return s.finish(fused, modelId: modelId, appVersion: appVersion);
   };
 
@@ -704,16 +706,47 @@ class IdentificationJob {
     return s.finish(fused, modelId: modelId, appVersion: appVersion);
   }
 
-  /// Isolates for the fusion (round 359): one per processor up to [kScoringWorkersMax]. Each
-  /// holds its own copy of the pack (about 140 MB for 35,000 names), affordable once the model is
-  /// closed before the scoring; one for small sessions, where a worker's start (that copy) costs
-  /// more than it saves.
-  static int scoringWorkers(int crops) =>
-      crops < kScoringWorkerMinCrops ? 1 : math.min(kScoringWorkersMax, Platform.numberOfProcessors);
+  /// Isolates for the fusion when the "Cores for combining results" setting is 0 (automatic):
+  /// [scoringWorkersFor] with this phone's processors and memory. One for small sessions, where
+  /// a worker's start costs more than it saves.
+  static int scoringWorkers(int crops) => scoringWorkersFor(crops, cores: Platform.numberOfProcessors, totalMemBytes: totalMemoryBytes());
+
+  /// Round 360, measured on the 9,193-crop benchmark session: eight workers against four were
+  /// 1.6 times faster on a phone with 8 equal slow cores (Galaxy M12, 3.6 against 5.6 minutes)
+  /// and 1.2 times on one with 2 fast and 6 slow cores (Redmi Note 9S), with no more heat (the
+  /// battery warmed about 2 C either way, the clocks never dropped), but each worker costs about
+  /// 60 MB while the step runs, and on the 3.6 GB Redmi eight made Android close a cached app
+  /// where four did not. So all cores (up to [kScoringWorkersMax]) on phones with at least
+  /// [kScoringFullWorkersMemBytes], [kScoringWorkersLowMemory] below that or when the memory is
+  /// unknown.
+  static int scoringWorkersFor(int crops, {required int cores, required int? totalMemBytes}) {
+    if (crops < kScoringWorkerMinCrops) return 1;
+    final cap = totalMemBytes != null && totalMemBytes >= kScoringFullWorkersMemBytes ? kScoringWorkersMax : kScoringWorkersLowMemory;
+    return math.max(1, math.min(cap, cores));
+  }
+
+  /// The phone's memory from /proc/meminfo (readable by every app on Android), null elsewhere.
+  static int? totalMemoryBytes() {
+    try {
+      for (final line in File('/proc/meminfo').readAsLinesSync()) {
+        if (line.startsWith('MemTotal:')) {
+          final kb = int.tryParse(line.split(RegExp(r'\s+'))[1]);
+          return kb == null ? null : kb * 1024;
+        }
+      }
+    } catch (_) {
+      // Not Linux, or not readable: treated as a small phone.
+    }
+    return null;
+  }
 }
 
-/// Round 359: the fusion runs in up to this many isolates, and only from this many crops on.
-const kScoringWorkersMax = 4;
+/// Round 359/360: the fusion runs in at most this many isolates (all cores up to eight on a phone
+/// with at least [kScoringFullWorkersMemBytes] of memory, four below that), and only from
+/// [kScoringWorkerMinCrops] crops on.
+const kScoringWorkersMax = 8;
+const kScoringWorkersLowMemory = 4;
+const kScoringFullWorkersMemBytes = 5 * 1024 * 1024 * 1024;
 const kScoringWorkerMinCrops = 64;
 
 /// Pools every group of crops (one per track ID) into its answer (round 359): the crops' scores
@@ -986,8 +1019,8 @@ class _Scoring {
     // One copy of the matrix in native memory for every worker (an isolate message copies a
     // Dart list, and four copies of a 107 MB matrix pushed a 4 GB phone into killing other
     // apps); the workers read it by its address and are done before it is freed below. The
-    // pack they receive carries the labels and an empty matrix. Without the memory for the copy
-    // the fusion runs here instead.
+    // pack they receive carries the labels and an empty matrix (about 60 MB per worker in all).
+    // Without the memory for the copy the fusion runs here instead.
     final n = pack.rows * pack.dim;
     ffi.Pointer<ffi.Float> shared;
     try {
