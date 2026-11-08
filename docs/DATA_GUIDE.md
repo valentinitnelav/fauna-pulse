@@ -745,14 +745,19 @@ detection records (and therefore the track ID timeline) do not depend on them.
 
 **`thermal`:** `battery_temp_c`, `thermal_status`, `battery_current_ua`, `battery_voltage_mv`,
 `charge_counter_uah`, `is_charging`, `is_plugged` (see `power` below), `thermal_headroom`,
-`power_w` (derived, see the caveats below), and `free_storage_bytes` / `total_storage_bytes`
-(so the session's disk fill rate can be plotted against its photo cadence).
+`cpu_temp_c`, `gpu_temp_c`, `power_w` (derived, see the caveats below), and
+`free_storage_bytes` / `total_storage_bytes` (so the session's disk fill rate can be plotted
+against its photo cadence).
 
 `battery_temp_c` is the temperature of the battery itself, from the sensor inside the battery
 pack (Android's battery broadcast, in tenths of a degree). It is a real measurement, but of the
 battery: the processor gets hot faster than this, which `thermal_status` and `thermal_headroom`
-(from the phone's own heat sensors) show earlier. A chip temperature in degrees is not readable
-by apps.
+(from the phone's own heat sensors) show earlier. `cpu_temp_c` and `gpu_temp_c` are the chip's
+own sensors in degrees (the hottest CPU core and the GPU, read from the phone's kernel); they
+react within seconds. Whether an app may read them is the phone maker's choice: Xiaomi phones
+allow it, Samsung phones do not (both are then null; on Xiaomi phones `thermal_headroom` is the
+null one instead, so the two complement each other). The summary draws them beside the battery
+line.
 
 The same record carries the phone's memory and this app's processor use (one native reading
 gives all of it, so these fields cost nothing extra; null when the phone gave nothing):

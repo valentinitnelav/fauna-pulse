@@ -32,6 +32,8 @@ class VideoPhoneSample {
   String? clip;
   double? tempC;
   double? headroom;
+  double? cpuTempC;
+  double? gpuTempC;
   String? thermalStatus;
   double? powerW;
   int? currentUa;
@@ -115,6 +117,8 @@ class VideoRunSamples {
 
   List<(int, double)> get temps => _series((s) => s.tempC);
   List<(int, double)> get headroom => _series((s) => s.headroom);
+  List<(int, double)> get cpuTemps => _series((s) => s.cpuTempC);
+  List<(int, double)> get gpuTemps => _series((s) => s.gpuTempC);
   List<(int, double)> get memUsedGb => _series((s) => s.memUsedGb);
   List<(int, double)> get appCpuCores => _series((s) => s.appCpuCores);
   List<(int, double)> get framesPerS => _series((s) => s.framesPerS);
@@ -175,12 +179,14 @@ class VideoRunSamples {
     return parser.finish();
   }
 
-  /// The round-346 columns come last, so scripts that read by position still work.
+  /// The round-346 columns, then the round-361 chip temperatures, come last, so scripts
+  /// that read by position still work.
   static const csvHeader =
       'run,time_s,epoch_ms,clip,temp_c,headroom,thermal_status,power_w,'
       'battery_current_ua,battery_voltage_mv,charging,plugged,frames_per_s,'
       'frames,decode_ms,convert_ms,detect_ms,paused,paused_ms,'
-      'mem_total_bytes,mem_free_bytes,app_memory_bytes,app_cpu_cores';
+      'mem_total_bytes,mem_free_bytes,app_memory_bytes,app_cpu_cores,'
+      'cpu_temp_c,gpu_temp_c';
 
   /// One row per sample; `time_s` is the analysis clock of the graphs. Empty
   /// cells are values the phone did not report (or no frames in the period). Cells go through
@@ -213,6 +219,8 @@ class VideoRunSamples {
           s.memFree,
           s.appMem,
           s.appCpuCores,
+          s.cpuTempC,
+          s.gpuTempC,
         ].map(csvCell).join(','),
       );
     }
@@ -256,6 +264,8 @@ class _Parser {
           final s = run.at(t);
           s.tempC = (rec['battery_temp_c'] as num?)?.toDouble();
           s.headroom = (rec['thermal_headroom'] as num?)?.toDouble();
+          s.cpuTempC = (rec['cpu_temp_c'] as num?)?.toDouble();
+          s.gpuTempC = (rec['gpu_temp_c'] as num?)?.toDouble();
           s.thermalStatus = rec['thermal_status'] as String?;
           s.memTotal = (rec['mem_total_bytes'] as num?)?.toInt();
           s.memFree = (rec['mem_free_bytes'] as num?)?.toInt();
@@ -310,6 +320,8 @@ class _Parser {
             ..clip = src.clip
             ..tempC = src.tempC
             ..headroom = src.headroom
+            ..cpuTempC = src.cpuTempC
+            ..gpuTempC = src.gpuTempC
             ..thermalStatus = src.thermalStatus
             ..powerW = src.powerW
             ..currentUa = src.currentUa

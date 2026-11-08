@@ -1997,6 +1997,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
               _prefs.thermalLimitC,
               paused: p.note.isNotEmpty,
               limitWhere: '"Detection, track ID and identification settings"',
+              chipLabel: p.phone?.chipLabel,
             ),
           if (p.phone case final phone?) ...[
             ...memoryGauge(phone),

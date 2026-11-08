@@ -249,6 +249,10 @@ class _SeriesPainter extends CustomPainter {
   /// Time spans drawn as grey bands behind the line (cooling pauses).
   final List<(int, int)> shade;
 
+  /// More series on the same axes (round 361: the chip temperatures beside the
+  /// battery's); they widen the value axis, the labels stay those of [points].
+  final List<(List<(int ms, double v)>, Color)> extra;
+
   _SeriesPainter({
     required this.points,
     required this.startMs,
@@ -256,6 +260,7 @@ class _SeriesPainter extends CustomPainter {
     required this.color,
     required this.unit,
     this.shade = const [],
+    this.extra = const [],
   });
 
   static const double _gutter = 44.0;
@@ -269,7 +274,7 @@ class _SeriesPainter extends CustomPainter {
     final plotBottom = size.height - _axisHeight;
 
     var lo = points.first.$2, hi = points.first.$2;
-    for (final p in points) {
+    for (final p in [...points, for (final (pts, _) in extra) ...pts]) {
       lo = min(lo, p.$2);
       hi = max(hi, p.$2);
     }
@@ -322,25 +327,39 @@ class _SeriesPainter extends CustomPainter {
       );
     }
 
+    _line(canvas, points, color, xForMs, yForV);
+    for (final (pts, c) in extra) {
+      if (pts.length >= 2) _line(canvas, pts, c, xForMs, yForV);
+    }
+  }
+
+  /// One series as a line. A hole in the series (e.g. the motion gate kept the
+  /// detector asleep, so no inference samples were logged for that stretch —
+  /// round 77) must show as a gap, not as a straight bridge that looks like
+  /// data. Any pause much longer than the series' median sampling interval
+  /// breaks the line.
+  void _line(
+    Canvas canvas,
+    List<(int ms, double v)> pts,
+    Color c,
+    double Function(int ms) xForMs,
+    double Function(double v) yForV,
+  ) {
     final linePaint = Paint()
-      ..color = color
+      ..color = c
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2
       ..strokeJoin = StrokeJoin.round;
-    // A hole in the series (e.g. the motion gate kept the detector asleep, so
-    // no inference samples were logged for that stretch — round 77) must show
-    // as a gap, not as a straight bridge that looks like data. Any pause much
-    // longer than the series' median sampling interval breaks the line.
     final gaps = <int>[
-      for (var i = 1; i < points.length; i++) points[i].$1 - points[i - 1].$1,
+      for (var i = 1; i < pts.length; i++) pts[i].$1 - pts[i - 1].$1,
     ]..sort();
     final medianGapMs = gaps.isEmpty ? 0 : gaps[gaps.length ~/ 2];
     final breakMs = max(3000, medianGapMs * 3);
     final path = Path();
-    for (var i = 0; i < points.length; i++) {
-      final x = xForMs(points[i].$1);
-      final y = yForV(points[i].$2);
-      final startsSegment = i == 0 || points[i].$1 - points[i - 1].$1 > breakMs;
+    for (var i = 0; i < pts.length; i++) {
+      final x = xForMs(pts[i].$1);
+      final y = yForV(pts[i].$2);
+      final startsSegment = i == 0 || pts[i].$1 - pts[i - 1].$1 > breakMs;
       startsSegment ? path.moveTo(x, y) : path.lineTo(x, y);
     }
     canvas.drawPath(path, linePaint);
@@ -362,5 +381,6 @@ class _SeriesPainter extends CustomPainter {
       old.points != points ||
       old.startMs != startMs ||
       old.endMs != endMs ||
-      old.shade != shade;
+      old.shade != shade ||
+      old.extra != extra;
 }

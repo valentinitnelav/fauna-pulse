@@ -188,13 +188,12 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
   /// The recording's own temperature, FPS and power graphs.
   List<Widget> _liveGraphs() => [
     const SizedBox(height: 12),
-    const Text(
-      'Battery temperature over the session (°C)',
-      style: TextStyle(fontWeight: FontWeight.bold),
+    Text(
+      '${_hasChipTemps ? 'Temperatures' : 'Battery temperature'} over the session (°C)',
+      style: const TextStyle(fontWeight: FontWeight.bold),
     ),
     const SizedBox(height: 12),
-    _series(_temps, const Color(0xFFFF7043), '°'),
-    _statsText(_temps, decimals: 1, unit: '°C'),
+    _temperatureGraph(),
     if (_headroom.length >= 2) ...[
       const SizedBox(height: 28),
       const Text(
@@ -374,10 +373,9 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
             : '≈ ${_energyTotalWh!.toStringAsFixed(2)} Wh (on battery)',
       ),
       const SizedBox(height: 20),
-      const Text('Battery temperature (°C)', style: bold),
+      Text(_hasChipTemps ? 'Temperatures (°C)' : 'Battery temperature (°C)', style: bold),
       const SizedBox(height: 12),
-      _series(_temps, const Color(0xFFFF7043), '°', range: range, shade: shade),
-      _statsText(_temps, decimals: 1, unit: '°C'),
+      _temperatureGraph(range: range, shade: shade),
       if (_headroom.length >= 2) ...[
         const SizedBox(height: 28),
         const Text(
@@ -713,12 +711,48 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
 
   /// A line graph over the session, or over [range] (the analysis clock of
   /// an imported video session), with the [shade] spans greyed.
+  bool get _hasChipTemps => _cpuTemps.length >= 2 || _gpuTemps.length >= 2;
+
+  /// The battery line, with the chip lines (hottest CPU core, GPU) and a legend
+  /// where the phone lets the app read those sensors (round 361), and the
+  /// battery's statistics line.
+  Widget _temperatureGraph({(int, int)? range, List<(int, int)> shade = const []}) {
+    final chip = [
+      if (_cpuTemps.length >= 2) ('CPU', _cpuTemps, _cpuColor),
+      if (_gpuTemps.length >= 2) ('GPU', _gpuTemps, _gpuColor),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _series(_temps, _batteryColor, '°', range: range, shade: shade, extra: [for (final c in chip) (c.$2, c.$3)]),
+        if (chip.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 14,
+            children: [
+              for (final (name, _, color) in [('Battery', _temps, _batteryColor), ...chip])
+                Text('● $name', style: TextStyle(color: color, fontSize: 12)),
+            ],
+          ),
+          const Text(
+            'CPU and GPU: the hottest sensor of each on the chip, read from the phone (not every '
+            'phone allows it). They react within seconds; the battery warms slowly. The line '
+            'below is the battery.',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+        ],
+        _statsText(_temps, decimals: 1, unit: '°C'),
+      ],
+    );
+  }
+
   Widget _series(
     List<(int ms, double v)> points,
     Color color,
     String unit, {
     (int, int)? range,
     List<(int, int)> shade = const [],
+    List<(List<(int ms, double v)>, Color)> extra = const [],
   }) {
     final startMs = range?.$1 ?? _startMs, endMs = range?.$2 ?? _endMs;
     if (points.length < 2 ||
@@ -738,8 +772,13 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
           color: color,
           unit: unit,
           shade: shade,
+          extra: extra,
         ),
       ),
     );
   }
 }
+
+const _batteryColor = Color(0xFFFF7043);
+const _cpuColor = Color(0xFFEC407A);
+const _gpuColor = Color(0xFF4FC3F7);

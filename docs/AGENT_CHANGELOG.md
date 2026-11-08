@@ -10136,3 +10136,41 @@ Checked: the setting end to end on the Redmi (typed 4 into the field, the run's 
 identification tests with 3 workers on the fixture session.
 
 Open: nothing from this round; the LiteRT route for the dot products stays noted in round 359.
+
+## Round 361 (2026-11-08): chip temperatures (CPU, GPU) in the phone readings and the graphs
+
+Asked: round 360's "CPU zone 61 to 63 C" on the Redmi Note 9S: the app had
+always said that the battery holds the only sensor an app can read. Was the chip temperature a
+real measurement, and if so, the app should record and show it, even if only some phones allow it.
+
+Found: the round-360 figure came from the adb shell reading the kernel's sensor list under
+/sys/class/thermal (one folder per sensor: CPU cores, GPU, chip package, skin, battery). The shell
+has more rights than an app, so a new device check (`integration_test/thermal_zones_check_test.dart`)
+read the same files from inside the app process on all three test phones. Xiaomi phones let the app
+read every zone (Redmi Note 9S: 70 zones, 10 CPU cores, GPU, skin, battery; 11T Pro likewise), but
+their Android "thermal headroom" figure is always empty. The Samsung Galaxy M12 is the reverse: the
+folder cannot even be listed, the headroom works. So the two routes complement each other, and the
+chip sensors matter most on the Xiaomi phones, whose throttling the battery sensor cannot see (the
+11T Pro's frame rate once fell while the battery read 39 to 40 C).
+
+Done: the native reading lists the zones once and reports the hottest CPU core sensor and the
+hottest GPU sensor (zone names containing "cpu", "gpu" or "g3d"; values scaled from thousandths of a
+degree, outside 0 to 150 C dropped, because -40 means an absent sensor and the "soc" zone is a
+percentage). `ThermalReading` carries `cpuTempC`/`gpuTempC`, so the `thermal` records of live
+sessions, the start and end readings and the video runs' samples (CSV columns `cpu_temp_c`,
+`gpu_temp_c`, appended last) gain the two fields, null where unreadable. Shown: the camera screen's
+info fold ("Chip temp.: CPU 36 C · GPU 34 C"), the Identify and Find in videos pages under the
+battery scale, and the summary's temperature graph, which draws battery, CPU and GPU on one chart
+with a legend when the records have them (owner's choice: one graph, all three) and stays the
+battery line otherwise. The heat pause keeps the battery temperature: chip sensors sit at 50 to 80 C
+under load and their safe limits differ per chip, so a chip-based pause needs data from more phones
+first. The data guide explains the fields and which phones have them; a hand-off note tells
+FaunaLapse the names and the rule.
+
+Checked: the device check on all three phones (installs went through without a prompt); the live
+camera screen on the Redmi (CPU 34 to 36 C, GPU 32 to 34 C while the battery read 25.5 to 26.4 C);
+new tests for the chip label, the gauge line, the log index, the video samples CSV (golden refreshed
+with the two columns) and the summary graph with and without chip data; analyzer clean.
+
+Open: a chip-based heat pause once several phones' readings under load are known; the 11T Pro's
+camera screen was not opened (its sensors were read by the device check only).

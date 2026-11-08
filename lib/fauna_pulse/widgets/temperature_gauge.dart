@@ -25,7 +25,9 @@ const _memoryAmberFrom = 0.85;
 /// A labelled scale from [_floorC] to [limitC] (green, amber for the last
 /// 4 °C) with a pointer at [tempC], plus cooling advice while [paused].
 /// [limitWhere] names where the limit is set, for the explanation line.
-List<Widget> temperatureGauge(double tempC, double limitC, {required bool paused, required String limitWhere}) {
+/// [chipLabel] (round 361) is [ThermalReading.chipLabel]: the chip's own sensors,
+/// shown under the battery scale where the phone lets the app read them.
+List<Widget> temperatureGauge(double tempC, double limitC, {required bool paused, required String limitWhere, String? chipLabel}) {
   final frac = ((tempC - _floorC) / (limitC - _floorC)).clamp(0.0, 1.0);
   final color = tempC >= limitC
       ? Colors.redAccent
@@ -67,6 +69,12 @@ List<Widget> temperatureGauge(double tempC, double limitC, {required bool paused
       'To change the limit, open $limitWhere after the run.',
       style: helperTextStyle,
     ),
+    if (chipLabel != null)
+      Text(
+        'Chip sensors: $chipLabel (the hottest CPU core and the GPU, read from the phone). '
+        'The pause limit above is for the battery.',
+        style: helperTextStyle,
+      ),
     if (paused)
       const Padding(
         padding: EdgeInsets.only(top: 6),

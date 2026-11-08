@@ -191,7 +191,10 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
 - While the gate is idle or in no-AI modes, `fps` records leave out inference fields: never log
   stale or zero inference numbers.
 - **One native reading for the phone's state** (`DeviceThermal.read`, channel `getThermal`):
-  battery temperature, power, whole-phone memory and this process's CPU time together, every
+  battery temperature, chip sensors (hottest CPU core and GPU from `/sys/class/thermal`, which
+  only some makers let apps read: Xiaomi yes, Samsung no; `thermal_headroom` is the reverse, so
+  every heat figure is optional per phone; `integration_test/thermal_zones_check_test.dart` shows
+  a phone's set), power, whole-phone memory and this process's CPU time together, every
   "Phone readings sample"; "cores busy" is derived in Dart from two readings. A new phone figure
   joins that call and `ThermalReading` (never a second timer or channel), and shows on the Identify
   and Find in videos pages as a pointer scale or a text line (`temperature_gauge.dart`), never a

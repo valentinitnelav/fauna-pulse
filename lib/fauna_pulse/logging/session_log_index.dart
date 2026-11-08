@@ -254,6 +254,10 @@ class SessionLogIndex {
   // Diagnostic series ((time_ms, value) points, in log order).
   final List<(int, double)> temps;
   final List<(int, double)> headroom;
+
+  /// Round 361: chip sensors (hottest CPU core, GPU); empty on phones that do not let the app read them.
+  final List<(int, double)> cpuTemps;
+  final List<(int, double)> gpuTemps;
   final List<(int, double)> fps;
   final List<(int, double)> infMs;
   final List<IndexedPowerSample> powerSamples;
@@ -285,6 +289,8 @@ class SessionLogIndex {
     required this.trackSpans,
     required this.temps,
     required this.headroom,
+    this.cpuTemps = const [],
+    this.gpuTemps = const [],
     required this.fps,
     required this.infMs,
     required this.powerSamples,
@@ -425,6 +431,8 @@ class _IndexBuilder {
   final TrackSpans spans = TrackSpans();
   final List<(int, double)> temps = [];
   final List<(int, double)> headroom = [];
+  final List<(int, double)> cpuTemps = [];
+  final List<(int, double)> gpuTemps = [];
   final List<(int, double)> fps = [];
   final List<(int, double)> infMs = [];
   final List<IndexedPowerSample> power = [];
@@ -541,6 +549,10 @@ class _IndexBuilder {
         if (temp != null) temps.add((t, temp));
         final hr = (rec['thermal_headroom'] as num?)?.toDouble();
         if (hr != null) headroom.add((t, hr));
+        final cpu = (rec['cpu_temp_c'] as num?)?.toDouble();
+        if (cpu != null) cpuTemps.add((t, cpu));
+        final gpu = (rec['gpu_temp_c'] as num?)?.toDouble();
+        if (gpu != null) gpuTemps.add((t, gpu));
         final memTotal = (rec['mem_total_bytes'] as num?)?.toDouble();
         final memFree = (rec['mem_free_bytes'] as num?)?.toDouble();
         if (memTotal != null && memFree != null) memUsedGb.add((t, (memTotal - memFree) / bytesPerGb));
@@ -780,6 +792,8 @@ class _IndexBuilder {
     ),
     temps: temps,
     headroom: headroom,
+    cpuTemps: cpuTemps,
+    gpuTemps: gpuTemps,
     fps: fps,
     infMs: infMs,
     powerSamples: power,

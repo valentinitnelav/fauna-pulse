@@ -23,6 +23,8 @@ List<String> sampleAt(int t, {double temp = 30, bool paused = false, Map<String,
     'battery_temp_c': temp,
     'thermal_status': 'none',
     'thermal_headroom': null,
+    'cpu_temp_c': temp + 25, // round 361: chip sensors (null on most phones)
+    'gpu_temp_c': temp + 15,
     // Round 346 fields; the first sample of a run has no cores figure yet.
     'mem_total_bytes': 4 * gb,
     'mem_free_bytes': gb,
@@ -70,6 +72,10 @@ void main() {
     expect(s.temps.map((p) => p.$1), [0, 10000, 20000, 180000, 210000]);
     expect(s.temps.map((p) => p.$2), [30, 30, 39, 30, 30]);
     expect(s.memUsedGb.map((p) => p.$2), [3.0, 3.0, 3.0, 3.0, 3.0]);
+    expect(s.cpuTemps.map((p) => p.$2), [55, 55, 64, 55, 55]);
+    expect(s.gpuTemps.map((p) => p.$2), [45, 45, 54, 45, 45]);
+    expect(VideoRunSamples.csvHeader, endsWith(',app_cpu_cores,cpu_temp_c,gpu_temp_c'));
+    expect(s.toCsv().split('\n')[1], endsWith(',55.0,45.0'));
     expect(s.appCpuCores, [(10000, 1.5), (20000, 1.5), (210000, 1.5)]);
     expect(s.samples.first.appMem, gb);
     expect(s.samples.map((x) => x.run), [1, 1, 1, 2, 2]);
@@ -137,6 +143,8 @@ void main() {
         appCpuMs: 12345,
         appCpuCores: 1.25,
         cpuCount: 8,
+        cpuTempC: 61.5, // round 361: chip sensors, as a Xiaomi phone reports them
+        gpuTempC: 47.0,
       ),
       now: () => t,
       sleep: (d) async => t = t.add(d),

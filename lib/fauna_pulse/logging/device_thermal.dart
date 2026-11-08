@@ -57,6 +57,14 @@ class ThermalReading {
   /// a NaN reading).
   final double? thermalHeadroom;
 
+  /// Hottest CPU core sensor and hottest GPU sensor of the chip (°C), from the
+  /// kernel's thermal zones (round 361). Only some makers let apps read them
+  /// (Xiaomi yes, Samsung no), so both are null on many phones. They react
+  /// within seconds, long before the battery warms, and show the slow-down that
+  /// the battery sensor misses.
+  final double? cpuTempC;
+  final double? gpuTempC;
+
   /// Memory of the whole phone, in bytes: all of it, the part still free (the
   /// smaller of Android's availMem and the kernel's MemAvailable, the rule of
   /// `identifyFitsInBackground`: availMem can count page cache that cannot be
@@ -91,6 +99,8 @@ class ThermalReading {
     this.isCharging,
     this.isPlugged,
     this.thermalHeadroom,
+    this.cpuTempC,
+    this.gpuTempC,
     this.memTotalBytes,
     this.memFreeBytes,
     this.lowMemoryBytes,
@@ -116,6 +126,16 @@ class ThermalReading {
     return (ua.abs() / 1e6) * (mv / 1e3);
   }
 
+  /// "CPU 55 °C · GPU 48 °C" from the chip sensors, or null when the phone lets
+  /// the app read neither. Whole degrees: the files keep the full reading.
+  String? get chipLabel {
+    final parts = [
+      if (cpuTempC case final c?) 'CPU ${c.toStringAsFixed(0)} °C',
+      if (gpuTempC case final g?) 'GPU ${g.toStringAsFixed(0)} °C',
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
   Map<String, dynamic> toJson() => {
     'battery_temp_c': batteryTempC,
     'thermal_status': thermalStatus,
@@ -125,6 +145,8 @@ class ThermalReading {
     'is_charging': isCharging,
     'is_plugged': isPlugged,
     'thermal_headroom': thermalHeadroom,
+    'cpu_temp_c': cpuTempC,
+    'gpu_temp_c': gpuTempC,
     // Derived (so downstream R/Python don't have to recompute it).
     'power_w': powerW,
     'mem_total_bytes': memTotalBytes,
@@ -249,6 +271,8 @@ class DeviceThermal {
           isCharging: res['isCharging'] as bool?,
           isPlugged: res['isPlugged'] as bool?,
           thermalHeadroom: (res['thermalHeadroom'] as num?)?.toDouble(),
+          cpuTempC: (res['cpuTempC'] as num?)?.toDouble(),
+          gpuTempC: (res['gpuTempC'] as num?)?.toDouble(),
           memTotalBytes: n('memTotalBytes'),
           memFreeBytes: avail == null || kernel == null ? avail ?? kernel : min(avail, kernel),
           lowMemoryBytes: n('lowMemoryBytes'),

@@ -481,10 +481,19 @@ extension _CameraLayout on _CameraSessionScreenState {
                                   // Label it as the battery sensor only when it really is
                                   // a temperature; a bare thermal-status string is left
                                   // unprefixed.
-                                  return _statLine(
-                                    thermal.batteryTempC != null
-                                        ? 'Battery temp.: $label'
-                                        : label,
+                                  final chip = thermal.chipLabel;
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      _statLine(
+                                        thermal.batteryTempC != null
+                                            ? 'Battery temp.: $label'
+                                            : label,
+                                      ),
+                                      // Round 361: the chip's own sensors, where the
+                                      // phone lets the app read them.
+                                      if (chip != null) _statLine('Chip temp.: $chip'),
+                                    ],
                                   );
                                 },
                               ),

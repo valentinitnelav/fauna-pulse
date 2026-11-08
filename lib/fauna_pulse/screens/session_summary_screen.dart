@@ -207,6 +207,11 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   final List<(int ms, double v)> _temps = [];
 
+  // Chip sensors (round 361): hottest CPU core and GPU, only on phones that let
+  // the app read them; drawn on the temperature graph beside the battery line.
+  final List<(int ms, double v)> _cpuTemps = [];
+  final List<(int ms, double v)> _gpuTemps = [];
+
   // "Thermal headroom" 0..1+ (0 = cool, 1 = throttling threshold) — a direct
   // throttling signal, sampled alongside temperature.
   final List<(int ms, double v)> _headroom = [];

@@ -936,7 +936,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           child: Text('GPU not used: ${gpuNoteText(_accelNote!)}', style: const TextStyle(color: Colors.amber, fontSize: 12)),
         ),
       if (p?.tempC != null)
-        ...temperatureGauge(p!.tempC!, _prefs?.thermalLimitC ?? kDefaultPauseTempC, paused: p.stage == 'paused', limitWhere: 'Advanced settings'),
+        ...temperatureGauge(p!.tempC!, _prefs?.thermalLimitC ?? kDefaultPauseTempC, paused: p.stage == 'paused', limitWhere: 'Advanced settings', chipLabel: p.phone?.chipLabel),
       if (p?.phone case final phone?) ...[
         ...memoryGauge(phone),
         ...appCpuLine(phone, engine: _accelerator),

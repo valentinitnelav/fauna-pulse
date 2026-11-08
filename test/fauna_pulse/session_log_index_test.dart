@@ -66,7 +66,7 @@ void main() {
         // Diagnostics: thermal (with the pre-split legacy embedded fps),
         // dedicated fps (pipeline_fps preferred), power.
         '{"type":"thermal","time_ms":4000,"battery_temp_c":37.5,'
-            '"thermal_headroom":0.6,"fps":4.5,"mem_total_bytes":4294967296,'
+            '"thermal_headroom":0.6,"cpu_temp_c":61.2,"gpu_temp_c":48.0,"fps":4.5,"mem_total_bytes":4294967296,'
             '"mem_free_bytes":1073741824,"app_memory_bytes":900000000,'
             '"app_cpu_cores":1.9}',
         '{"type":"fps","time_ms":5000,"fps":9.0,"pipeline_fps":10.0,'
@@ -107,6 +107,8 @@ void main() {
     test('diagnostic series (incl. legacy thermal-embedded fps)', () {
       expect(index.temps, [(4000, 37.5)]);
       expect(index.headroom, [(4000, 0.6)]);
+      expect(index.cpuTemps, [(4000, 61.2)]); // round 361: chip sensors
+      expect(index.gpuTemps, [(4000, 48.0)]);
       expect(index.memUsedGb, [(4000, 3.0)]); // round 346: in use = total - free, in GB
       expect(index.appCpuCores, [(4000, 1.9)]);
       expect(index.fps, [(4000, 4.5), (5000, 10.0)]); // pipeline_fps preferred

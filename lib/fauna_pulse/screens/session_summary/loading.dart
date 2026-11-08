@@ -278,6 +278,8 @@ extension _SummaryLoading on _SessionSummaryScreenState {
         _videoSamples = samples;
         if (samples != null) {
           _temps.addAll(samples.temps);
+          _cpuTemps.addAll(samples.cpuTemps);
+          _gpuTemps.addAll(samples.gpuTemps);
           _headroom.addAll(samples.headroom);
           _fps.addAll(samples.framesPerS);
           _infMs.addAll(samples.detectMs);
@@ -287,6 +289,8 @@ extension _SummaryLoading on _SessionSummaryScreenState {
         }
       } else {
         _temps.addAll(index.temps);
+        _cpuTemps.addAll(index.cpuTemps);
+        _gpuTemps.addAll(index.gpuTemps);
         _headroom.addAll(index.headroom);
         _fps.addAll(index.fps);
         _infMs.addAll(index.infMs);
@@ -607,6 +611,8 @@ extension _SummaryLoading on _SessionSummaryScreenState {
   void _clearGraphData() {
     _spans.clear();
     _temps.clear();
+    _cpuTemps.clear();
+    _gpuTemps.clear();
     _headroom.clear();
     _fps.clear();
     _infMs.clear();

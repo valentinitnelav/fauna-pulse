@@ -44,6 +44,29 @@ void main() {
     expect(tester.takeException(), isNull); // no right overflow at 360 px
   });
 
+  test('round 361: the chip label names the sensors the phone let the app read', () {
+    expect(const ThermalReading(cpuTempC: 55.4, gpuTempC: 48).chipLabel, 'CPU 55 °C · GPU 48 °C');
+    expect(const ThermalReading(gpuTempC: 48).chipLabel, 'GPU 48 °C');
+    expect(const ThermalReading().chipLabel, isNull);
+  });
+
+  testWidgets('round 361: the temperature gauge shows the chip sensors when given', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListView(
+            children: [
+              ...temperatureGauge(31.0, 43.0, paused: false, limitWhere: 'Settings'),
+              ...temperatureGauge(31.0, 43.0, paused: false, limitWhere: 'Settings', chipLabel: 'CPU 55 °C · GPU 48 °C'),
+            ],
+          ),
+        ),
+      ),
+    );
+    expect(find.textContaining('Chip sensors: CPU 55 °C · GPU 48 °C'), findsOneWidget);
+    expect(find.text('Battery temperature'), findsNWidgets(2));
+  });
+
   test('nothing without the phone\'s figures, no engine bracket without an engine', () {
     expect(memoryGauge(const ThermalReading()), isEmpty);
     expect(appCpuLine(const ThermalReading(appCpuCores: 1.0)), isEmpty); // no core count
