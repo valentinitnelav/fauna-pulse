@@ -116,7 +116,8 @@ The headline changes, with the round that introduced each (full rationale in
 - **LiteRT 2.3.2, thread self-test, memory factor** (r357): 2.3.2 moves the
   GPU accelerator into its own artifact, `litert-gpu`, listed next to `litert`
   (without it every model silently runs on the CPU). Same speed and results as
-  2.2.0 on the three test phones. "0 = automatic" for the embedder is now a
+  2.2.0 on the three test phones; `integration_test/detector_outputs_check_test.dart`
+  (r358) showed every bundled detector's boxes identical between 2.1.5 and 2.3.2. "0 = automatic" for the embedder is now a
   one-time self-test (`Embedder.chooseCpuThreads`: 2, 4 and all cores on the
   test picture, the fewest within 5 % of the fastest wins, verdict kept in the
   app's `embedder_cpu_threads.txt`), because no fixed count suited all three

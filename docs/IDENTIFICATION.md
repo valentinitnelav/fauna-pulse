@@ -66,9 +66,10 @@ If you choose **Not now** under **To name them**, the animals are found and coun
 
 The times were measured on a test phone (Xiaomi 11T Pro, plugged in). GPU means the graphics
 processor, CPU the main processor. A whole session of 9,193 crops took that phone's GPU 62 minutes
-with BioCLIP 2 (51 for the model, 11 for the scoring and the result files). BioCLIP 2.5 is an
-overnight job on the charger (about 1.5 hours per 1000 crops). The insectDCT classifier also needs
-its class list (14 kB).
+with BioCLIP 2 (51 for the model, 11 for the scoring and the result files); the CPUs of the two 4 GB
+test phones needed 3 h 51 min and 10 h 36 min for the same session (8 and 40 minutes of it scoring),
+without a heat pause. BioCLIP 2.5 is an overnight job on the charger (about 1.5 hours per 1000
+crops). The insectDCT classifier also needs its class list (14 kB).
 
 It is not yet tested which model names this project's pollinators best (BioCLIP 2, BioCLIP 2.5
 or insectDCT).

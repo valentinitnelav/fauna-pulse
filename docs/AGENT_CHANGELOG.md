@@ -10044,3 +10044,40 @@ build is on both phones;
 (2) 16-bit CPU maths stays a constant (`CPU_FP16`); a setting would be a small round; (3) the
 "try the GPU anyway" switch for 4 GB phones is not made; (4) keep or delete the session copy on
 the Xiaomi.
+
+## Round 358 (2026-11-07): detector outputs unchanged by the runtime bump, overnight runs started
+
+Asked: after the LiteRT bump and the embedder work of rounds 356 and 357, make sure the detectors
+still run as before, and start the full runs of the shuffled benchmark session
+on the two 4 GB phones.
+
+Done: for the detectors only the runtime version changed since round 355: the Kotlin changes of
+rounds 356 and 357 add an embedder-only flag whose default leaves the detectors' CPU options as
+they were, and no Dart detection code changed. Checked on the Xiaomi 11T Pro with the new device
+check `integration_test/detector_outputs_check_test.dart` (every bundled detector, GPU and CPU,
+on 40 photos of the benchmark session spread over its folder, confidence 0.25): built once with
+the round 355 plugin files (LiteRT 2.1.5) and once with round 357 (2.3.2), all 174 boxes (class,
+coordinates and confidence to 4 decimals) and all per-picture counts are identical. Under 2.3.2 the
+GPU takes 323 of the 354 nodes of MDV6 int8 (2.1.5: 13) but still falls back to the CPU, as before.
+Live camera screen on the Xiaomi with the downloaded 16-bit flatbug-n file: GPU, 335 of 335 nodes,
+29 frames per second, 13 ms per inference. On the Redmi and the Samsung the engine benchmark of
+round 357 had shown unchanged speeds; their boxes were not compared (both busy with the runs).
+
+Overnight runs: copies of the shuffled session without stored results (`..._shuffled_r357`), started
+22:28 with the round 357 build (8 threads, 16-bit CPU maths), no heat pause on either phone. Redmi
+Note 9S: 9,193 crops in 3 h 43 min (1.44 s per crop against 1.19 in Test speed: the phone ran warm)
+plus 8 minutes of scoring and result files, 3 h 51 min in all (the 32-bit run of 2026-11-07 took 10
+h 8 min plus 15). Galaxy M12: 9 h 56 min (3.87 s per crop against 3.13) plus 40 minutes of scoring,
+10 h 36 min in all (was 15 h 28 min plus 40). The two phones' 16-bit vectors and result files are
+identical to each other. Against the stored 32-bit results: cosine per crop mean 0.99929 (lowest
+0.9925); 85 of 2,301 track IDs change their headline taxon and 42 their order, every one of them
+with a probability under 0.5 before (median 0.09; 84 of 85 flagged, 72 single-crop tracks); the
+counts of the top families move by at most 11. Whether accuracy against the ground truth moved is
+for the calibration scripts (hand-off written). Re-scoring the Redmi's embeddings on the laptop
+gives a byte-identical tracks file.
+
+Open: the scoring step is the pack dot products in Dart on one core (9,193 crops x 34,984 names, 77
+% of the step on the laptop). One pass over the pack for 8 crops at a time (same arithmetic per
+crop, bit-identical values) was 2.7 times faster on the laptop and would roughly halve the step
+(Galaxy M12 40 min, Redmi 8, Xiaomi 11); not done yet. The box check on the 4 GB phones if wanted
+(same test, about 3 minutes each; the Galaxy M12's Mali GPU is the one not covered).
