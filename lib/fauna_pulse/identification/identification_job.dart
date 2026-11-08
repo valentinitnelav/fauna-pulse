@@ -13,9 +13,13 @@
 // Everything native or slow is injected, so the driver is unit-testable.
 
 import 'dart:convert';
+import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' as math;
 import 'dart:typed_data';
+
+import 'package:ffi/ffi.dart' as pkg_ffi;
 
 import '../logging/app_error_hooks.dart';
 import '../logging/device_thermal.dart';
@@ -568,7 +572,9 @@ class IdentificationJob {
 
     Map<String, dynamic>? summary;
     if (!cancelled && error == null && scoreAfter) {
-      onProgress?.call(IdentifyProgress(stage: 'scoring', done: pending.length, total: pending.length, avgMs: embedCount == 0 ? 0 : embedMs / embedCount));
+      // Round 359: the scoring reports track IDs fused / total; nothing until the first message.
+      final avgMs = embedCount == 0 ? 0.0 : embedMs / embedCount;
+      onProgress?.call(IdentifyProgress(stage: 'scoring', done: 0, total: 0, avgMs: avgMs));
       // Round 347 (perf review H1): the caller may free the native model here. The embedding
       // files are complete and closed above, so a failure here loses nothing and scoring goes on.
       if (beforeScoring != null) {
@@ -586,6 +592,7 @@ class IdentificationJob {
           packFile: packFile,
           settings: settings.toJson(),
           appVersion: appVersion,
+          onProgress: (done, total) => onProgress?.call(IdentifyProgress(stage: 'scoring', done: done, total: total, avgMs: avgMs)),
         );
       } catch (e) {
         logSwallowed('identify_score', e);
@@ -635,7 +642,9 @@ class IdentificationJob {
 
   /// Phase 2 alone: fuse every track from the stored embeddings and write the
   /// outputs for [packFile]. Runs in a worker isolate (a softmax over tens of
-  /// thousands of names per crop is CPU work). Returns the summary map.
+  /// thousands of names per crop is CPU work), with the fusion itself spread over
+  /// up to [kScoringWorkersMax] isolates beside it (round 359). [onProgress] gets
+  /// the number of track IDs fused so far and their total. Returns the summary map.
   static Future<Map<String, dynamic>> scoreSession(
     Directory sessionDir, {
     required String modelName,
@@ -643,22 +652,45 @@ class IdentificationJob {
     required File packFile,
     required Map<String, dynamic> settings,
     String appVersion = '',
-  }) {
+    int? workers,
+    void Function(int done, int total)? onProgress,
+  }) async {
     final sessionPath = sessionDir.path;
     final packPath = packFile.path;
-    return Isolate.run(
-      () => scoreSessionSync(
-        Directory(sessionPath),
-        modelName: modelName,
-        modelId: modelId,
-        packFile: File(packPath),
-        settings: settings,
-        appVersion: appVersion,
-      ),
-    );
+    // Progress crosses the isolates as (track IDs fused since the last message, total) records.
+    final port = onProgress == null ? null : ReceivePort();
+    var done = 0;
+    port?.listen((m) {
+      final (int step, int total) = m as (int, int);
+      done += step;
+      onProgress!(done, total);
+    });
+    final progress = port?.sendPort;
+    try {
+      return await Isolate.run(_scoreIn(sessionPath, packPath, modelName, modelId, settings, appVersion, workers, progress));
+    } finally {
+      port?.close();
+    }
   }
 
-  /// Same-isolate scoring (tests, and the body of [scoreSession]).
+  /// The isolate's work, made in a plain function: a closure made inside an async function
+  /// carries that function's context (its completer) along, and an isolate message refuses it.
+  static Future<Map<String, dynamic>> Function() _scoreIn(
+    String sessionPath,
+    String packPath,
+    String modelName,
+    String modelId,
+    Map<String, dynamic> settings,
+    String appVersion,
+    int? workers,
+    SendPort? progress,
+  ) => () async {
+    final s = _Scoring.load(Directory(sessionPath), modelName: modelName, packFile: File(packPath), settings: settings);
+    final fused = await s.fuseInWorkers(workers ?? scoringWorkers(s.records.length), progress);
+    return s.finish(fused, modelId: modelId, appVersion: appVersion);
+  };
+
+  /// Same-isolate scoring (tests).
   static Map<String, dynamic> scoreSessionSync(
     Directory sessionDir, {
     required String modelName,
@@ -666,6 +698,121 @@ class IdentificationJob {
     required File packFile,
     required Map<String, dynamic> settings,
     String appVersion = '',
+  }) {
+    final s = _Scoring.load(sessionDir, modelName: modelName, packFile: packFile, settings: settings);
+    final fused = fuseTracks(s.scorer, s.groups, s.vectorsOf(s.groups), tau: s.tau, dropFactor: s.dropFactor);
+    return s.finish(fused, modelId: modelId, appVersion: appVersion);
+  }
+
+  /// Isolates for the fusion (round 359): one per processor up to [kScoringWorkersMax]. Each
+  /// holds its own copy of the pack (about 140 MB for 35,000 names), affordable once the model is
+  /// closed before the scoring; one for small sessions, where a worker's start (that copy) costs
+  /// more than it saves.
+  static int scoringWorkers(int crops) =>
+      crops < kScoringWorkerMinCrops ? 1 : math.min(kScoringWorkersMax, Platform.numberOfProcessors);
+}
+
+/// Round 359: the fusion runs in up to this many isolates, and only from this many crops on.
+const kScoringWorkersMax = 4;
+const kScoringWorkerMinCrops = 64;
+
+/// Pools every group of crops (one per track ID) into its answer (round 359): the crops' scores
+/// against the pack, three quarters of the scoring's time, are computed eight crops at a time
+/// across the groups ([Scorer.logitsMany]). [vectors] holds every crop of [groups] in order.
+/// [progress] gets (track IDs fused since the last message, [progressTotal]) every 16 track IDs.
+List<FusedTrack> fuseTracks(
+  Scorer scorer,
+  List<List<EmbeddingRecord>> groups,
+  List<Float32List> vectors, {
+  required double tau,
+  required double dropFactor,
+  SendPort? progress,
+  int? progressTotal,
+}) {
+  var blockStart = 0;
+  var block = const <Float64List>[];
+  Float64List logitsOf(int i) {
+    if (i >= blockStart + block.length) {
+      blockStart = i;
+      block = scorer.logitsMany(vectors.sublist(i, math.min(i + 8, vectors.length)));
+    }
+    return block[i - blockStart];
+  }
+
+  final out = <FusedTrack>[];
+  final total = progressTotal ?? groups.length;
+  var v = 0;
+  var reported = 0;
+  for (final recs in groups) {
+    final crops = <CropEmbedding>[];
+    for (final r in recs) {
+      crops.add(CropEmbedding(jpeg: r.source, trackId: r.trackId, vector: vectors[v], logits: logitsOf(v)));
+      v++;
+    }
+    out.add(scorer.fuse(crops, tau: tau, dropFactor: dropFactor));
+    if (progress != null && out.length - reported >= 16) {
+      progress.send((out.length - reported, total));
+      reported = out.length;
+    }
+  }
+  if (progress != null && out.length > reported) progress.send((out.length - reported, total));
+  return out;
+}
+
+/// Everything a scoring needs once the files are read (round 359), shared by the same-isolate
+/// path and the worker path of [IdentificationJob.scoreSession].
+class _Scoring {
+  final Directory sessionDir;
+  final File packFile;
+  final Map<String, dynamic> settings;
+  final IdentificationPaths paths;
+  final LabelPack pack;
+  final int dim;
+  final Float32List rows;
+  final List<EmbeddingRecord> records;
+
+  /// The crops per track ID (a crop without one stands alone), in the order of the index.
+  final List<List<EmbeddingRecord>> groups;
+  final Map<int, (int, int)> spans;
+  final Map<int, int> detCounts;
+  final String deviceId;
+  final String phoneModel;
+  final double? photoStepS;
+  final double? photoDurationS;
+  final int? visitsRunId;
+  final KeepFramesSettings? keep;
+  final Scorer scorer;
+  final double tau;
+  final double dropFactor;
+
+  _Scoring({
+    required this.sessionDir,
+    required this.packFile,
+    required this.settings,
+    required this.paths,
+    required this.pack,
+    required this.dim,
+    required this.rows,
+    required this.records,
+    required this.groups,
+    required this.spans,
+    required this.detCounts,
+    required this.deviceId,
+    required this.phoneModel,
+    required this.photoStepS,
+    required this.photoDurationS,
+    required this.visitsRunId,
+    required this.keep,
+    required this.scorer,
+    required this.tau,
+    required this.dropFactor,
+  });
+
+  static _Scoring load(
+    Directory sessionDir, {
+    required String modelName,
+    required File packFile,
+    required Map<String, dynamic> settings,
   }) {
     final paths = IdentificationPaths(sessionDir);
     final modelStem = stemOf(modelName);
@@ -765,32 +912,146 @@ class IdentificationJob {
 
     // Group crops per track (crops without a track id stand alone).
     final groups = <String, List<EmbeddingRecord>>{};
-    final order = <String>[];
     for (final r in records) {
-      final g = r.trackId == null ? 'crop:${r.key}' : 'track:${r.trackId}';
-      if (!groups.containsKey(g)) order.add(g);
-      (groups[g] ??= []).add(r);
+      (groups[r.trackId == null ? 'crop:${r.key}' : 'track:${r.trackId}'] ??= []).add(r);
     }
-    final scorer = Scorer(pack);
-    final tau = (settings['tau'] as num?)?.toDouble() ?? 0.6;
-    final dropFactor = (settings['drop_factor'] as num?)?.toDouble() ?? 10;
+    return _Scoring(
+      sessionDir: sessionDir,
+      packFile: packFile,
+      settings: settings,
+      paths: paths,
+      pack: pack,
+      dim: dim,
+      rows: rows,
+      records: records,
+      groups: groups.values.toList(),
+      spans: spans,
+      detCounts: detCounts,
+      deviceId: deviceId,
+      phoneModel: phoneModel,
+      photoStepS: photoStepS,
+      photoDurationS: photoDurationS,
+      visitsRunId: visitsRunId,
+      keep: keep,
+      scorer: Scorer(pack),
+      tau: (settings['tau'] as num?)?.toDouble() ?? 0.6,
+      dropFactor: (settings['drop_factor'] as num?)?.toDouble() ?? 10,
+    );
+  }
+
+  /// Every crop of [groups], in order, as a view into the stored rows.
+  List<Float32List> vectorsOf(List<List<EmbeddingRecord>> groups) => [
+    for (final g in groups)
+      for (final r in g) Float32List.sublistView(rows, r.row * dim, (r.row + 1) * dim),
+  ];
+
+  /// [fuseTracks] over [workers] isolates: consecutive runs of track IDs with about equal crop
+  /// counts, each with a compact copy of its crops' vectors (not every stored row) and a view of
+  /// one shared copy of the pack's matrix. The results come back in the order of [groups].
+  Future<List<FusedTrack>> fuseInWorkers(int workers, SendPort? progress) async {
+    if (workers <= 1 || groups.length < 2) {
+      return fuseTracks(scorer, groups, vectorsOf(groups), tau: tau, dropFactor: dropFactor, progress: progress);
+    }
+    // Three chunks per worker on a big session, taken from a queue as workers free up, so the
+    // fast cores of a phone with two kinds of cores do more of the work (equal shares left the
+    // Redmi Note 9S waiting for its slow cores). A worker's start is cheap (labels only).
+    final nChunks = records.length >= 512 ? workers * 3 : workers;
+    final target = (records.length / nChunks).ceil();
+    final chunks = <List<List<EmbeddingRecord>>>[];
+    var chunk = <List<EmbeddingRecord>>[];
+    var count = 0;
+    for (final g in groups) {
+      chunk.add(g);
+      count += g.length;
+      if (count >= target && chunks.length < nChunks - 1) {
+        chunks.add(chunk);
+        chunk = [];
+        count = 0;
+      }
+    }
+    if (chunk.isNotEmpty) chunks.add(chunk);
+    final dim = this.dim, total = groups.length;
+    final jobs = <(List<List<EmbeddingRecord>>, Float32List)>[];
+    for (final c in chunks) {
+      final v = Float32List(c.fold<int>(0, (n, g) => n + g.length) * dim);
+      var i = 0;
+      for (final g in c) {
+        for (final r in g) {
+          v.setRange(i * dim, (i + 1) * dim, rows, r.row * dim);
+          i++;
+        }
+      }
+      jobs.add((c, v));
+    }
+    // One copy of the matrix in native memory for every worker (an isolate message copies a
+    // Dart list, and four copies of a 107 MB matrix pushed a 4 GB phone into killing other
+    // apps); the workers read it by its address and are done before it is freed below. The
+    // pack they receive carries the labels and an empty matrix. Without the memory for the copy
+    // the fusion runs here instead.
+    final n = pack.rows * pack.dim;
+    ffi.Pointer<ffi.Float> shared;
+    try {
+      shared = pkg_ffi.malloc<ffi.Float>(n);
+    } on ArgumentError {
+      return fuseTracks(scorer, groups, vectorsOf(groups), tau: tau, dropFactor: dropFactor, progress: progress);
+    }
+    try {
+      shared.asTypedList(n).setAll(0, pack.matrix);
+      final light = pack.withMatrix(Float32List(0));
+      final tau = this.tau, dropFactor = this.dropFactor, address = shared.address;
+      final parts = List<List<FusedTrack>?>.filled(jobs.length, null);
+      var next = 0;
+      Future<void> runner() async {
+        while (next < jobs.length) {
+          final i = next++;
+          final (c, v) = jobs[i];
+          parts[i] = await _fuseChunk(light, address, c, v, tau, dropFactor, progress, total);
+        }
+      }
+
+      await Future.wait([for (var w = 0; w < math.min(workers, jobs.length); w++) runner()]);
+      return [for (final p in parts) ...p!];
+    } finally {
+      pkg_ffi.malloc.free(shared);
+    }
+  }
+
+  /// One worker (a plain function, see [IdentificationJob._scoreIn] for why not a closure here).
+  /// [matrixAddress] is the scoring isolate's native copy of the pack's matrix, valid until the
+  /// worker returns.
+  static Future<List<FusedTrack>> _fuseChunk(
+    LabelPack light,
+    int matrixAddress,
+    List<List<EmbeddingRecord>> groups,
+    Float32List vectors,
+    double tau,
+    double dropFactor,
+    SendPort? progress,
+    int total,
+  ) => Isolate.run(() {
+    final dim = light.dim;
+    final pack = light.withMatrix(ffi.Pointer<ffi.Float>.fromAddress(matrixAddress).asTypedList(light.rows * dim));
+    return fuseTracks(
+      Scorer(pack),
+      groups,
+      [for (var j = 0; j < vectors.length ~/ dim; j++) Float32List.sublistView(vectors, j * dim, (j + 1) * dim)],
+      tau: tau,
+      dropFactor: dropFactor,
+      progress: progress,
+      progressTotal: total,
+    );
+  });
+
+  /// Wraps the fused answers with their track spans, merges and sorts them and writes the files.
+  Map<String, dynamic> finish(List<FusedTrack> fused, {required String modelId, required String appVersion}) {
     var scored = <ScoredTrack>[];
-    for (final g in order) {
-      final recs = groups[g]!;
-      final crops = [
-        for (final r in recs)
-          CropEmbedding(
-            jpeg: r.source,
-            trackId: r.trackId,
-            vector: Float32List.sublistView(rows, r.row * dim, (r.row + 1) * dim),
-          ),
-      ];
-      final fused = scorer.fuse(crops, tau: tau, dropFactor: dropFactor);
+    for (var i = 0; i < groups.length; i++) {
+      final recs = groups[i];
       final span = recs.first.trackId == null ? null : spans[recs.first.trackId!];
       final capMs = [for (final r in recs) ?r.capturedAtMs];
       scored.add(
         ScoredTrack(
-          fused: fused,
+          fused: fused[i],
           crops: recs,
           startMs: span?.$1 ?? (capMs.isEmpty ? null : capMs.reduce((a, b) => a < b ? a : b)),
           endMs: span?.$2 ?? (capMs.isEmpty ? null : capMs.reduce((a, b) => a > b ? a : b)),

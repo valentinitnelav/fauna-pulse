@@ -542,6 +542,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
           'pack': pack.path.split('/').last,
         },
         appVersion: '${pinfo.version}+${pinfo.buildNumber}',
+        onProgress: (done, total) {
+          if (mounted) setState(() => _progress = IdentifyProgress(stage: 'scoring', done: done, total: total, avgMs: 0));
+        },
       );
       _result = IdentifyResult(
         planned: 0,
@@ -912,12 +915,17 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       Text(stageText, style: const TextStyle(color: Colors.white, fontSize: 16)),
       const SizedBox(height: 12),
       LinearProgressIndicator(
-        value: (p == null || total == 0 || p.stage == 'scoring' || _loadingModel) ? null : done / total,
+        value: (p == null || total == 0 || _loadingModel) ? null : done / total,
       ),
       const SizedBox(height: 8),
+      // Round 359: the scoring counts track IDs (the crops are all embedded by then).
       if (p != null && total > 0)
-        Text('$done of $total crop${total == 1 ? '' : 's'} (counted per photo: a photo with several insects adds several crops at once)',
-            style: const TextStyle(color: Colors.white)),
+        Text(
+          p.stage == 'scoring'
+              ? '$done of $total track ID${total == 1 ? '' : 's'} combined'
+              : '$done of $total crop${total == 1 ? '' : 's'} (counted per photo: a photo with several insects adds several crops at once)',
+          style: const TextStyle(color: Colors.white),
+        ),
       Text('Elapsed ${_fmtDuration(elapsed)}'
           '${remaining == null ? '' : ', about ${_fmtDuration(remaining)} left'}.'
           '${p != null && p.avgMs > 0 ? ' The model takes ${(p.avgMs / 1000).toStringAsFixed(2)} s per crop.' : ''}',

@@ -259,9 +259,11 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
 ### Identification (`docs/IDENTIFICATION.md`)
 - Pipeline: crops per photo per track ID (`planCrop`) → crop in an isolate → native embedding
   (`Embedder.kt`) → append-only `embeddings_<model>.{jsonl,bin}` (resumable) → one score per
-  track ID → `tracks_<pack>.{csv,json}`, `crops_<pack>.csv`, `summary_<pack>.json`. Method and
-  credits (Dussert et al. 2025; suspect flags after insect-detect-post, Sittinger 2026) are in
-  IDENTIFICATION.md. The defaults are not validated on pollinators.
+  track ID (the model is closed first; the scoring runs in up to four isolates that each copy
+  the pack, about 140 MB per 35,000 names) → `tracks_<pack>.{csv,json}`, `crops_<pack>.csv`,
+  `summary_<pack>.json`. Method and credits (Dussert et al. 2025; suspect flags after
+  insect-detect-post, Sittinger 2026) are in IDENTIFICATION.md. The defaults are not validated
+  on pollinators.
 - A name list pairs with its model by the first part of the file name (`listBelongsTo`, else the
   header's `model_id`); a classifier pairs with the `.fpack` of the same name. A row counts only
   down to the rank above its first empty slot (`rollUp`).

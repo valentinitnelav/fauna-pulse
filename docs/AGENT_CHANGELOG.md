@@ -10081,3 +10081,31 @@ Open: the scoring step is the pack dot products in Dart on one core (9,193 crops
 crop, bit-identical values) was 2.7 times faster on the laptop and would roughly halve the step
 (Galaxy M12 40 min, Redmi 8, Xiaomi 11); not done yet. The box check on the 4 GB phones if wanted
 (same test, about 3 minutes each; the Galaxy M12's Mali GPU is the one not covered).
+
+## Round 359 (2026-11-08): scoring step 3 to 7 times faster (eight crops per pass, worker isolates)
+
+Asked: the step after the embeddings ("Combining crops per track ID and writing results") took 40
+minutes on the Galaxy M12 and 8 on the Redmi Note 9S for the 9,193-crop benchmark session; make it
+faster, and check whether a library or LiteRT would do the pack dot products better.
+
+Done: the dot products of a crop against the 34,984 pack rows were three quarters of the step (one
+pass over the 107 MB matrix per crop). `LabelPack.dotsIntoMany` now reads every row once for eight
+crops (`Scorer.logitsMany`; the same arithmetic per crop, so the values are bit-identical), and the
+fusion runs in up to four isolates (`kScoringWorkersMax`, from 64 crops on) that share one copy of
+the matrix in native memory (dart:ffi malloc, freed when they are done). With four Dart copies the
+Redmi's peak PSS was 1,272 MB and Android killed three cached apps; shared, it is 973 MB with no
+killer activity. Chunks (three per worker on big sessions) come from a queue, so fast cores do more.
+The Identify screen shows "x of y track IDs combined" with a moving bar during the step. Measured on
+the same session, result files byte-identical to before on both phones and the laptop: Galaxy M12 40
+min to 5 min 43 s (peak PSS 957 MB), Redmi 8 min to 2 min 37 s, laptop 300 s to 71 s. Isolate entry
+closures are made in plain functions: one made inside an async function carried that function's
+completer and the isolate message was refused.
+
+Rejected: pub.dev has no faster pure-Dart matrix code (ml_linalg uses the same Float32x4 loops;
+ndarray and openblas are young bindings to a native library). A LiteRT FULLY_CONNECTED model with
+the pack as weights would make the dot products 50 to 100 times faster, but needs a model file per
+pack (fauna-pulse-models), a platform channel from the scoring isolate, and leaves the other quarter
+of the step, so its gain over this round would be about 2x; noted for later.
+
+Open: more workers (about 40 MB each now; eight would help the Galaxy M12); the Xiaomi 11T Pro's
+step (11 minutes before) was not re-measured.

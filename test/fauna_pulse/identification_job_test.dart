@@ -72,6 +72,36 @@ void main() {
     minCropPx: 16,
   );
 
+  test('round 359: scoring in worker isolates writes the same files as the same-isolate scoring', () async {
+    final session = makeSession('workers');
+    final job = IdentificationJob(
+      embed: fakeEmbed,
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+    );
+    final r = await job.run(session, settings: settings(), packFile: packFile);
+    expect(r.error, isNull);
+    final paths = IdentificationPaths(session);
+    final tracksCsv = paths.tracksCsv('tiny_pack').readAsStringSync();
+    final predictions = paths.predictionsJsonl('tiny_pack').readAsStringSync();
+    expect(tracksCsv.split('\n').length, greaterThan(2));
+    final progress = <(int, int)>[];
+    await IdentificationJob.scoreSession(
+      session,
+      modelName: 'fake_model.tflite',
+      modelId: 'fake',
+      packFile: packFile,
+      settings: settings().toJson(),
+      workers: 3,
+      onProgress: (done, total) => progress.add((done, total)),
+    );
+    expect(paths.tracksCsv('tiny_pack').readAsStringSync(), tracksCsv);
+    expect(paths.predictionsJsonl('tiny_pack').readAsStringSync(), predictions);
+    expect(progress, isNotEmpty);
+    expect(progress.last.$1, progress.last.$2);
+    expect(progress.last.$2, tracksCsv.trim().split('\n').length - 1);
+  });
+
   test('round 305: a track ID starts at its first sighting and counts its first frames', () async {
     final session = makeSession('first_seen');
     // Track 1 was first seen 0.4 s before its first box, in 3 earlier frames.

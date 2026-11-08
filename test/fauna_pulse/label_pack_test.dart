@@ -4,12 +4,53 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/label_pack.dart';
 
 void main() {
+  test('round 359: dotsIntoMany equals dotsInto bit for bit, eights and the leftovers', () {
+    final rnd = math.Random(7);
+    const dim = 768, rows = 37;
+    final matrix = Float32List(rows * dim);
+    for (var i = 0; i < matrix.length; i++) {
+      matrix[i] = rnd.nextDouble() * 2 - 1;
+    }
+    final pack = LabelPack(
+      packId: 'p',
+      modelId: 'm',
+      dim: dim,
+      rows: rows,
+      sinkRows: 0,
+      logitScale: 1,
+      temperature: 1,
+      labels: const [],
+      matrix: matrix,
+      header: const {},
+    );
+    // 21 vectors: two blocks of eight and five leftovers; one of them a view into a larger array.
+    final big = Float32List(3 * dim);
+    for (var i = 0; i < big.length; i++) {
+      big[i] = rnd.nextDouble() * 2 - 1;
+    }
+    final vectors = [
+      for (var k = 0; k < 20; k++) Float32List.fromList([for (var i = 0; i < dim; i++) rnd.nextDouble() * 2 - 1]),
+      Float32List.sublistView(big, dim, 2 * dim),
+    ];
+    final many = [for (var k = 0; k < vectors.length; k++) Float64List(rows)];
+    pack.dotsIntoMany(vectors, many);
+    for (var k = 0; k < vectors.length; k++) {
+      final one = Float64List(rows);
+      pack.dotsInto(vectors[k], one);
+      expect(many[k], equals(one), reason: 'vector $k');
+      for (var r = 0; r < rows; r++) {
+        expect(many[k][r], closeTo(pack.dot(vectors[k], r), 1e-4));
+      }
+    }
+  });
+
   test('halfToFloat decodes common values', () {
     expect(halfToFloat(0x3C00), 1.0);
     expect(halfToFloat(0xBC00), -1.0);

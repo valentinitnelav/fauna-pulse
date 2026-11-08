@@ -65,11 +65,11 @@ If you choose **Not now** under **To name them**, the animals are found and coun
 | **insectDCT classifier** | Names insects in 104 fixed classes of flower visitors, from order down to species where it can. | 42 MB | 0.02 s (GPU), 0.15 s (CPU) |
 
 The times were measured on a test phone (Xiaomi 11T Pro, plugged in). GPU means the graphics
-processor, CPU the main processor. A whole session of 9,193 crops took that phone's GPU 62 minutes
-with BioCLIP 2 (51 for the model, 11 for the scoring and the result files); the CPUs of the two 4 GB
-test phones needed 3 h 51 min and 10 h 36 min for the same session (8 and 40 minutes of it scoring),
-without a heat pause. BioCLIP 2.5 is an overnight job on the charger (about 1.5 hours per 1000
-crops). The insectDCT classifier also needs its class list (14 kB).
+processor, CPU the main processor. A whole session of 9,193 crops took that phone's GPU 51 minutes
+for the model with BioCLIP 2, plus a few minutes for the scoring and the result files; the CPUs of
+the two 4 GB test phones needed 3 h 43 min and 9 h 56 min for the model (plus 3 and 6 minutes of
+scoring), without a heat pause. BioCLIP 2.5 is an overnight job on the charger (about 1.5 hours per
+1000 crops). The insectDCT classifier also needs its class list (14 kB).
 
 It is not yet tested which model names this project's pollinators best (BioCLIP 2, BioCLIP 2.5
 or insectDCT).
@@ -247,7 +247,7 @@ per track ID. Photos further apart have no track IDs, so their boxes are identif
 
 | Button | What it does |
 |---|---|
-| **Start** | Starts the run. During the run a line shows the step: "Loading the model (the first time on this phone can take up to a minute)…", "Planning crops…", "Identifying crops on the CPU…" (or GPU), "Combining crops per track ID and writing results…", or "Paused: …" during a heat pause. |
+| **Start** | Starts the run. During the run a line shows the step: "Loading the model (the first time on this phone can take up to a minute)…", "Planning crops…", "Identifying crops on the CPU…" (or GPU), "Combining crops per track ID and writing results…" (with the count of track IDs done), or "Paused: …" during a heat pause. |
 | **Cancel (keeps what is done)** | Stops the run and keeps everything done so far. |
 | **Continue / re-run** | Shown in place of **Start** once crops are stored. Goes on where the run stopped, then scores everything again. On a session that did not change, this takes seconds. |
 | **Stop and leave** | When you leave the screen during a run (Back), the app asks *Identification is still running*. **Stop and leave** stops after the current photo and keeps what is done; **Cancel** stays on the screen. |

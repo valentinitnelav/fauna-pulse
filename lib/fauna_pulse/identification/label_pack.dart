@@ -157,6 +157,24 @@ class LabelPack {
 
   static final Int32List _noIndex = Int32List(0);
 
+  /// The same pack over another copy of its vectors (round 359: a worker isolate's view of the
+  /// matrix the scoring isolate put in native memory, see identification_job.dart).
+  LabelPack withMatrix(Float32List matrix) => LabelPack(
+    packId: packId,
+    modelId: modelId,
+    dim: dim,
+    rows: rows,
+    sinkRows: sinkRows,
+    logitScale: logitScale,
+    temperature: temperature,
+    labels: labels,
+    matrix: matrix,
+    header: header,
+    headSizes: headSizes,
+    headIndex: headIndex,
+    classNames: classNames,
+  );
+
   /// Dot product of the unit vector [e] (length [dim]) with pack row [row].
   double dot(Float32List e, int row) {
     final base = row * dim;
@@ -198,6 +216,78 @@ class LabelPack {
         s += acc.x + acc.y + acc.z + acc.w;
       }
       out[r] = s;
+    }
+  }
+
+  /// [dotsInto] for several vectors in one pass over the pack (round 359): every pack row is
+  /// loaded once for eight vectors instead of once per vector, which made a pass 2.7 times
+  /// faster per vector on the laptop (the loads and the loop were the cost, not the
+  /// arithmetic). The arithmetic per vector is the same as in [dotsInto], so the values are
+  /// bit-identical. Vectors left over (fewer than eight) take [dotsInto]. [es] and [outs] pair
+  /// up by index; every [outs] entry has length [rows].
+  void dotsIntoMany(List<Float32List> es, List<Float64List> outs) {
+    final q = dim ~/ 4;
+    var i = 0;
+    if (dim % 4 == 0 && matrix.offsetInBytes % 16 == 0 && matrix.length >= rows * dim) {
+      final m4 = _matrix4 ??= Float32x4List.view(matrix.buffer, matrix.offsetInBytes, matrix.length ~/ 4);
+      for (; i + 8 <= es.length; i += 8) {
+        final v = <Float32x4List>[];
+        for (var j = 0; j < 8; j++) {
+          final e = es[i + j];
+          if (e.length < dim || e.offsetInBytes % 16 != 0) break;
+          v.add(Float32x4List.view(e.buffer, e.offsetInBytes, q));
+        }
+        if (v.length < 8) break;
+        _dots8(m4, q, v, outs.sublist(i, i + 8));
+      }
+    }
+    for (; i < es.length; i++) {
+      dotsInto(es[i], outs[i]);
+    }
+  }
+
+  /// Eight vectors against every row: eight accumulators in local variables (a list of
+  /// Float32x4 would box them), the quads summed into doubles every 16 quads as in [dotsInto].
+  void _dots8(Float32x4List m4, int q, List<Float32x4List> v, List<Float64List> outs) {
+    final v0 = v[0], v1 = v[1], v2 = v[2], v3 = v[3], v4 = v[4], v5 = v[5], v6 = v[6], v7 = v[7];
+    final o0 = outs[0], o1 = outs[1], o2 = outs[2], o3 = outs[3], o4 = outs[4], o5 = outs[5], o6 = outs[6], o7 = outs[7];
+    for (var r = 0; r < rows; r++) {
+      final base = r * q;
+      var s0 = 0.0, s1 = 0.0, s2 = 0.0, s3 = 0.0, s4 = 0.0, s5 = 0.0, s6 = 0.0, s7 = 0.0;
+      var i = 0;
+      while (i < q) {
+        var end = i + 16;
+        if (end > q) end = q;
+        var a0 = Float32x4.zero(), a1 = Float32x4.zero(), a2 = Float32x4.zero(), a3 = Float32x4.zero();
+        var a4 = Float32x4.zero(), a5 = Float32x4.zero(), a6 = Float32x4.zero(), a7 = Float32x4.zero();
+        for (; i < end; i++) {
+          final m = m4[base + i];
+          a0 += v0[i] * m;
+          a1 += v1[i] * m;
+          a2 += v2[i] * m;
+          a3 += v3[i] * m;
+          a4 += v4[i] * m;
+          a5 += v5[i] * m;
+          a6 += v6[i] * m;
+          a7 += v7[i] * m;
+        }
+        s0 += a0.x + a0.y + a0.z + a0.w;
+        s1 += a1.x + a1.y + a1.z + a1.w;
+        s2 += a2.x + a2.y + a2.z + a2.w;
+        s3 += a3.x + a3.y + a3.z + a3.w;
+        s4 += a4.x + a4.y + a4.z + a4.w;
+        s5 += a5.x + a5.y + a5.z + a5.w;
+        s6 += a6.x + a6.y + a6.z + a6.w;
+        s7 += a7.x + a7.y + a7.z + a7.w;
+      }
+      o0[r] = s0;
+      o1[r] = s1;
+      o2[r] = s2;
+      o3[r] = s3;
+      o4[r] = s4;
+      o5[r] = s5;
+      o6[r] = s6;
+      o7[r] = s7;
     }
   }
 
