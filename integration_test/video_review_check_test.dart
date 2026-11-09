@@ -445,11 +445,19 @@ void main() {
         home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'), initialTabIndex: 1),
       ),
     );
-    await waitFor(find.textContaining('Track ID timeline'));
+    await waitFor(find.text('Track IDs'));
     final graphs = find.byWidgetPredicate(
       (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
       skipOffstage: true,
     ).first;
+    // The timeline is the last block of the "Extra graphs" fold (round 362).
+    await tester.scrollUntilVisible(find.textContaining('Extra graphs'), 300, scrollable: graphs);
+    await tester.drag(graphs, const Offset(0, -300));
+    await tester.pump(const Duration(milliseconds: 500));
+    if (find.textContaining('Track ID timeline (one row', skipOffstage: false).evaluate().isEmpty) {
+      await tester.tap(find.textContaining('Extra graphs'));
+      await tester.pump(const Duration(seconds: 1));
+    }
     await tester.scrollUntilVisible(find.textContaining('The times next to a bar'), 100, scrollable: graphs);
     await tester.drag(graphs, const Offset(0, -150));
     await tester.pump(const Duration(milliseconds: 500));

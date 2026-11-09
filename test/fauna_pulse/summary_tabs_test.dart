@@ -42,6 +42,10 @@ Future<void> expectSummaryRowValue(
     200,
     scrollable: scrollable,
   );
+  // scrollUntilVisible ends with a jump that brings the label to the top edge, without a
+  // frame: draw one, or the next search still sees the rows of the old scroll position and
+  // then drags past a row that is already in view.
+  await tester.pump();
   final row = find
       .ancestor(of: labelFinder, matching: find.byType(Row))
       .first;
@@ -225,6 +229,40 @@ void main() {
   );
 
   testWidgets(
+    'Photos tab: a smaller sample after viewing a later photo starts at the first photo again',
+    (tester) async {
+      // The red "RangeError ... Not in inclusive range 0..9: 36" screen: the viewer kept its
+      // page number when a smaller sample replaced the list under it.
+      SharedPreferences.setMockInitialValues({});
+      final tmp = writeTimeLapseSession(15);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionSummaryScreen(logFile: File('${tmp.path}/session.jsonl'), initialTabIndex: 0),
+        ),
+      );
+      await pumpUntilFound(tester, find.textContaining('Showing 10 of 15'));
+      await tester.tap(find.text('All (15)'));
+      await pumpUntilFound(tester, find.textContaining('Showing 15 of 15'));
+      // The last PageView is the photo viewer's (the first one is the tab view). Two jumps: the
+      // viewer learns its new length at the first scroll after the list grew, as with a swipe.
+      final pages = tester.widget<PageView>(find.byType(PageView).last).controller!;
+      pages.jumpToPage(1);
+      await tester.pump();
+      pages.jumpToPage(14);
+      await tester.pump();
+      expect(find.textContaining('Photo 15 / 15'), findsOneWidget);
+
+      await tester.tap(find.text('10'));
+      await pumpUntilFound(tester, find.textContaining('Showing 10 of 15'));
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('Photo 1 / 10'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
     'Setup tab: Overview rows lead; the full record unfolds with every '
     'setting listed and mode-inapplicable ones marked',
     (tester) async {
@@ -359,7 +397,7 @@ void main() {
           ),
         ),
       );
-      await pumpUntilFound(tester, find.textContaining('Track ID timeline'));
+      await pumpUntilFound(tester, find.textContaining('Extra graphs'));
 
       final scrollable = find.descendant(
         of: find.byType(ListView).first,
@@ -469,7 +507,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(home: SessionSummaryScreen(logFile: log, initialTabIndex: 1)),
       );
-      await pumpUntilFound(tester, find.textContaining('Track ID timeline'));
+      await pumpUntilFound(tester, find.textContaining('Extra graphs'));
       expect(
         find.text('none yet ("Find track IDs" on "Find animals in photos", for photos 0.5 s apart or closer)'),
         findsOneWidget,

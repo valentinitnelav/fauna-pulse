@@ -418,7 +418,7 @@ The summary has three tabs:
 | Tab | What it shows |
 |---|---|
 | **Photos** | the saved ROI photos (JPEG) and the reference photos |
-| **Graphs** | track ID counts and timelines (your visitation-rate result) |
+| **Graphs** | track ID counts and charts (your visitation-rate result) |
 | **Setup** | the main numbers and every setting of the session |
 
 For video sessions (filmed or imported) the first tab is **Video** instead of **Photos**: the
@@ -448,18 +448,21 @@ player and **Copy videos to Gallery** (see [VIDEO_ANALYSIS.md](VIDEO_ANALYSIS.md
   Gallery (Pictures/FaunaPulse) or share it to another app (for example Google Lens or
   iNaturalist). The **1:1** chip makes the box square.
 
-**Graphs.** Shown automatically: the **Track IDs** count, the **Track ID timeline (one row per
-track ID)**, the **Track length distribution** (with a **Bin width:** choice) and **Track IDs by
-time of day** for the session. A long timeline gets a **Hide timeline** / **Show timeline**
-button.
+**Graphs.** Shown automatically: the **Track IDs** count, the **Track length distribution** (with
+a **Bin width:** choice) and **Track IDs by time of day** for the session. Both charts count
+track IDs on the left axis, with round numbers that follow the tallest bar.
 
 - Temperature, FPS and battery or power are always recorded. Their graphs are under **Extra
-  graphs (temperature, FPS, power)** (tap to show) for when you need them; the app remembers
-  whether the fold was open. It holds the battery temperature, the **Heat level (0 = cool, 1 =
-  phone slows down)** (if the phone reports it), the detector FPS, the detector time per frame,
-  the memory in use on the whole phone, the processor cores FaunaPulse kept busy (its own
-  process only: the camera runs in another Android process) and the power draw (W) with the
-  average power and the total energy in Wh.
+  graphs (temperature, FPS, power, track ID timeline)** (tap to show) for when you need them;
+  the app remembers whether the fold was open. It holds the battery temperature, the **Heat
+  level (0 = cool, 1 = phone slows down)** (if the phone reports it), the detector FPS, the
+  detector time per frame, the memory in use on the whole phone, the processor cores FaunaPulse
+  kept busy (its own process only: the camera runs in another Android process) and the power
+  draw (W) with the average power and the total energy in Wh.
+- The last graph in that fold is the **Track ID timeline (one row per track ID)**: one bar per
+  track ID, from its first to its last frame. It is a way to check single track IDs; with
+  hundreds of track IDs it becomes a very long list. A long timeline gets a **Hide timeline** /
+  **Show timeline** button.
 - The power (W) graph only shows for sessions recorded fully on battery. When the phone is
   plugged in (even to a power bank with a full battery), the battery sensor measures the
   charger, not the use, so the graph is not drawn: its card says why ("Not shown: the phone was

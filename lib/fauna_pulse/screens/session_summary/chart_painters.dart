@@ -25,36 +25,6 @@ part of '../session_summary_screen.dart';
   return (mean: mean, median: median, min: vals.first, max: vals.last);
 }
 
-/// "Nice number" rounding (Heckbert's algorithm) used to pick human-friendly axis
-/// steps: it snaps [x] to the nearest 1, 2 or 5 × 10ⁿ. With [round] true it picks
-/// the closest nice value; with it false it picks the smallest nice value ≥ [x].
-/// This is why the axes land on round numbers (e.g. 0, 5, 10, 15) instead of
-/// awkward fractions (e.g. 0, 2.5, 5).
-double _niceNum(double x, {required bool round}) {
-  if (x <= 0) return 1;
-  final exp = (log(x) / ln10).floor();
-  final f = x / pow(10, exp);
-  double nf;
-  if (round) {
-    nf = f < 1.5
-        ? 1
-        : f < 3
-        ? 2
-        : f < 7
-        ? 5
-        : 10;
-  } else {
-    nf = f <= 1
-        ? 1
-        : f <= 2
-        ? 2
-        : f <= 5
-        ? 5
-        : 10;
-  }
-  return nf * pow(10, exp).toDouble();
-}
-
 /// One labelled tick on the time (X) axis: [ms] is the offset from session start.
 class _TimeTick {
   final double ms;
@@ -86,7 +56,7 @@ List<_TimeTick> _timeTicks(double totalMs) {
     }
   }
   final totalUnits = totalMs / unitMs;
-  var step = _niceNum(totalUnits / 5, round: true); // aim for ~5 ticks
+  var step = niceNum(totalUnits / 5, round: true); // aim for ~5 ticks
   if (step < 1) step = 1; // never a fractional unit step
   final ticks = <_TimeTick>[];
   for (var v = 0.0; v <= totalUnits + step * 1e-3; v += step) {
@@ -103,8 +73,8 @@ List<_TimeTick> _timeTicks(double totalMs) {
   double hi,
 ) {
   if (hi - lo < 1e-9) hi = lo + 1; // flat series: give it a unit of room
-  final range = _niceNum(hi - lo, round: false);
-  final step = _niceNum(range / 4, round: true); // ~4 intervals (5 lines)
+  final range = niceNum(hi - lo, round: false);
+  final step = niceNum(range / 4, round: true); // ~4 intervals (5 lines)
   final niceMin = (lo / step).floor() * step;
   final niceMax = (hi / step).ceil() * step;
   return (niceMin: niceMin, niceMax: niceMax, step: step);

@@ -1,5 +1,5 @@
 // FaunaPulse, session summary screen:
-// the Graphs tab (track ID timeline, visit charts, extra graphs).
+// the Graphs tab (track ID charts; in the extra graphs: phone readings, track ID timeline).
 //
 // A `part` of session_summary_screen.dart: that screen's State class is split into
 // extensions, one file per part of the screen, so each file stays readable
@@ -100,8 +100,7 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
 
   List<Widget> _graphs() => [
     // The session's headline number (moved here from the retired Overview
-    // tab, round 187): one track id = one recorded visit, so it belongs
-    // right above the timeline it summarizes.
+    // tab, round 187), right above the charts that summarize it.
     _stat(
       'Track IDs',
       _visitsFromPhotos
@@ -121,20 +120,6 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
     // Round 241: the same clips analysed afterwards, for comparison.
     if (_liveVideoSession && _afterVisits != null)
       _stat('Track IDs found afterwards in the videos', '$_afterVisits (for comparison; Video tab)'),
-    const SizedBox(height: 8),
-    const Text(
-      'Track ID timeline (one row per track ID)',
-      style: TextStyle(fontWeight: FontWeight.bold),
-    ),
-    const SizedBox(height: 4),
-    const Text(
-      'Time runs from left to right across the session. Each bar is one track ID, from the '
-      'first to the last frame it was seen; bars that overlap were there at the same time. '
-      'The times next to a bar count from the session start, like the axis below. A track '
-      'ID is often one visit, but some are false detections or one animal split into two '
-      'track IDs.',
-      style: TextStyle(color: Colors.white70, fontSize: 12),
-    ),
     if (_visitsAfterwards) ...[
       const SizedBox(height: 4),
       Text(
@@ -146,9 +131,9 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
         style: const TextStyle(color: Colors.white70, fontSize: 12),
       ),
     ],
-    const SizedBox(height: 12),
-    _timeline(),
-    if (_spans.isNotEmpty) ..._visitCharts(),
+    // The two charts that stay readable at any number of track IDs. Without
+    // track IDs: the reason, and how to get them.
+    if (_spans.isEmpty) ...[const SizedBox(height: 20), _noTrackIdsNote()] else ..._visitCharts(),
     const SizedBox(height: 28),
     // Everything below is diagnostics (round 148): hidden behind a
     // tap-to-expand header so the visitation-rate deliverable above stays
@@ -160,8 +145,8 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Text(
           _extraGraphsExpanded
-              ? '▾ Extra graphs (temperature, FPS, power)'
-              : '▸ Extra graphs (temperature, FPS, power): tap to show',
+              ? '▾ Extra graphs (temperature, FPS, power, track ID timeline)'
+              : '▸ Extra graphs (temperature, FPS, power, track ID timeline): tap to show',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
@@ -183,6 +168,38 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
     ]
     else if (_extraGraphsExpanded)
       ..._liveGraphs(),
+    if (_extraGraphsExpanded) ..._timelineSection(),
+  ];
+
+  /// The track ID timeline, in the extra graphs since round 362: with hundreds
+  /// or thousands of track IDs it is a list many screens long, and it is a
+  /// check of the tracker more than a result (the charts above the fold stay
+  /// readable at any number). Last in the fold, so no other graph sits below a
+  /// long list.
+  List<Widget> _timelineSection() => [
+    const SizedBox(height: 28),
+    const Text(
+      'Track ID timeline (one row per track ID)',
+      style: TextStyle(fontWeight: FontWeight.bold),
+    ),
+    const SizedBox(height: 4),
+    if (_spans.isEmpty)
+      const Text(
+        'No track IDs in this session, so there is no timeline to draw.',
+        style: TextStyle(color: Colors.white54, fontSize: 12),
+      )
+    else ...[
+      const Text(
+        'Time runs from left to right across the session. Each bar is one track ID, from the '
+        'first to the last frame it was seen; bars that overlap were there at the same time. '
+        'The times next to a bar count from the session start, like the axis below. A track '
+        'ID is often one visit, but some are false detections or one animal split into two '
+        'track IDs.',
+        style: TextStyle(color: Colors.white70, fontSize: 12),
+      ),
+      const SizedBox(height: 12),
+      _timeline(),
+    ],
   ];
 
   /// The recording's own temperature, FPS and power graphs.
@@ -470,8 +487,8 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
     ];
   }
 
-  /// The two per-session visit charts (round 187), between the timeline and
-  /// the "Extra graphs" disclosure: how long visits lasted (histogram with a
+  /// The two per-session visit charts (round 187), above the "Extra graphs"
+  /// disclosure: how long visits lasted (histogram with a
   /// user-picked bin width) and at which hours they started (the Dashboard's
   /// "Visits by time of day", now also available per session). Only rendered
   /// when the session has visits — no-AI sessions already explain themselves
@@ -536,7 +553,7 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
       SizedBox(
         height: 120,
         width: double.infinity,
-        child: MiniBarChart(values: hist.values, xLabelFor: histLabel),
+        child: MiniBarChart(values: hist.values, xLabelFor: histLabel, yLabel: 'Track IDs'),
       ),
       if (durationStats != null)
         Padding(
@@ -567,6 +584,7 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
         width: double.infinity,
         child: MiniBarChart(
           values: byHour,
+          yLabel: 'Track IDs',
           xLabelFor: (i) => switch (i) {
             0 || 6 || 12 || 18 => '$i h',
             _ => null,
@@ -645,29 +663,34 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
     );
   }
 
+  /// Why the session has no track IDs, and how to get them: shown in place of
+  /// the track ID charts.
+  Widget _noTrackIdsNote() => Center(
+    child: Text(
+      _visitsFromPhotos
+          ? 'No track IDs found in the photos.'
+          : _motionOnlySession
+          ? 'Motion-triggered photos: $_photosNoTrackIdsYet'
+          : _timeLapseSession && !_videoSession
+          ? 'Time-lapse photos: $_photosNoTrackIdsYet'
+          : _visitsAfterwards
+          ? 'No track IDs found in the videos.'
+          : _videoSession
+          ? '${_importedVideoSession ? 'Imported videos' : 'Video bursts'}: no track IDs yet. "Find animals in videos" '
+                '(Video tab, or the session\'s ⋮ menu on the Sessions screen) finds the '
+                'animals, then "Find track IDs" there follows each one from frame to frame.'
+          : 'No track IDs recorded.',
+      textAlign: TextAlign.center,
+    ),
+  );
+
+  /// The rows of the timeline; [_timelineSection] calls it only with track IDs.
   Widget _timeline() {
-    if (_spans.isEmpty ||
-        _startMs == null ||
-        _endMs == null ||
-        _endMs! <= _startMs!) {
-      return Center(
-        key: _timelineKey,
-        child: Text(
-          _visitsFromPhotos
-              ? 'No track IDs found in the photos.'
-              : _motionOnlySession
-              ? 'Motion-triggered photos: $_photosNoTrackIdsYet'
-              : _timeLapseSession && !_videoSession
-              ? 'Time-lapse photos: $_photosNoTrackIdsYet'
-              : _visitsAfterwards
-              ? 'No track IDs found in the videos.'
-              : _videoSession
-              ? '${_importedVideoSession ? 'Imported videos' : 'Video bursts'}: no track IDs yet. "Find animals in videos" '
-                    '(Video tab, or the session\'s ⋮ menu on the Sessions screen) finds the '
-                    'animals, then "Find track IDs" there follows each one from frame to frame.'
-              : 'No track IDs recorded.',
-          textAlign: TextAlign.center,
-        ),
+    if (_startMs == null || _endMs == null || _endMs! <= _startMs!) {
+      // No key: the floating show/hide button belongs to a drawn timeline only.
+      return const Text(
+        'The session\'s start and end times are not in its records, so the timeline cannot be drawn.',
+        style: TextStyle(color: Colors.white54, fontSize: 12),
       );
     }
     final ids = _spans.keys.toList()

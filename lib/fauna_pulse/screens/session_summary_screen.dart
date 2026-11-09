@@ -51,6 +51,7 @@ import '../logging/device_storage.dart';
 import '../logging/track_source.dart';
 import '../logging/visit_stats.dart';
 import '../widgets/mini_bar_chart.dart';
+import '../widgets/nice_axis.dart';
 import '../widgets/session_tile.dart' show sessionDate, sessionTime;
 import '../widgets/setting_help.dart';
 import '../widgets/video_review_player.dart';

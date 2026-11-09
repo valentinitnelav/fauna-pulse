@@ -100,7 +100,9 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   long text in `Expanded`/`Flexible` + ellipsis; `actions: const [HomeButton()]` in every title
   bar but Home and Camera (long titles: `FitTitle`); a widget test at 360 px width with
   `simulateBottomSystemBar` that checks the last row with `expectAboveBottomInset` (template:
-  `summary_bottom_inset_test.dart`).
+  `summary_bottom_inset_test.dart`). A screen with a text box is a scrolling list (a fixed
+  `Column` shrinks the box to a line under the keyboard), tested with the keyboard open
+  (template: `problem_description_screen_test.dart`).
 - **Settings sheet:** tabs Setup / Detection / Photos / Power. All heat controls are on Power
   (Detection is greyed in the no-AI modes while the gate must stay editable). Expert knobs in
   `FoldSection`s, explanations behind an ⓘ. `HelpSwitchTile` draws help below the tile, never as
@@ -350,8 +352,8 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   PIN lock (a person unlocks it). It reports the laptop's USB cable as AC power, so keep it awake
   with `svc power stayon true`. Runs hot (camera throttles at ~41-42 °C). Battery voltage reads
   as 2 cells (the summary halves it). It often shares its mobile internet with the laptop over
-  USB: avoid big downloads while it is connected. Neither `adb shell` nor `run-as` can read the app's
-  `Android/data` folders: check results in the app.
+  USB: avoid big downloads while it is connected. `adb shell` reads its sessions under
+  `/sdcard/Android/data/com.faunapulse.app/files/sessions/` (no `run-as` needed).
 - **Samsung `SM-M127F`** (Exynos 850, 3.9 GB, Android 13): runs release-signed APKs, so no
   `run-as`, and a debug build needs an uninstall (deletes its data: ask the owner).
   `battery_current_ua` is broken. Swipe lock (adb can wake and swipe).

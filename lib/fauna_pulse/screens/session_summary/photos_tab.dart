@@ -180,6 +180,12 @@ extension _SummaryPhotosTab on _SessionSummaryScreenState {
         )
       else if (_photos.isNotEmpty)
         _PhotoViewer(
+          // One viewer per photo list. A new list (another sample size, a new random draw,
+          // photos deleted) must start at its first photo: [_loadPhotos] often swaps the list
+          // without a frame in between (the session index is already read, so the spinner is
+          // never built), and the viewer then kept its page number, which can lie past the end
+          // of a shorter list (the red "RangeError" screen).
+          key: ObjectKey(_photos),
           photos: _photos,
           identification: _identificationStale ? null : _identification,
           location: SessionLocation.fromJson(

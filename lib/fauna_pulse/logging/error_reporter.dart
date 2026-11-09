@@ -320,6 +320,40 @@ class ErrorReporter {
     );
   }
 
+  /// The description the user typed and did not send yet (round 362), '' when there is none.
+  /// "Describe the problem" used to lose the text without a word when the user left it by
+  /// mistake (Back, X, Home), or when Android closed the app while they picked screenshots in
+  /// the photo picker. It also stays after Continue, until [share] hands the report to
+  /// another app: a report cannot be opened again once its window is closed, so the kept text
+  /// is the way to correct it and make it again. Kept in a file of the reports folder, not in
+  /// the saved settings: those go into Android's backup, and a user's free text should not.
+  static Future<String> loadDraft() async {
+    try {
+      final f = await _draftFile();
+      return await f.exists() ? await f.readAsString() : '';
+    } catch (e) {
+      logSwallowed('report_draft_load', e);
+      return '';
+    }
+  }
+
+  /// Keeps [text] as the draft; an empty text deletes it.
+  static Future<void> saveDraft(String text) async {
+    try {
+      final f = await _draftFile();
+      if (text.trim().isNotEmpty) {
+        await f.writeAsString(text);
+      } else if (await f.exists()) {
+        await f.delete();
+      }
+    } catch (e) {
+      logSwallowed('report_draft_save', e);
+    }
+  }
+
+  /// Not a `.txt`: [listReports] takes every `.txt` of the folder for a report.
+  static Future<File> _draftFile() async => File('${(await _reportsDir()).path}/description_draft.md');
+
   /// Opens the OS share sheet (email, Drive, etc.) with the report attached.
   static Future<void> share(ErrorReport report) async {
     // ONE file, always (round 191): the r190 multi-file share (.txt +
@@ -327,13 +361,17 @@ class ErrorReporter {
     // dropped (owner field test) — mixed MIME types are the suspect. The
     // bundle zip (or the bare .txt when there is nothing else) is a single
     // attachment of a single type, which every target handles.
-    await SharePlus.instance.share(
+    final result = await SharePlus.instance.share(
       ShareParams(
         files: [XFile(report.shareFile.path)],
         subject: 'FaunaPulse error report',
         text: 'FaunaPulse error report attached.',
       ),
     );
+    // Handed to another app (or the phone cannot tell): the description is sent, and the next
+    // "Describe the problem" starts empty. A share sheet closed without choosing an app sent
+    // nothing: the text stays as the draft.
+    if (result.status != ShareResultStatus.dismissed) await saveDraft('');
   }
 
   /// DORMANT since round 190 (owner decision: don't encourage emailed

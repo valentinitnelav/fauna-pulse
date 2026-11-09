@@ -184,6 +184,7 @@ class _PhotoViewer extends StatefulWidget {
   final void Function(String clip, int ms)? onShowInVideo;
 
   const _PhotoViewer({
+    super.key,
     required this.photos,
     required this.onZoomChanged,
     this.identification,

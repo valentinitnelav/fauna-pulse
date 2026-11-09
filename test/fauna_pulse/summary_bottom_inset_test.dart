@@ -16,7 +16,8 @@
 // Also here (same round, same button): the floating timeline toggle must
 // only exist when there is a REAL, tall timeline (> 10 track lanes) — in
 // no-AI sessions the timeline area is just an explanatory note and the
-// button confused the user.
+// button confused the user. Since round 362 the timeline is the last block of
+// the "Extra graphs" fold, so these tests open the fold and scroll to it.
 //
 // Widget-test async traps this file works around (KEEP the patterns):
 //  * fixture IO must be SYNC — awaiting real IO outside runAsync hangs the
@@ -93,7 +94,7 @@ Future<void> pumpSummaryGraphs(WidgetTester tester, File log) async {
     // Graphs tab is index 1 since round 187 (Photos | Graphs | Setup).
     MaterialApp(home: SessionSummaryScreen(logFile: log, initialTabIndex: 1)),
   );
-  // Readiness marker: the timeline header leads the tab, so it is always
+  // Readiness marker: the "Track IDs" row leads the tab, so it is always
   // built — the 'Extra graphs' header may sit below the lazy ListView's fold
   // since the round-187 visit charts made the tab taller.
   for (var i = 0; i < 250; i++) {
@@ -101,16 +102,38 @@ Future<void> pumpSummaryGraphs(WidgetTester tester, File log) async {
       () => Future<void>.delayed(const Duration(milliseconds: 20)),
     );
     await tester.pump();
-    if (find.textContaining('Track ID timeline').evaluate().isNotEmpty) break;
+    if (find.text('Track IDs').evaluate().isNotEmpty) break;
   }
   expect(
-    find.textContaining('Track ID timeline'),
+    find.text('Track IDs'),
     findsWidgets,
     reason: 'graphs content never appeared — fixture/load problem',
   );
   // One more frame so the post-frame timeline-visibility check has run.
   await tester.pump();
 }
+
+/// The Graphs tab's own scrollable.
+ScrollableState graphsScrollable(WidgetTester tester) => tester.state<ScrollableState>(
+  find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)),
+);
+
+/// Scrolls the Graphs tab to its very end. The lazy list only estimates its
+/// length until the rows near the end are built, so jump until the end stays put.
+Future<void> scrollGraphsToEnd(WidgetTester tester) async {
+  final scrollable = graphsScrollable(tester);
+  for (var i = 0; i < 8; i++) {
+    scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
+    await tester.pump();
+  }
+  // One more frame so the post-frame timeline-visibility check has run.
+  await tester.pump();
+}
+
+/// The drawn timeline (its painter class is private to the summary screen).
+final timelineFinder = find.byWidgetPredicate(
+  (w) => w is CustomPaint && w.painter.runtimeType.toString() == '_GanttPainter',
+);
 
 void main() {
   testWidgets(
@@ -128,34 +151,35 @@ void main() {
 
       await pumpSummaryGraphs(tester, log);
 
-      // The floating "Hide timeline" button must not hide behind the bar
-      // (it did in the field: Positioned bottom:16 on an edge-to-edge
+      // The track ID charts lead the tab; the timeline is not shown while the
+      // "Extra graphs" fold is closed (round 362), so no floating button yet.
+      expect(find.text('Track length distribution'), findsOneWidget);
+      expect(timelineFinder, findsNothing);
+      expect(find.text('Hide timeline'), findsNothing);
+
+      // Scroll the tab to its very end: the last content row (the collapsed
+      // "Extra graphs" header) must clear the bar.
+      await scrollGraphsToEnd(tester);
+      expectAboveBottomInset(
+        tester,
+        find.textContaining('Extra graphs'),
+        label: 'last graphs-tab row',
+      );
+
+      // Fold open: the timeline is the last block. Its last row and the
+      // floating "Hide timeline" button must not hide behind the bar (the
+      // button did in the field: Positioned bottom:16 on an edge-to-edge
       // body — round 165).
+      await tester.tap(find.textContaining('Extra graphs'));
+      await tester.pump();
+      await scrollGraphsToEnd(tester);
+      expect(timelineFinder, findsOneWidget);
+      expectAboveBottomInset(tester, timelineFinder, label: 'timeline, the last graphs-tab row');
       expect(find.text('Hide timeline'), findsOneWidget);
       expectAboveBottomInset(
         tester,
         find.text('Hide timeline'),
         label: 'floating timeline button',
-      );
-
-      // Scroll the tab to its very end: the last content row (the collapsed
-      // "Extra graphs" header) must clear the bar too.
-      final scrollable = tester.state<ScrollableState>(
-        find.descendant(
-          of: find.byType(ListView),
-          matching: find.byType(Scrollable),
-        ),
-      );
-      // The lazy list only estimates its length until the rows near the end
-      // are built, so jump again until the end stays put.
-      for (var i = 0; i < 5; i++) {
-        scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
-        await tester.pump();
-      }
-      expectAboveBottomInset(
-        tester,
-        find.textContaining('Extra graphs'),
-        label: 'last graphs-tab row',
       );
 
       // Dispose the screen before the fake view resets.
@@ -166,7 +190,8 @@ void main() {
   testWidgets(
     'no timeline toggle without a collapsible timeline (round 165)',
     (tester) async {
-      SharedPreferences.setMockInitialValues({});
+      // The fold is open in both sessions, so the timeline block is built.
+      SharedPreferences.setMockInitialValues({'extra_graphs_expanded': true});
       simulateBottomSystemBar(tester);
 
       // A time-lapse session: no track ids by design — the timeline area is
@@ -180,6 +205,8 @@ void main() {
         startExtra: ',"config":{"captureTrigger":"timelapse"}',
       );
       await pumpSummaryGraphs(tester, noAi);
+      await scrollGraphsToEnd(tester);
+      expect(find.textContaining('there is no timeline to draw'), findsOneWidget);
       expect(find.text('Hide timeline'), findsNothing);
       expect(find.text('Show timeline'), findsNothing);
       await tester.pumpWidget(const SizedBox());
@@ -191,6 +218,8 @@ void main() {
         detectionsLine(9000, [1, 2, 3]),
       ]);
       await pumpSummaryGraphs(tester, fewLanes);
+      await scrollGraphsToEnd(tester);
+      expect(timelineFinder, findsOneWidget);
       expect(find.text('Hide timeline'), findsNothing);
       await tester.pumpWidget(const SizedBox());
     },

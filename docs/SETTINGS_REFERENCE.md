@@ -670,9 +670,9 @@ keeps busy, from the same reading) and battery power are always logged while rec
 readings are taken for the live preview anyway, so logging them is free: roughly 2–3 MB per
 8-hour session.
 
-In the session summary they appear under the **Extra graphs (temperature, FPS, power)** section (it also holds the heat level graph). It is collapsed at first, and the app remembers
+In the session summary they appear under the **Extra graphs (temperature, FPS, power, track ID timeline)** section (it also holds the heat level graph). It is collapsed at first, and the app remembers
 whether you last left it open or closed. So the track ID
-timeline (the main result) stays front and centre.
+charts (the main result) stay front and centre.
 
 | Setting | Default | What it does / when to change |
 |---|---|---|

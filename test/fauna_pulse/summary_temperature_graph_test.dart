@@ -35,7 +35,7 @@ Future<void> _openGraphs(WidgetTester tester, File log) async {
   for (var i = 0; i < 250; i++) {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
     await tester.pump();
-    if (find.textContaining('Track ID timeline').evaluate().isNotEmpty) break;
+    if (find.textContaining('Extra graphs').evaluate().isNotEmpty) break;
   }
   final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
   await tester.scrollUntilVisible(find.textContaining('Extra graphs'), 300, scrollable: scrollable);

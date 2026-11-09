@@ -10174,3 +10174,34 @@ with the two columns) and the summary graph with and without chip data; analyzer
 
 Open: a chip-based heat pause once several phones' readings under load are known; the 11T Pro's
 camera screen was not opened (its sensors were read by the device check only).
+
+## Round 362 (2026-11-09): summary charts with a value axis and the timeline in the extra graphs, "Describe the problem" fixed, photo viewer error, Home text
+
+Asked (seven points from the owner's use of the Xiaomi 11T Pro): the track ID timeline is impractical
+with thousands of track IDs and the bar charts have no value axis; "Describe the problem" shrinks
+its text box to one line when the keyboard opens and overflows with screenshots attached; a red
+RangeError screen in the Photos tab after changing the sample size; "camera trap" on Home reads
+oddly to general users.
+
+Decided: the timeline is the last block of the "Extra graphs" fold (owner: a diagnostic; last, so
+no graph sits below a long list), the track length and time-of-day charts lead. The bar charts
+(summary and Dashboard) have a left axis with round steps taken from the tallest bar, and an axis
+name. The RangeError: the photo list can be swapped without a frame in between (the session index
+is already read), so the viewer kept its page number; the viewer is now keyed on its list
+(rejected: a page reset in `didUpdateWidget`, which jumps the page view during a build). The
+report screen is a scrolling list with the two buttons under it. Owner chose two extras: the
+unsent text is kept as a draft file in the reports folder until the report is shared (not in the
+shared preferences, which Android backs up; the privacy policy says so), and thumbnails replace
+the file-name chips. Home text chosen by the owner from three options.
+
+Checked: tests that fail before the fixes (the same RangeError; overflow with the keyboard and four
+screenshots), tests for the draft, the axis steps and the new Graphs order; on the Xiaomi 11T Pro
+the sample-size steps, both zenodo test sessions' charts (13 and 2,341 track IDs), the timeline in
+the fold, the text box with the keyboard, the draft kept and cleared. Not checked on a phone:
+picking screenshots (the picker shows private photos) and the changed step of
+`video_review_check_test.dart`.
+
+Open (owner decides): phone readings during Identify for the summary graphs (Identify saves none
+today; planned as the next round); what the summary shows per kind of session, and for time-lapse
+sessions whose photos are too far apart for track IDs; an anonymous report channel was advised
+against for now (no server; Google Forms asks for a sign-in to upload files).

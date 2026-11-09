@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/crash_store.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/error_reporter.dart';
@@ -363,6 +364,35 @@ void main() {
           .toList();
       expect(names, hasLength(3)); // .txt + 2 screenshots
       expect(names.first, endsWith('.txt'));
+    });
+
+    test('the unsent description is kept as a draft until its report is shared (round 362)', () async {
+      // What the share sheet answers: '' = closed without choosing an app, else the app chosen.
+      const shareChannel = MethodChannel('dev.fluttercommunity.plus/share');
+      var shareAnswer = '';
+      final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(shareChannel, (call) async => shareAnswer);
+      addTearDown(() => messenger.setMockMethodCallHandler(shareChannel, null));
+
+      expect(await ErrorReporter.loadDraft(), '');
+      await ErrorReporter.saveDraft('It froze after 5 minutes');
+      expect(await ErrorReporter.loadDraft(), 'It froze after 5 minutes');
+      // The draft is no report: the list of reports does not show it.
+      expect(await ErrorReporter.listReports(), isEmpty);
+
+      // Building the report keeps the text: the user may close the report's window to correct it.
+      final report = await ErrorReporter.build(trigger: 'test', userDescription: 'It froze after 5 minutes');
+      expect(await ErrorReporter.loadDraft(), 'It froze after 5 minutes');
+      // A share sheet closed without choosing an app sent nothing.
+      await ErrorReporter.share(report);
+      expect(await ErrorReporter.loadDraft(), 'It froze after 5 minutes');
+      // Handed to an app: sent, the next description starts empty.
+      shareAnswer = 'com.example.mail/.Compose';
+      await ErrorReporter.share(report);
+      expect(await ErrorReporter.loadDraft(), '');
+
+      await ErrorReporter.saveDraft('   ');
+      expect(await ErrorReporter.loadDraft(), '');
     });
 
     test('no attachments, no session: bare txt, no zip', () async {

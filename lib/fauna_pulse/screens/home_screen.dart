@@ -754,11 +754,13 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
                       style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 2),
-                    // Round 284 (owner): "camera trap" says the phone stays in
-                    // place ("follow" read as moving the phone after the
-                    // animal).
+                    // What the app does, in the three ways Home offers below (the live
+                    // camera, saved photos, saved videos). No "camera trap" (round 362,
+                    // owner): the term is ecologists' jargon and "trap" reads oddly to
+                    // other users. No "follow" either (round 284): it read as moving the
+                    // phone after the animal.
                     const Text(
-                      'Your phone as a camera trap: find, count and name animals',
+                      'Finds, counts and identifies animals, live or in your photos and videos',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 13, color: Colors.white70),
                     ),
@@ -1038,9 +1040,9 @@ class AboutFaunaPulseDialog extends StatelessWidget {
           children: [
             // Round 278 (owner): for a broad audience, and naming the
             // animals (identification on the phone) said plainly. Round 284:
-            // the phone stays in one place (a camera trap).
+            // the phone stays in one place.
             const Text(
-              'FaunaPulse turns a phone, fixed in one place, into a camera trap that watches animals for '
+              'FaunaPulse turns a phone, fixed in one place, into a camera that watches animals for '
               'you: for example insects visiting a flower, or birds and mammals at a feeding site.\n\n'
               'With AI models (free files you download or import in the app), FaunaPulse can:\n'
               '• find the animals in the picture and tell them apart from picture to picture while they '

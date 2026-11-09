@@ -200,6 +200,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ].join(' '),
         child: MiniBarChart(
           values: agg.visitsByHour,
+          yLabel: 'Track IDs',
           xLabelFor: (i) => switch (i) {
             0 || 6 || 12 || 18 => '$i h',
             _ => null,
@@ -218,6 +219,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ].join(' '),
         child: MiniBarChart(
           values: [for (final b in agg.activity) b.count],
+          yLabel: 'Track IDs',
           xLabelFor: (i) {
             // First, last, and (when room) the middle bucket.
             final n = agg.activity.length;

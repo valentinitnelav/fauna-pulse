@@ -89,7 +89,9 @@ lines, plus the screenshots you choose to attach.
 
 On the **Describe the problem** screen you also choose one session whose settings and sampled
 files go into the report, or **No session data**. With screenshots or session files, the
-report is one zip file.
+report is one zip file. The text you typed is kept on the phone (in the app's private
+storage, excluded from Android backup) until you share the report, so it is shown again if
+you leave the screen or close the report without sharing it; **Clear text** deletes it.
 
 The report is created locally and only leaves the phone if you share it yourself: **Share…**
 hands it to an app you choose (for example a messaging app or a cloud drive), or you paste
