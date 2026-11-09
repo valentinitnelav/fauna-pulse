@@ -722,6 +722,9 @@ void main() {
       await tester.pumpAndSettle();
     }
     await tester.scrollUntilVisible(find.text('While the detector ran'), 200, scrollable: graphs);
+    // scrollUntilVisible ends with a jump and no frame: this one builds the rows below the
+    // choice (two rows of chips at this width since round 363, so the title sits lower).
+    await tester.pump();
     expect(find.text('Battery temperature over the session (°C)'), findsOneWidget);
     await tester.tap(find.text('While the detector ran'));
     await _pumpUntil(tester, find.textContaining('No measurements yet.'));

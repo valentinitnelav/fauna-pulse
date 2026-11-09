@@ -54,6 +54,7 @@ with ▸ to open it.
 - **Where did a FaunaLapse session come from?** `faunalapse_session.jsonl`, [§8b](#8b-sessions-imported-from-faunalapse)
 - **Boxes and track IDs in videos?** `video_detections.jsonl`, `post_tracks.jsonl`, `track_ids.csv`, [§9](#9-imported-videos-videos-video_detectionsjsonl)
 - **The phone during a video analysis?** `phone_during_analysis.csv`, [§9](#the-phone-during-the-analysis)
+- **The phone during an identification?** `identification/phone_during_identification.csv`, [§8](#the-phone-during-the-identification)
 - **The Dashboard's numbers?** `dashboard_stats.json` (a cache), [§7](#7-derived-cache-files-safe-to-ignore)
 
 For the photo-resolution side of the data (`saves_px`, `analysis_frame_*`), see
@@ -1349,6 +1350,7 @@ the folder repeats the column dictionary for whoever gets the folder later.
 | `tracks_<pack>.csv` / `.json` | one answer per track ID |
 | `crops_<pack>.csv` | one row per crop |
 | `summary_<pack>.json` | counts for the app |
+| `phone_during_identification.jsonl` / `.csv` | the phone's heat, power, memory and speed during every run |
 
 ### `embeddings_<model>.jsonl` + `embeddings_<model>.bin`
 
@@ -1575,6 +1577,100 @@ aggregate(track_id ~ bioclip_family, data = subset(tr, p_family >= 0.8), FUN = l
 (was `none`), `src` in `tracks[]` since round 209, `capture` (`photo_step_s`,
 `photo_duration_s`) since round 216, `track_ids_run_id` since round 234. Re-scoring refuses on
 a different `run_id` since round 235.
+
+</details>
+
+### The phone during the identification
+
+While **Identify organisms** runs, the app writes the phone's readings into
+`phone_during_identification.jsonl`: one sample at the start of a run, one every `sample_s`
+seconds (10), one where each step ends, also while the run waits for the phone to cool down.
+A run has two steps: `crops` (the crops go through the model) and `results` (the crops are
+combined into one answer per track ID; **Update results** is a run with this step only).
+
+The file is for the whole session, not per model or name list, and it is append-only: every
+run adds its records, also a run that was stopped, started over or closed by Android. A sample
+is up to three records with the same `time_ms`, built like the samples of a video analysis
+([§9](#the-phone-during-the-analysis)), so the same script reads both.
+
+| `type` | Fields |
+|---|---|
+| `identify_run_start` | `model`, `pack`, `accelerator`, `step` (the run's first step), `sample_s`, `thermal_limit_c`, `scoring_workers` (the *Cores for combining results* setting, 0 = automatic), `crops_pending`, `app_version`. **Update results** writes `model`, `pack`, `step`, `sample_s`, `scoring_workers` and `app_version`. |
+| `thermal` | The live record's fields without the storage ones (§3), plus `step` and `paused: true` while the run waits to cool down. |
+| `power` | The live record's fields, with the same raw-sensor caveats (§3). |
+| `identify_speed` | The crops since the previous `identify_speed` record (fields below). Only in the `crops` step. |
+| `identify_thermal_pause`, `identify_thermal_resume` | Each cooling pause: `temp_c`, `limit_c`, `resume_below_c`; then `temp_c`, `paused_ms`, and `cancelled: true` when the run was stopped while waiting. |
+| `identify_run_end` | `cancelled`, and `error` when the run failed. Missing when Android closed the app during the run. |
+
+- **`step` names the step up to the sample.** The sample where the crops end still says
+  `crops`; the samples after it say `results`. So the time of a step is the sum of the time
+  before each of its samples.
+- **`identify_speed`:** `step`, `period_ms`, `crops`, `crops_per_s`, `model_ms`, `paused_ms`.
+  - A period runs from the previous `identify_speed` record (or the start of the run) to this
+    one. A sample without a finished crop writes no record and the period goes on: a large
+    model on the processor needs longer for one crop than the sample interval.
+  - `crops_per_s` is crops per second of clock time in the period, reading the photos and
+    cooling pauses included.
+  - `model_ms` is the model's own time per crop (the mean over the period's crops).
+  - `paused_ms` is the part of the period spent cooling down.
+
+**Graphs and CSV.** The summary's Graphs tab (under *Extra graphs*, choice **While identification
+ran**) plots the samples on the identification's own time: the runs back to back with a gap
+between them, cooling pauses shaded. At the end of every run the app writes all samples of the
+session again as `phone_during_identification.csv`, one row per sample:
+
+`run`, `time_s`, `epoch_ms`, `model`, `step`, `temp_c`, `headroom`, `thermal_status`, `power_w`,
+`battery_current_ua`, `battery_voltage_mv`, `charging`, `plugged`, `crops_per_s`, `crops`,
+`model_ms`, `paused`, `paused_ms`, `mem_total_bytes`, `mem_free_bytes`, `app_memory_bytes`,
+`app_cpu_cores`, `cpu_temp_c`, `gpu_temp_c`.
+
+These are the columns of `phone_during_analysis.csv` ([§9](#the-phone-during-the-analysis)) in
+the same order, with these differences:
+
+| Column | Meaning |
+|---|---|
+| `run` | 1, 2, … per start of **Identify organisms** or **Update results** on this session. |
+| `model`, `step` | The run's model file, and the step up to this row (in place of `clip`). |
+| `crops_per_s`, `crops`, `model_ms` | From the `identify_speed` record of the same time (in place of the frame columns). Empty in rows without one. |
+
+- **After a run that Android closed**, the CSV lacks that run until the next run ends. The
+  `.jsonl` file always has it.
+- **Weight by `crops`** when you average `model_ms` or `crops_per_s`: rows cover different
+  numbers of crops.
+- **The power columns mean nothing while the phone is plugged in** (`charging` or `plugged`),
+  as in live sessions (§3). Identification is usually run on the charger.
+
+<details>
+<summary>R and Python code: reading <code>phone_during_identification.csv</code></summary>
+
+```r
+p <- read.csv("identification/phone_during_identification.csv")
+plot(p$time_s / 60, p$temp_c, type = "l", xlab = "identification time (min)", ylab = "battery °C")
+# Seconds spent in each step of each run: the time before each row belongs to that row's step.
+p$step_s <- ave(p$time_s, p$run, FUN = function(x) c(0, diff(x)))
+aggregate(step_s ~ run + model + step, data = p, FUN = sum)
+# Model time per crop in each run.
+d <- subset(p, !is.na(model_ms))
+sapply(split(d, d$run), function(x) weighted.mean(x$model_ms, x$crops))
+```
+
+```python
+import pandas as pd
+p = pd.read_csv("identification/phone_during_identification.csv")
+p.plot(x="time_s", y=["temp_c", "cpu_temp_c", "gpu_temp_c"])
+p["step_s"] = p.groupby("run").time_s.diff().fillna(0)
+print(p.groupby(["run", "model", "step"]).step_s.sum())
+d = p.dropna(subset=["model_ms"])
+print((d.model_ms * d.crops).groupby(d.run).sum() / d.crops.groupby(d.run).sum())
+```
+
+</details>
+
+<details>
+<summary>Older files: the phone during the identification</summary>
+
+Both files exist since round 363. A session identified before that has neither, and the
+summary's choice **While identification ran** says "Not measured".
 
 </details>
 
@@ -1862,7 +1958,7 @@ intervals, at least a minute), cooling pauses shaded. *Share results* adds them 
 `run`, `time_s`, `epoch_ms`, `clip`, `temp_c`, `headroom`, `thermal_status`, `power_w`,
 `battery_current_ua`, `battery_voltage_mv`, `charging`, `plugged`, `frames_per_s`, `frames`,
 `decode_ms`, `convert_ms`, `detect_ms`, `paused`, `paused_ms`, `mem_total_bytes`,
-`mem_free_bytes`, `app_memory_bytes`, `app_cpu_cores`. Explained:
+`mem_free_bytes`, `app_memory_bytes`, `app_cpu_cores`, `cpu_temp_c`, `gpu_temp_c`. Explained:
 
 | Column | Meaning |
 |---|---|
@@ -1873,6 +1969,7 @@ intervals, at least a minute), cooling pauses shaded. *Share results* adds them 
 | `frames` | Frames analysed since the previous row. |
 | `paused_ms` | The part of the period spent cooling down. |
 | `mem_total_bytes`, `mem_free_bytes`, `app_memory_bytes`, `app_cpu_cores` | As in the `thermal` record (§3): the phone's memory and the processor cores FaunaPulse kept busy. The video decoder runs in another Android process, so the cores figure is not the whole load of the analysis. Empty in files of older app versions. |
+| `cpu_temp_c`, `gpu_temp_c` | As in the `thermal` record (§3): the chip's hottest processor core and graphics sensor. Empty on phones that do not let apps read them. |
 
 - **Empty cells** are values the phone did not report, or no frames in that period.
 - **A battery current of exactly 0** counts as not reported. So `power_w` is empty whenever a

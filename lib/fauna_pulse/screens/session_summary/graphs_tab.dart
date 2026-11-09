@@ -151,24 +151,22 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
         ),
       ),
     ),
-    if (_extraGraphsExpanded && _diagnosticsOffSession)
-      const Padding(
-        padding: EdgeInsets.only(top: 4),
-        child: Text(
-          'No temperature, FPS or power data were saved for this session.',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-      )
-    else if (_extraGraphsExpanded && _showRunGraphs) ...[
-      if (_recordedVideoSession || _liveVideoSession) _graphsSourceSwitch(),
-      ..._videoRunGraphs(),
-    ] else if (_extraGraphsExpanded && (_recordedVideoSession || _liveVideoSession) && _videoRun != null) ...[
-      _graphsSourceSwitch(),
-      ..._liveGraphs(),
-    ]
-    else if (_extraGraphsExpanded)
-      ..._liveGraphs(),
-    if (_extraGraphsExpanded) ..._timelineSection(),
+    if (_extraGraphsExpanded) ...[
+      if (_graphsSources.length > 1) _graphsSourceSwitch(),
+      if (_showRunGraphs)
+        ..._runGraphs()
+      else if (_diagnosticsOffSession)
+        const Padding(
+          padding: EdgeInsets.only(top: 4),
+          child: Text(
+            'No temperature, FPS or power data were saved for this session.',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+        )
+      else
+        ..._liveGraphs(),
+      ..._timelineSection(),
+    ],
   ];
 
   /// The track ID timeline, in the extra graphs since round 362: with hundreds
@@ -312,29 +310,52 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
     ],
   ];
 
-  /// Recorded bursts (round 239): which graphs the extra section shows.
+  /// Which phone readings the extra graphs show (rounds 239, 363), offered
+  /// when the session has more than one kind. Chips in a Wrap, not a segmented
+  /// button: three labels of this length do not fit side by side on a narrow
+  /// phone, and chips flow to a second row instead of breaking words.
   Widget _graphsSourceSwitch() => Padding(
     padding: const EdgeInsets.only(top: 8),
-    child: SegmentedButton<bool>(
-      segments: const [
-        ButtonSegment(value: false, label: Text('While recording')),
-        ButtonSegment(value: true, label: Text('While the detector ran')),
+    child: Wrap(
+      spacing: 6,
+      children: [
+        for (final source in _graphsSources)
+          ChoiceChip(
+            label: Text(switch (source) {
+              _GraphsSource.recording => 'While recording',
+              _GraphsSource.detector => 'While the detector ran',
+              _GraphsSource.identification => 'While identification ran',
+            }),
+            selected: source == _graphsSource,
+            showCheckmark: false,
+            onSelected: (_) async {
+              if (source == _graphsSource) return;
+              // While the other readings are read, the graphs and the track ID
+              // charts are empty and the page is shorter, so the list moves up.
+              // Afterwards it goes back to where the choice was tapped.
+              final tappedAt = _scroll.hasClients ? _scroll.offset : null;
+              setState(() => _graphsChoice = source);
+              _clearGraphData();
+              await _loadGraphs();
+              if (tappedAt == null || !mounted) return;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _scroll.hasClients) {
+                  _scroll.jumpTo(min(tappedAt, _scroll.position.maxScrollExtent));
+                }
+              });
+            },
+          ),
       ],
-      selected: {_graphsOfAnalysis},
-      showSelectedIcon: false,
-      onSelectionChanged: (s) async {
-        setState(() => _graphsOfAnalysis = s.first);
-        _clearGraphData();
-        await _loadGraphs();
-      },
     ),
   );
 
-  /// The extra graphs of an imported video session (round 232): the phone
-  /// while "Run AI on videos" ran, from the samples [VideoDetector] writes,
-  /// on the analysis clock of [VideoRunSamples] (runs back to back, a gap
-  /// between two runs, cooling pauses shaded).
-  List<Widget> _videoRunGraphs() {
+  /// The extra graphs of a job that ran afterwards: the phone while "Find
+  /// animals in videos" ran (round 232, the samples [VideoDetector] writes),
+  /// or while Identify ran (round 363, [IdentifyPhoneLog]), on the analysis
+  /// clock of [VideoRunSamples] (runs back to back, a gap between two runs,
+  /// cooling pauses shaded).
+  List<Widget> _runGraphs() {
+    final identify = _graphsSource == _GraphsSource.identification;
     final s = _videoSamples;
     if (s == null || s.isEmpty) {
       return [
@@ -342,8 +363,17 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
         Text(
           _graphsLoading
               ? '…'
-              : 'No measurements yet. The phone\'s temperature, power and '
-                    'speed are written down while "Find animals in videos" runs.',
+              : !identify
+              ? 'No measurements yet. The phone\'s temperature, power and '
+                    'speed are written down while "Find animals in videos" runs.'
+              // A session identified before the readings were saved has results
+              // and no readings file.
+              : _identifyReadings
+              ? 'No measurements yet. The phone\'s temperature, power and '
+                    'speed are written down while "Identify organisms" runs.'
+              : 'Not measured: when this session was identified, the app did not yet '
+                    'write down the phone\'s temperature, power and speed. To measure '
+                    'them, identify it again ("Identify organisms" on the Photos tab).',
           style: const TextStyle(color: Colors.white54, fontSize: 12),
         ),
       ];
@@ -356,25 +386,37 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
     final every = s.sampleSeconds.isEmpty ? '…' : s.sampleSeconds.join(' or ');
     return [
       const SizedBox(height: 12),
-      const Text('While the detector ran on the videos', style: bold),
+      Text(identify ? 'While identification ran' : 'While the detector ran on the videos', style: bold),
       const SizedBox(height: 4),
       Text(
-        'Measured every $every s while "Find animals in videos" ran. '
-        'Time runs over the analysis only: a run that was stopped and '
-        'continued later shows as a gap. Grey bands: paused for the phone '
-        'to cool down.',
+        identify
+            ? 'Measured every $every s while "Identify organisms" ran: while the crops '
+                  'went through the model, and while they were combined into one answer '
+                  'per track ID. Time runs over the identification only: every run on '
+                  'this session is shown, with a gap between two runs. Grey bands: '
+                  'paused for the phone to cool down.'
+            : 'Measured every $every s while "Find animals in videos" ran. '
+                  'Time runs over the analysis only: a run that was stopped and '
+                  'continued later shows as a gap. Grey bands: paused for the phone '
+                  'to cool down.',
         style: note,
       ),
       const SizedBox(height: 8),
       _stat(
-        'Analysis time',
+        identify ? 'Identification time' : 'Analysis time',
         '${_hmsLabel(s.runMs)}${s.runs > 1 ? ' in ${s.runs} runs' : ''}',
       ),
-      _stat('Frames analyzed', '${s.frames}'),
-      _stat(
-        'Speed while running',
-        mean == null ? 'unknown' : '${mean.toStringAsFixed(1)} frames per second',
-      ),
+      if (identify) ...[
+        _stat('Identifying crops', _hmsLabel(s.msOf('crops'))),
+        _stat('Combining results', _hmsLabel(s.msOf('results'))),
+        _stat('Crops identified', '${s.frames}'),
+      ] else ...[
+        _stat('Frames analyzed', '${s.frames}'),
+        _stat(
+          'Speed while running',
+          mean == null ? 'unknown' : '${mean.toStringAsFixed(1)} frames per second',
+        ),
+      ],
       _stat(
         'Cooling pauses',
         s.pauses.isEmpty
@@ -383,7 +425,7 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
       ),
       _stat(
         'Energy used',
-        _chargingDuringSession
+        _runPlugged
             ? 'not measured: the phone was plugged in'
             : _energyTotalWh == null
             ? 'unknown'
@@ -415,12 +457,20 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
         ),
       ],
       const SizedBox(height: 28),
-      const Text('Frames analyzed per second', style: bold),
+      Text(identify ? 'Crops identified per second' : 'Frames analyzed per second', style: bold),
       const SizedBox(height: 4),
-      const Text(
-        'Video frames the detector finished per second of clock time, averaged '
-        'since the previous measurement; 0 while paused to cool down. It '
-        'drops when the phone slows itself down to cool off.',
+      Text(
+        identify
+            // Keep in sync with IdentifyPhoneLog.sample: a period runs until a
+            // crop is finished, and the "results" step writes no speed.
+            ? 'Crops the model finished per second of clock time (reading the photos '
+                  'included), counted from one measurement with a finished crop to the '
+                  'next; lower in a period with a cooling pause. No points while the '
+                  'results were combined. It drops when the phone slows itself down to '
+                  'cool off.'
+            : 'Video frames the detector finished per second of clock time, averaged '
+                  'since the previous measurement; 0 while paused to cool down. It '
+                  'drops when the phone slows itself down to cool off.',
         style: note,
       ),
       const SizedBox(height: 12),
@@ -431,23 +481,33 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
         Padding(
           padding: const EdgeInsets.only(top: 8),
           child: Text(
-            'Without the cooling pauses: median ${st.median.toStringAsFixed(1)} fps; '
-            'min ${st.min.toStringAsFixed(1)} fps, max ${st.max.toStringAsFixed(1)} fps. '
-            'The average is "Speed while running" above.',
+            identify
+                // Two decimals: a large model on the CPU needs several seconds per crop.
+                ? 'Without the cooling pauses: median ${st.median.toStringAsFixed(2)} crops per '
+                      'second; min ${st.min.toStringAsFixed(2)}, max ${st.max.toStringAsFixed(2)}.'
+                : 'Without the cooling pauses: median ${st.median.toStringAsFixed(1)} fps; '
+                      'min ${st.min.toStringAsFixed(1)} fps, max ${st.max.toStringAsFixed(1)} fps. '
+                      'The average is "Speed while running" above.',
             style: note,
           ),
         ),
       if (_infMs.length >= 2) ...[
         const SizedBox(height: 28),
-        const Text('Detector time per frame (ms)', style: bold),
+        Text(identify ? 'Model time per crop (ms)' : 'Detector time per frame (ms)', style: bold),
         const SizedBox(height: 4),
         // Keep in sync with VideoFrameSource.kt: inferMs times the whole
         // predict() call (input preparation, model run, box decoding + NMS).
-        const Text(
-          'How long the detector needs for one frame, in milliseconds, '
-          'averaged since the previous measurement (reading the frame from the '
-          'video is not included). It climbs when the phone slows its chip down '
-          'to cool off.',
+        // Identify: the time of the model calls alone (IdentificationJob).
+        Text(
+          identify
+              ? 'How long the identification model needs for one crop, in milliseconds, '
+                    'averaged over the crops since the previous point (reading and cutting '
+                    'the photo is not included). It climbs when the phone slows its chip '
+                    'down to cool off.'
+              : 'How long the detector needs for one frame, in milliseconds, '
+                    'averaged since the previous measurement (reading the frame from the '
+                    'video is not included). It climbs when the phone slows its chip down '
+                    'to cool off.',
           style: note,
         ),
         const SizedBox(height: 12),
@@ -458,12 +518,12 @@ extension _SummaryGraphsTab on _SessionSummaryScreenState {
       const SizedBox(height: 28),
       const Text('Power draw (W)', style: bold),
       const SizedBox(height: 4),
-      if (_chargingDuringSession)
-        const Text(
-          'Not shown: the phone was plugged in during (part of) the analysis. '
+      if (_runPlugged)
+        Text(
+          'Not shown: the phone was plugged in during (part of) the ${identify ? 'identification' : 'analysis'}. '
           'The battery sensor then measures charging current, not what the '
-          'phone uses. Run the analysis on battery to see this graph.',
-          style: TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
+          'phone uses. Run the ${identify ? 'identification' : 'analysis'} on battery to see this graph.',
+          style: const TextStyle(color: Color(0xFFFFB74D), fontSize: 12),
         )
       else ...[
         const Text(

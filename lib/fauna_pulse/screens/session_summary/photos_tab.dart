@@ -285,7 +285,7 @@ extension _SummaryPhotosTab on _SessionSummaryScreenState {
                       IdentificationScreen(sessionDir: widget.logFile.parent),
                 ),
               )
-              .then((_) => _loadIdentification()),
+              .then((_) => _loadIdentification(reloadGraphs: true)),
           icon: const Icon(Icons.biotech_outlined),
           label: const Text('Identify organisms'),
         ),

@@ -9,6 +9,8 @@
 // each track's crops (track_fusion) and write the outputs
 // (identification_store). Phase 2 runs in its own isolate and can be
 // re-run alone with another pack ("re-score") without touching the model.
+// The phone's readings during both phases go to their own file (round 363,
+// identify_phone_log.dart).
 //
 // Everything native or slow is injected, so the driver is unit-testable.
 
@@ -33,6 +35,7 @@ import '../postprocess/video_tracker.dart' show KeepFramesSettings, VideoTracker
 import 'crop_planner.dart';
 import 'crop_worker.dart';
 import 'identification_store.dart';
+import 'identify_phone_log.dart';
 import 'label_pack.dart';
 import 'track_fusion.dart';
 
@@ -210,11 +213,15 @@ class IdentificationJob {
   /// How long the governor sleeps between temperature checks while paused.
   final Duration pausePoll;
 
+  /// Time between two saved phone readings (round 363, [IdentifyPhoneLog]).
+  final Duration sampleEvery;
+
   IdentificationJob({
     required this.embed,
     CropFn? crop,
     ThermalFn? thermal,
     this.pausePoll = const Duration(seconds: 15),
+    this.sampleEvery = kIdentifySampleEvery,
   }) : crop = crop ?? cropBatch,
        thermal = thermal ?? DeviceThermal.read;
 
@@ -273,6 +280,7 @@ class IdentificationJob {
     if (!_activeSessions.add(key)) {
       throw Exception('This session is already being identified. Wait for that run to finish, or cancel it first.');
     }
+    final phoneLog = IdentifyPhoneLog(sessionDir, thermal: thermal, every: sampleEvery);
     try {
       return await _run(
         sessionDir,
@@ -284,8 +292,10 @@ class IdentificationJob {
         scoreAfter: scoreAfter,
         restart: restart,
         beforeScoring: beforeScoring,
+        phoneLog: phoneLog,
       );
     } finally {
+      phoneLog.close(); // only after a failure that skipped its end: no timer outlives the run
       _activeSessions.remove(key);
     }
   }
@@ -300,6 +310,7 @@ class IdentificationJob {
     required bool scoreAfter,
     required bool restart,
     Future<void> Function()? beforeScoring,
+    required IdentifyPhoneLog phoneLog,
   }) async {
     final started = DateTime.now();
     final paths = IdentificationPaths(sessionDir);
@@ -370,6 +381,16 @@ class IdentificationJob {
       'crops_pending': pending.length,
       'crops_done_before': done.length,
       'track_ids_run_id': ?visitsRunId, // "visits_run_id" before round 248
+      if (appVersion.isNotEmpty) 'app_version': appVersion,
+    });
+    // Round 363: from here to the end of the scoring the phone's readings are saved.
+    await phoneLog.start({
+      'model': settings.modelName,
+      'pack': settings.packName,
+      'accelerator': settings.accelerator,
+      'thermal_limit_c': settings.thermalLimitC,
+      'scoring_workers': ?settings.extra['scoring_workers'],
+      'crops_pending': pending.length,
       if (appVersion.isNotEmpty) 'app_version': appVersion,
     });
 
@@ -454,7 +475,10 @@ class IdentificationJob {
             pauseFrom ??= clock.elapsed;
             emit('paused', tempC: t, note: note);
           },
-          onReading: (r, _) => phone = r,
+          onReading: (r, waiting) {
+            phone = r;
+            if (waiting) phoneLog.pauseStarted(r.batteryTempC, settings.thermalLimitC);
+          },
           errorTag: 'identify_thermal',
         );
         if (pauseFrom != null) {
@@ -463,6 +487,7 @@ class IdentificationJob {
         }
         final temp = warm.tempC;
         if (warm.paused) {
+          phoneLog.pauseEnded(temp, cancelled: isCancelled?.call() ?? false);
           pauses++;
           if (isCancelled?.call() ?? false) {
             cancelled = true;
@@ -518,6 +543,7 @@ class IdentificationJob {
           final dt = (clock.elapsed - t0).inMicroseconds / 1000.0;
           embedMs += dt;
           embedCount += batch.length;
+          phoneLog.addCrops(batch.length, dt);
           for (var j = 0; j < batch.length; j++) {
             final r = batch[j];
             final t = byKey[r.key]!;
@@ -575,6 +601,7 @@ class IdentificationJob {
       // Round 359: the scoring reports track IDs fused / total; nothing until the first message.
       final avgMs = embedCount == 0 ? 0.0 : embedMs / embedCount;
       onProgress?.call(IdentifyProgress(stage: 'scoring', done: 0, total: 0, avgMs: avgMs));
+      await phoneLog.beginStep('results');
       // Round 347 (perf review H1): the caller may free the native model here. The embedding
       // files are complete and closed above, so a failure here loses nothing and scoring goes on.
       if (beforeScoring != null) {
@@ -599,6 +626,7 @@ class IdentificationJob {
         error = 'Scoring failed: $e';
       }
     }
+    await phoneLog.end(cancelled: cancelled, error: error);
     onProgress?.call(IdentifyProgress(stage: 'done', done: pending.length, total: pending.length, avgMs: embedCount == 0 ? 0 : embedMs / embedCount));
     return IdentifyResult(
       planned: tasks.length,

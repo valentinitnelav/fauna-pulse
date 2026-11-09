@@ -31,6 +31,7 @@ import '../identification/identification_choice.dart';
 import '../identification/identification_job.dart';
 import '../identification/identification_run.dart';
 import '../identification/identification_store.dart';
+import '../identification/identify_phone_log.dart';
 import '../identification/identify_wait_note.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_thermal.dart';
@@ -531,20 +532,31 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     try {
       final pinfo = await PackageInfo.fromPlatform();
       final modelName = model.path.split('/').last;
-      final summary = await IdentificationJob.scoreSession(
+      final appVersion = '${pinfo.version}+${pinfo.buildNumber}';
+      // Round 363: the phone's readings of this step are saved like those of a whole run.
+      final summary = await IdentifyPhoneLog.during(
         widget.sessionDir,
-        modelName: modelName,
-        modelId: stemOf(modelName),
-        packFile: pack,
-        settings: {
-          ...prefs.toJson(),
+        run: {
           'model': modelName,
           'pack': pack.path.split('/').last,
+          'scoring_workers': prefs.scoringWorkers,
+          'app_version': appVersion,
         },
-        appVersion: '${pinfo.version}+${pinfo.buildNumber}',
-        onProgress: (done, total) {
-          if (mounted) setState(() => _progress = IdentifyProgress(stage: 'scoring', done: done, total: total, avgMs: 0));
-        },
+        work: () => IdentificationJob.scoreSession(
+          widget.sessionDir,
+          modelName: modelName,
+          modelId: stemOf(modelName),
+          packFile: pack,
+          settings: {
+            ...prefs.toJson(),
+            'model': modelName,
+            'pack': pack.path.split('/').last,
+          },
+          appVersion: appVersion,
+          onProgress: (done, total) {
+            if (mounted) setState(() => _progress = IdentifyProgress(stage: 'scoring', done: done, total: total, avgMs: 0));
+          },
+        ),
       );
       _result = IdentifyResult(
         planned: 0,

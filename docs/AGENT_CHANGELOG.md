@@ -10205,3 +10205,26 @@ Open (owner decides): phone readings during Identify for the summary graphs (Ide
 today; planned as the next round); what the summary shows per kind of session, and for time-lapse
 sessions whose photos are too far apart for track IDs; an anonymous report channel was advised
 against for now (no server; Google Forms asks for a sign-in to upload files).
+
+## Round 363 (2026-11-09): phone readings during Identify, shown in the summary's extra graphs
+
+Asked: Identify showed the phone's temperature live and saved nothing. Save the readings through
+both steps and the heat pauses, and show them as a third choice of the extra graphs.
+
+Owner's choices: a fixed 10 s (as the camera and the videos; not a setting, not 5 s) and a table
+in the session folder after each run (a table only when sharing would change what Share sends).
+
+Why this shape: the records copy those of the video analysis, so one parser and one set of graphs
+serve both. The samples have their own timer: the job reads the phone once per photo, and not at
+all while the results are combined. A speed period runs until a crop is finished (a slow model
+would otherwise show zero and too-high speeds in turn). A run's plugged-in flag is apart from the
+recording's. Three long labels do not fit a segmented button, so the choice is chips, and the
+page returns to where it was tapped.
+
+Checked: tests with a test clock, the job, the summary at 360 px, the whole suite (four tests
+waited a fixed time for a run's end or a frame; they now wait for the event). Xiaomi 11T Pro: a
+run of 116 crops, "Update results", a run closed part-way and continued, the graphs, "not
+measured".
+
+Open: no heat pause occurred on the phone (tests only); a run with a single speed sample draws no
+point in the speed graphs.

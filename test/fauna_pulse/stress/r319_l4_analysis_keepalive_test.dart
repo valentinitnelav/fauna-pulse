@@ -261,8 +261,10 @@ void main() {
         phone(tester);
         final session = makeSession();
         await tester.pumpWidget(MaterialApp(home: IdentificationScreen(sessionDir: session, autoStart: true)));
-        await pumpUntil(tester, () => yolo.contains('embedderClose'), 'the run ends');
-        await settle(tester, 10);
+        await pumpUntil(tester, () => yolo.contains('embedderClose'), 'the model closes');
+        // The model closes before the results are combined; the run ends after them and after
+        // its phone readings are written (round 363), so wait for the stop itself, not a fixed time.
+        await pumpUntil(tester, () => calls().contains('stop'), 'the run ends and stops the service');
         expect(yolo, contains('keepalive holds: 1'), reason: 'no hold while the model embeds: $yolo');
         expect(calls(), ['start $kIdentifyKeepAliveTitle', 'stop']);
         await tester.pumpWidget(const SizedBox());
@@ -278,8 +280,8 @@ void main() {
         IdentificationRun.autoStart(session);
         find.release();
         await tester.pumpWidget(MaterialApp(home: IdentificationScreen(sessionDir: session, autoStart: true)));
-        await pumpUntil(tester, () => yolo.contains('embedderClose'), 'the run ends');
-        await settle(tester, 10);
+        await pumpUntil(tester, () => yolo.contains('embedderClose'), 'the model closes');
+        await pumpUntil(tester, () => calls().contains('stop'), 'the run ends and stops the service');
         expect(AnalysisKeepAlive.activeHolds, 0);
         expect(calls(), ['start $kFindVideosKeepAliveTitle', 'start $kIdentifyKeepAliveTitle', 'stop']);
         await tester.pumpWidget(const SizedBox());

@@ -52,11 +52,13 @@ extension _SummaryLoading on _SessionSummaryScreenState {
   }
 
   /// Reads the compact per-visit list of the newest `summary_<pack>.json`
-  /// (round 209); called again after the Identify screen closes.
-  Future<void> _loadIdentification() async {
+  /// (round 209); called again after the Identify screen closes, then with
+  /// [reloadGraphs]: a run there added phone readings (round 363).
+  Future<void> _loadIdentification({bool reloadGraphs = false}) async {
     LatestIdentification? id;
-    var stale = false;
+    var stale = false, readings = false;
     try {
+      readings = IdentificationPaths(widget.logFile.parent).phoneJsonl.existsSync();
       id = await LatestIdentification.load(widget.logFile.parent);
       // Round 235: visits found again since use other numbers.
       stale = id?.visitsRunId != null &&
@@ -68,7 +70,12 @@ extension _SummaryLoading on _SessionSummaryScreenState {
       setState(() {
         _identification = id;
         _identificationStale = stale;
+        _identifyReadings = readings;
       });
+      if (reloadGraphs && _graphsRequested && _graphsSource == _GraphsSource.identification) {
+        _clearGraphData();
+        await _loadGraphs();
+      }
     }
   }
 
@@ -262,6 +269,7 @@ extension _SummaryLoading on _SessionSummaryScreenState {
   /// full `readAsLines()` right here on the UI isolate — happens once, off
   /// the UI isolate, for all tabs together.
   Future<void> _loadGraphs() async {
+    final load = ++_graphsLoad;
     setState(() {
       _graphsRequested = true;
       _graphsLoading = true;
@@ -272,9 +280,16 @@ extension _SummaryLoading on _SessionSummaryScreenState {
       _trackSource = index.trackSource;
       _postTrackStart = index.postTrackStart;
       if (_showRunGraphs) {
+        final dir = widget.logFile.parent;
         final samples = await VideoRunSamples.read(
-          File('${widget.logFile.parent.path}/${VideoDetector.outputFileName}'),
+          _graphsSource == _GraphsSource.identification
+              ? IdentificationPaths(dir).phoneJsonl
+              : File('${dir.path}/${VideoDetector.outputFileName}'),
         );
+        // Another source was chosen while this file was read: that newer load
+        // fills the graphs and ends the loading state; these samples must not
+        // be added to its lists.
+        if (load != _graphsLoad) return;
         _videoSamples = samples;
         if (samples != null) {
           _temps.addAll(samples.temps);
@@ -285,7 +300,7 @@ extension _SummaryLoading on _SessionSummaryScreenState {
           _infMs.addAll(samples.detectMs);
           _memUsedGb.addAll(samples.memUsedGb);
           _appCpuCores.addAll(samples.appCpuCores);
-          _buildEnergySeries(samples.power, maxStepMs: samples.runGapMs);
+          _buildEnergySeries(samples.power, maxStepMs: samples.runGapMs, ofRuns: true);
         }
       } else {
         _temps.addAll(index.temps);
@@ -320,8 +335,10 @@ extension _SummaryLoading on _SessionSummaryScreenState {
   ///  - Some phones (notably Xiaomi) report a 2-cell *series* voltage (~8.8 V);
   ///    [_singleCellVoltageV] normalizes that so power/energy aren't doubled.
   /// Steps of [maxStepMs] or more (the gap between two video analysis runs)
-  /// are neither smoothed across nor counted as energy.
-  void _buildEnergySeries(List<IndexedPowerSample> raw, {int? maxStepMs}) {
+  /// are neither smoothed across nor counted as energy. [ofRuns]: the samples
+  /// of a video analysis or of Identify, whose own flags alone say whether the
+  /// phone was plugged in then ([_runPlugged]).
+  void _buildEnergySeries(List<IndexedPowerSample> raw, {int? maxStepMs, bool ofRuns = false}) {
     // Battery-terminal readings only measure the PHONE's consumption while it
     // is discharging: plugged in, the sensor sees the charging current (or ~0
     // once the battery is full and the charger carries the load). Any charging
@@ -332,10 +349,14 @@ extension _SummaryLoading on _SessionSummaryScreenState {
     // lack the keys) — invalidates the whole series, so nothing is built and
     // no misleading W/Wh number can surface. The Graphs tab shows an
     // explanatory note instead.
-    if (raw.any((s) => s.isCharging == true || s.isPlugged == true)) {
-      _chargingDuringSession = true;
+    final plugged = raw.any((s) => s.isCharging == true || s.isPlugged == true);
+    if (ofRuns) {
+      _runPlugged = plugged;
+      if (plugged) return;
+    } else {
+      if (plugged) _chargingDuringSession = true;
+      if (_chargingDuringSession) return;
     }
-    if (_chargingDuringSession) return;
     if (raw.length < 2) return;
 
     // Average single-cell voltage (V) across the session, used wherever a
@@ -620,6 +641,7 @@ extension _SummaryLoading on _SessionSummaryScreenState {
     _appCpuCores.clear();
     _power.clear();
     _videoSamples = null;
+    _runPlugged = false;
     _energyTotalWh = _powerAvg = _powerMedian = _powerMin = _powerMax = null;
     _chargingDuringSession = _chargingAtStartOrEnd;
     // Not _uniqueTracks: read once from the end record, a live session's

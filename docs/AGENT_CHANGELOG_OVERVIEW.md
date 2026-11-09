@@ -58,7 +58,7 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
   `faunalapse_import.dart`; `csv_cell.dart`.
 - `identification/`: `label_pack.dart` (`.fpack` reader), `crop_planner.dart`,
   `identification_job.dart`, `identification_run.dart`, `identification_store.dart`,
-  `track_fusion.dart`.
+  `track_fusion.dart`, `identify_phone_log.dart`.
 - `screens/` (one file per screen; `camera_session_screen.dart` is the live UI, its logic sits in
   `session/`). The camera and summary screens and the settings sheet are too big for one file:
   their methods sit in `part` files under `screens/camera_session/`, `screens/session_summary/`
@@ -284,6 +284,11 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   tap, a kill loses the run silently; no exception for large phones); users are told to keep the
   app on screen. `identify_waiting.json` lets a run continue or report after Android closed the
   app, and never repeats a start that got the app closed.
+- **The phone's readings of every run** (also "Update results") go to
+  `identification/phone_during_identification.jsonl` (`IdentifyPhoneLog`: every 10 s on its own
+  timer, both steps, heat pauses; a table `.csv` after each run), in the record shapes
+  `VideoDetector` writes for a video analysis. `VideoRunSamples` parses both files and the summary
+  draws both with `_runGraphs`: change the records, the parser and DATA_GUIDE §8 and §9 together.
 - Native memory is given back after the embedder closes (`NativeMemory.giveBack`: on Android 12
   `M_PURGE_ALL` answers "done" and frees nothing, hence the steps).
 

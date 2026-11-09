@@ -17,6 +17,9 @@
 //                                probability/support columns of our own
 //     summary_<pack>.json        counts for the results screen and home badge
 //     README_identification.txt  column dictionary + the run's parameters
+//     phone_during_identification.jsonl   the phone's readings during every run
+//                                (identify_phone_log.dart); append-only
+//     phone_during_identification.csv     the same, one row per sample
 //
 // Strict one-JSON-object-per-line files, never pretty-printed (like session.jsonl).
 
@@ -98,6 +101,11 @@ class IdentificationPaths {
   File summaryJson(String packStem) =>
       File('${dir.path}/summary_$packStem.json');
   File get readme => File('${dir.path}/README_identification.txt');
+
+  /// Round 363: the phone's readings while Identify ran, for the whole session
+  /// (not per model or name list), and the table made from them after each run.
+  File get phoneJsonl => File('${dir.path}/phone_during_identification.jsonl');
+  File get phoneCsv => File('${dir.path}/phone_during_identification.csv');
 
   /// Every summary file present (one per pack the session was scored with).
   List<File> existingSummaries() {
@@ -792,6 +800,9 @@ Files (<name list> = the file name of the name list used, without .fpack)
   tracks_<name list>.csv            one row per track ID (in pollination ecology usually a visit); columns below
   crops_<name list>.csv             one row per crop (photo x track); columns below
   summary_<name list>.json          counts used by the app's results screen
+  phone_during_identification.jsonl / .csv
+                                    the phone during every run on this session, one sample every
+                                    10 s; columns below
 
 Two kinds of probability appear everywhere:
   Conf. (p_<rank>)     the model's confidence that a track ID belongs to a TAXON. The crops'
@@ -861,6 +872,27 @@ crops_<name list>.csv columns
   counted                             1 when the crop entered the combined answer
   ladder_<rank>, p_<rank>             the track ID's ladder taxa and THIS crop's own Conf. under each
   top1_class                          fixed-class classifiers only: the model's own class behind top1_species
+
+phone_during_identification.csv columns (one row per sample; the .jsonl holds the same as records)
+  run, time_s, epoch_ms               the run (1, 2, ... per start of Identify or Update results),
+                                      the time on the identification's own clock (runs back to back,
+                                      with a gap between two runs) and the clock time in ms
+  model, step                         the run's model file; the step up to this row: "crops" (the
+                                      crops go through the model) or "results" (combined per track ID)
+  temp_c, cpu_temp_c, gpu_temp_c      battery temperature; the chip's hottest processor core and
+                                      graphics sensor (empty on phones that do not let apps read them)
+  headroom, thermal_status            the phone's own heat level (0 = cool, 1 = it slows down) and
+                                      Android's heat status
+  power_w, battery_current_ua, battery_voltage_mv, charging, plugged
+                                      raw battery readings; they say nothing about the phone's own
+                                      use while it is plugged in
+  crops_per_s, crops, model_ms        crops finished since the previous row that has them, per second
+                                      of clock time and as a count, and the model's time per crop (ms)
+  paused, paused_ms                   waiting for the phone to cool down, and the part of the period
+                                      spent waiting
+  mem_total_bytes, mem_free_bytes, app_memory_bytes, app_cpu_cores
+                                      the phone's memory, this app's share, and the processor cores
+                                      this app kept busy
 
 How it is computed: each crop is embedded with the BioCLIP image tower and
 scored against the pack on its own (for the per-crop columns); the track ID's answer comes

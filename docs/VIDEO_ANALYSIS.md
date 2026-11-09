@@ -254,8 +254,10 @@ that live detection missed while the phone was hot or the motion gate slept.
   **Energy used**, and the graphs **Battery temperature (°C)**, **Frames analyzed per second**,
   **Detector time per frame (ms)**, **Memory in use, whole phone (GB)**, **Processor cores kept
   busy by FaunaPulse** and **Power draw (W)**.
-- For a session recorded with FaunaPulse (video bursts or live detection with video), a switch
-  chooses between **While recording** and **While the detector ran**.
+- For a session recorded with FaunaPulse (video bursts or live detection with video), a choice
+  above the graphs offers **While recording** and **While the detector ran**.
+- Once the session was identified, the choice also offers **While identification ran**
+  ([IDENTIFICATION.md](IDENTIFICATION.md), *Run an identification*).
 
 </details>
 

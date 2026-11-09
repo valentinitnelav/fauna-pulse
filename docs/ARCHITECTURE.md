@@ -105,6 +105,12 @@ AGENT_CHANGELOG.md rounds 57, 62, 63):
   on-screen size readout, resize snapping, and inference ROI all use the
   analysis frame; the high-res source only feeds the separate "saves N×N" label.
   See the invariants in AGENT_CHANGELOG_OVERVIEW.md before touching ROI code.
+- **Phone samples of the jobs that run afterwards.** `VideoDetector` (video analysis) and
+  `IdentifyPhoneLog` (identification) write the phone's readings as the same kinds of records
+  (`thermal`, `power`, a speed record, pause and resume). One parser, `VideoRunSamples`
+  (`postprocess/video_run_samples.dart`), reads both files for the summary's graphs and for the
+  two CSV tables. A change to one writer's records, or to the parser, must be checked against
+  the other file (DATA_GUIDE §8 and §9).
 - **Across repositories (round 311): the PC export tools.** The model files are made in
   [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models), whose `docs/AGENT_OVERVIEW.md`
   lists every shared rule. The main pairs: the `.fpack` writer `bioclip_export/fpack.py` and

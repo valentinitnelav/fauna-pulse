@@ -233,7 +233,8 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   // Imported videos (round 232): the lists above hold the phone's state
   // while the AI ran on the videos instead, on the analysis clock of these
-  // samples (video_detections.jsonl). Null when never measured.
+  // samples (video_detections.jsonl). Null when never measured. Round 363:
+  // or while Identify ran (identification/phone_during_identification.jsonl).
   VideoRunSamples? _videoSamples;
 
   // The session's total energy (Wh) — integral of the power curve — plus the
@@ -438,13 +439,42 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
   /// Video tab with the live AI's boxes, its photos below the player.
   bool get _liveVideoSession => !_noAiSession && _setting('liveAiVideo') == true;
 
-  /// The extra graphs show the phone while the AI ran on the videos (round
-  /// 232) instead of during the recording: always for imported videos, and
-  /// by choice for recorded bursts (round 239).
-  bool get _showRunGraphs =>
-      _importedVideoSession || ((_recordedVideoSession || _liveVideoSession) && _graphsOfAnalysis);
+  /// What the extra graphs can show for this session, in the order of the
+  /// choice above them: the phone during the recording (not for imported
+  /// videos), while the detector ran on the videos (round 232; recorded bursts
+  /// and live video once they were analysed, round 239), and while Identify ran
+  /// (round 363; offered once the session was identified, also when that was
+  /// before the readings were saved: the graphs then say "not measured").
+  List<_GraphsSource> get _graphsSources => [
+    if (!_importedVideoSession) _GraphsSource.recording,
+    if (_importedVideoSession || ((_recordedVideoSession || _liveVideoSession) && _videoRun != null))
+      _GraphsSource.detector,
+    if (_identification != null || _identifyReadings) _GraphsSource.identification,
+  ];
 
-  bool _graphsOfAnalysis = false;
+  /// The source on show: the user's choice while it is offered, else the first.
+  _GraphsSource get _graphsSource {
+    final offered = _graphsSources;
+    return offered.contains(_graphsChoice) ? _graphsChoice! : offered.first;
+  }
+
+  /// The graphs run on the analysis clock of [_videoSamples] (a video analysis
+  /// or the Identify runs), not on the session's.
+  bool get _showRunGraphs => _graphsSource != _GraphsSource.recording;
+
+  _GraphsSource? _graphsChoice;
+
+  /// Counts the starts of [_loadGraphs], so a load can tell that a newer one
+  /// took over while it read a file.
+  int _graphsLoad = 0;
+
+  /// The session has a readings file of Identify (round 363).
+  bool _identifyReadings = false;
+
+  /// The phone was plugged in during (part of) the runs on show. Apart from
+  /// [_chargingDuringSession], which is about the recording: a session recorded
+  /// on battery is often identified on the charger, and the other way round.
+  bool _runPlugged = false;
 
   /// Plain-language mode shown first in Setup's Overview. Sessions older
   /// than the capture-trigger setting were AI-detector sessions unless they
@@ -624,6 +654,9 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 // camera screen's collapsible stats panel: a viewing preference persisted in
 // SharedPreferences (not SessionConfig), collapsed by default.
 const String _extraGraphsExpandedKey = 'extra_graphs_expanded';
+
+/// Which phone readings the extra graphs show (rounds 232, 239, 363).
+enum _GraphsSource { recording, detector, identification }
 
 // Visit-length histogram bin width in seconds (round 187). A viewing
 // preference like the "Extra graphs" state (SharedPreferences, never

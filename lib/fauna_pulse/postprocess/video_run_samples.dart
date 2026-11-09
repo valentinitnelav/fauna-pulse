@@ -11,6 +11,13 @@
 // The summary's Graphs tab uses the series; "Share results" writes [toCsv]
 // as phone_during_analysis.csv. session.jsonl is not read: these samples
 // belong to the derived file, like the boxes they were measured with.
+//
+// Round 363: the same parser reads identification/phone_during_identification.jsonl,
+// the samples of the Identify runs (identify_phone_log.dart). Its records have
+// the same shapes under their own names: `identify_run_start`,
+// `identify_speed` (crops in place of frames, `step` in place of `clip`),
+// `identify_thermal_pause` / `identify_thermal_resume`. [toIdentifyCsv] is
+// that file's table.
 
 import 'dart:convert';
 import 'dart:io';
@@ -29,7 +36,12 @@ class VideoPhoneSample {
   /// Position on the analysis clock (ms).
   final int ms;
 
+  /// The clip being analysed; for an Identify run the step the phone was in
+  /// up to this sample ("crops" or "results").
   String? clip;
+
+  /// The model of the run (Identify runs only).
+  String? model;
   double? tempC;
   double? headroom;
   double? cpuTempC;
@@ -44,7 +56,9 @@ class VideoPhoneSample {
   double? framesPerS;
 
   /// Frames analysed since the previous sample, and the part of that time
-  /// spent cooling down (null: no pause).
+  /// spent cooling down (null: no pause). Identify runs: crops in place of
+  /// frames, counted since the previous sample that had any, and [detectMs] is
+  /// the model's time per crop.
   int? frames;
   int? pausedMs;
   double? decodeMs;
@@ -87,7 +101,8 @@ class VideoRunSamples {
   final int pausedMs;
   final int runs;
 
-  /// Frames analysed, counted from the `raw_detections` records.
+  /// Frames analysed, counted from the `raw_detections` records (Identify
+  /// runs: crops, added up from the speed records).
   final int frames;
 
   /// Gap between two runs on the analysis clock.
@@ -146,6 +161,18 @@ class VideoRunSamples {
   double? get meanFramesPerS {
     final running = runMs - pausedMs;
     return running > 0 && frames > 0 ? frames * 1000 / running : null;
+  }
+
+  /// Time on the analysis clock that ended in a sample of [step] (Identify
+  /// runs: "crops" or "results"). Every step ends with a sample, so this is
+  /// the time the runs spent in it.
+  int msOf(String step) {
+    var ms = 0;
+    for (var i = 1; i < samples.length; i++) {
+      final a = samples[i - 1], b = samples[i];
+      if (a.run == b.run && b.clip == step) ms += b.ms - a.ms;
+    }
+    return ms;
   }
 
   /// Reads [file] off the UI isolate; null when it is missing or unreadable.
@@ -226,6 +253,53 @@ class VideoRunSamples {
     }
     return b.toString();
   }
+
+  /// Round 363: the table of an Identify readings file,
+  /// identification/phone_during_identification.csv. The columns of [csvHeader]
+  /// in the same order where they apply: `model` and `step` in place of
+  /// `clip`, crops in place of frames, the model's time per crop in place of
+  /// the three frame times.
+  static const identifyCsvHeader =
+      'run,time_s,epoch_ms,model,step,temp_c,headroom,thermal_status,power_w,'
+      'battery_current_ua,battery_voltage_mv,charging,plugged,crops_per_s,'
+      'crops,model_ms,paused,paused_ms,'
+      'mem_total_bytes,mem_free_bytes,app_memory_bytes,app_cpu_cores,'
+      'cpu_temp_c,gpu_temp_c';
+
+  String toIdentifyCsv() {
+    final b = StringBuffer('$identifyCsvHeader\n');
+    for (final s in samples) {
+      b.writeln(
+        [
+          s.run,
+          (s.ms / 1000).toStringAsFixed(1),
+          s.epochMs,
+          s.model,
+          s.clip,
+          s.tempC,
+          s.headroom,
+          s.thermalStatus,
+          s.powerW == null ? null : (s.powerW! * 1000).round() / 1000,
+          s.currentUa,
+          s.voltageMv,
+          s.charging,
+          s.plugged,
+          s.framesPerS,
+          s.frames,
+          s.detectMs,
+          s.paused,
+          s.pausedMs,
+          s.memTotal,
+          s.memFree,
+          s.appMem,
+          s.appCpuCores,
+          s.cpuTempC,
+          s.gpuTempC,
+        ].map(csvCell).join(','),
+      );
+    }
+    return b.toString();
+  }
 }
 
 
@@ -253,8 +327,8 @@ class _Parser {
       final type = rec['type'];
       final t = (rec['time_ms'] as num?)?.toInt();
       if (t == null) return;
-      if (type == 'video_run_start') {
-        runs.add(_Run(t, (rec['sample_s'] as num?)?.toInt()));
+      if (type == 'video_run_start' || type == 'identify_run_start') {
+        runs.add(_Run(t, (rec['sample_s'] as num?)?.toInt(), type == 'identify_run_start' ? rec['model'] as String? : null));
         return;
       }
       if (runs.isEmpty) return;
@@ -272,7 +346,7 @@ class _Parser {
           s.appMem = (rec['app_memory_bytes'] as num?)?.toInt();
           s.appCpuCores = (rec['app_cpu_cores'] as num?)?.toDouble();
           s.paused = rec['paused'] == true;
-          s.clip ??= rec['clip'] as String?;
+          s.clip ??= (rec['clip'] ?? rec['step']) as String?;
         case 'power':
           final s = run.at(t);
           s.powerW = (rec['power_w'] as num?)?.toDouble();
@@ -290,9 +364,17 @@ class _Parser {
           s.decodeMs = (rec['decode_ms'] as num?)?.toDouble();
           s.convertMs = (rec['convert_ms'] as num?)?.toDouble();
           s.detectMs = (rec['detect_ms'] as num?)?.toDouble();
-        case 'video_thermal_pause':
+        case 'identify_speed':
+          final s = run.at(t);
+          s.clip = rec['step'] as String? ?? s.clip;
+          s.framesPerS = (rec['crops_per_s'] as num?)?.toDouble();
+          s.frames = (rec['crops'] as num?)?.toInt();
+          s.pausedMs = (rec['paused_ms'] as num?)?.toInt();
+          s.detectMs = (rec['model_ms'] as num?)?.toDouble();
+          frames += s.frames ?? 0;
+        case 'video_thermal_pause' || 'identify_thermal_pause':
           run.pauses.add((t, null));
-        case 'video_thermal_resume':
+        case 'video_thermal_resume' || 'identify_thermal_resume':
           if (run.pauses.isNotEmpty && run.pauses.last.$2 == null) {
             run.pauses.last = (run.pauses.last.$1, t);
           }
@@ -318,6 +400,7 @@ class _Parser {
         samples.add(
           VideoPhoneSample(i + 1, e.key, offset + e.key - r.startMs)
             ..clip = src.clip
+            ..model = r.model
             ..tempC = src.tempC
             ..headroom = src.headroom
             ..cpuTempC = src.cpuTempC
@@ -368,11 +451,12 @@ class _Parser {
 class _Run {
   final int startMs;
   final int? sampleS;
+  final String? model;
   int endMs;
   final byTime = <int, VideoPhoneSample>{};
   final pauses = <(int, int?)>[];
 
-  _Run(this.startMs, this.sampleS) : endMs = startMs;
+  _Run(this.startMs, this.sampleS, this.model) : endMs = startMs;
 
   VideoPhoneSample at(int t) => byTime.putIfAbsent(t, () => VideoPhoneSample(0, t, 0));
 }

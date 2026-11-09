@@ -238,6 +238,22 @@ session:
 as for **Find animals in videos**) and goes on at 3 °C lower. The line under the temperature
 scale ends "To change the limit, open Advanced settings after the run."
 
+**The phone during the run.** While a run goes on, the app writes down the phone's readings
+every 10 seconds (the same step as the live camera): the battery temperature (on some phones
+also the chip's), the heat level, the power, the memory in use, the processor cores FaunaPulse
+keeps busy, and the crops per second. To see them afterwards, open the session's **Graphs**
+tab, unfold **Extra graphs** and choose **While identification ran**.
+
+- The rows are **Identification time**, **Identifying crops**, **Combining results**, **Crops
+  identified**, **Cooling pauses** and **Energy used**. The graphs below them show the readings
+  over the time of the identification.
+- Every run on the session is shown, also **Update results** and a run that was stopped, with a gap
+  between two runs. Grey bands are heat pauses.
+- A session identified with an older version of the app has no readings: the choice then says
+  "Not measured". Identify the session again to get them.
+- The readings are also saved as a table, `phone_during_identification.csv` (see
+  [Files](#files)).
+
 **Sessions without track IDs.** Motion-triggered and time-lapse sessions (no live detection)
 have no track IDs. Run **Find animals in photos** first. When the photos are at most 0.5 s
 apart, it also finds the track IDs, by itself after each run, and the crops are then combined
@@ -631,6 +647,8 @@ The results are in `<session>/identification/`.
 | `tracks_<pack>.csv` | one row per track ID; the column dictionary is in `README_identification.txt` next to it; the first columns match the `_final.csv` of `insect-detect-post` (Sittinger 2026); `device_id` is the device's name (the field notes' *Device ID*, else an own field of that name, else FaunaLapse's phone ID, else the phone model; DATA_GUIDE §8), the phone model is also the last column, `phone_model` |
 | `crops_<pack>.csv` | every crop's own values and its `counted` flag |
 | `summary_<pack>.json` | counts for the results screen, the session summary and the Dashboard |
+| `phone_during_identification.jsonl` | the phone's readings during every run on this session (every 10 s: temperatures, heat level, power, memory, processor cores, crops per second; heat pauses); a new run adds to it |
+| `phone_during_identification.csv` | the same readings as a table, one row per sample, written again at the end of every run |
 
 [DATA_GUIDE.md](DATA_GUIDE.md) §8 documents the records and columns.
 

@@ -421,7 +421,7 @@ class VideoDetector {
     final RandomAccessFile out;
     try {
       out = outFile.openSync(mode: replace ? FileMode.write : FileMode.append);
-      if (!replace) _endOnWholeLine(out);
+      if (!replace) endOnWholeLine(out);
     } catch (e) {
       logSwallowed('video_detect_write', e);
       return VideoRunResult(framesAnalysed: 0, clipsDone: 0, clipsFailed: 0, thermalPauses: 0, elapsed: now().difference(started), cancelled: false, writeError: e);
@@ -695,7 +695,8 @@ class VideoDetector {
   /// last line cut off by full storage (or a kill during a write) is cut away,
   /// so the next record does not start inside it; a whole last record that
   /// only lacks its line end gets one. Leaves the position at the end.
-  static void _endOnWholeLine(RandomAccessFile out) {
+  /// Also used for the readings file of Identify (identify_phone_log.dart).
+  static void endOnWholeLine(RandomAccessFile out) {
     final length = out.lengthSync();
     if (length > 0) {
       out.setPositionSync(length - 1);

@@ -259,6 +259,9 @@ void main() {
             reason: 'run 1 closed the native model under run 2: $calls');
         expect(wake.on, isTrue, reason: 'run 1 switched the screen-on lock off while run 2 runs');
         await releaseAll(tester);
+        // Run 2 must be over before the test ends (its sample timer would be left pending, and
+        // it holds the model the next test needs): the screen-on lock goes off in its finally.
+        await pumpUntil(tester, () => !wake.on, 'run 2 ends');
         await tester.pumpWidget(const SizedBox());
         await tester.pump(const Duration(seconds: 1));
       },
@@ -311,6 +314,9 @@ void main() {
         await tester.tap(start);
         await tester.tap(start, warnIfMissed: false);
         await releaseAll(tester);
+        // The run is over before the test ends (as in the reference test above; a run still
+        // going would leave its sample timer pending).
+        await pumpUntil(tester, () => calls.contains('embedderClose') && !wake.on, 'the run ends');
         expect(calls.where((c) => c == 'embedderLoad').length, 1, reason: 'plugin calls: $calls');
         await tester.pumpWidget(const SizedBox());
         await tester.pump(const Duration(seconds: 1));

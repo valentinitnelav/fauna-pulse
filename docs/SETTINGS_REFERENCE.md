@@ -674,6 +674,11 @@ In the session summary they appear under the **Extra graphs (temperature, FPS, p
 whether you last left it open or closed. So the track ID
 charts (the main result) stay front and centre.
 
+A session whose videos were analysed, or that was identified, gets a choice above these graphs:
+the phone **While recording**, **While the detector ran** or **While identification ran**. The
+last two have their own interval, not the ones below: **Measure the phone every** for videos,
+and a fixed 10 s for the identification.
+
 | Setting | Default | What it does / when to change |
 |---|---|---|
 | **Frame-rate sample** | `5 s` (1–60 s) | How often the frame rate is logged for the FPS graph. |

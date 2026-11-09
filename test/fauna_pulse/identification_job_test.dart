@@ -15,6 +15,7 @@ import 'package:fauna_pulse/fauna_pulse/identification/identification_job.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/identification_store.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/label_pack.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/device_thermal.dart';
+import 'package:fauna_pulse/fauna_pulse/postprocess/video_run_samples.dart';
 
 const _log = '''
 {"type":"start_of_session","time_ms":1000,"config":{},"device":{"model":"TestPhone"}}
@@ -521,6 +522,66 @@ void main() {
     expect(r.thermalPauses, 1);
     expect(stages, contains('paused'));
     expect(r.embedded, 3);
+  });
+
+  // Round 363: the phone's readings of a run go to identification/phone_during_identification.jsonl
+  // (identify_phone_log_test.dart checks the records one by one, with a clock of its own).
+  test('round 363: a run saves the phone readings of both steps and of a heat pause; later runs append', () async {
+    final session = makeSession('phone');
+    var reads = 0;
+    final job = IdentificationJob(
+      embed: fakeEmbed,
+      crop: (a) async => cropBatchSync(a),
+      // Read 1 is the run's first sample; read 2, the governor's first, is too warm.
+      thermal: () async => ThermalReading(batteryTempC: ++reads == 2 ? 45 : 30, batteryCurrentUa: 900000, batteryVoltageMv: 4100, isPlugged: true),
+      pausePoll: const Duration(milliseconds: 1),
+    );
+    final r = await job.run(session, settings: settings(), packFile: packFile, appVersion: '0.10.0+15');
+    expect(r.error, isNull);
+    expect(r.thermalPauses, 1);
+    final paths = IdentificationPaths(session);
+    List<Map<String, dynamic>> records() => [
+      for (final line in paths.phoneJsonl.readAsLinesSync()) jsonDecode(line) as Map<String, dynamic>,
+    ];
+    var recs = records();
+    expect(recs.first, containsPair('type', 'identify_run_start'));
+    expect(recs.first, containsPair('model', 'fake_model.tflite'));
+    expect(recs.first, containsPair('pack', 'tiny_pack.fpack'));
+    expect(recs.first, containsPair('accelerator', 'CPU'));
+    expect(recs.first, containsPair('crops_pending', 3));
+    expect(recs.first, containsPair('sample_s', 10));
+    expect(recs.first, containsPair('app_version', '0.10.0+15'));
+    final types = [for (final rec in recs) rec['type']];
+    expect(types.indexOf('identify_thermal_pause'), greaterThan(0));
+    expect(types.indexOf('identify_thermal_resume'), greaterThan(types.indexOf('identify_thermal_pause')));
+    expect(recs.last, containsPair('type', 'identify_run_end'));
+    expect(recs.last, containsPair('cancelled', false));
+
+    var samples = (await VideoRunSamples.parseFile(paths.phoneJsonl.path))!;
+    expect(samples.runs, 1);
+    expect(samples.frames, 3, reason: 'the three crops, in the speed records');
+    expect(samples.pauses, hasLength(1));
+    // The first sample, the one where the crops end, and the one where the results are written.
+    expect(samples.samples.length, greaterThanOrEqualTo(3));
+    expect(samples.samples.first.clip, 'crops');
+    expect(samples.samples.last.clip, 'results');
+    expect(samples.samples.first.model, 'fake_model.tflite');
+    expect(samples.power.first.isPlugged, isTrue);
+    expect(paths.phoneCsv.readAsStringSync(), samples.toIdentifyCsv());
+
+    // Started over and stopped before the first photo, then continued: three runs in the one file.
+    final stopped = await job.run(session, settings: settings(), packFile: packFile, restart: true, isCancelled: () => true);
+    expect(stopped.cancelled, isTrue);
+    expect(records().last, containsPair('cancelled', true));
+    await job.run(session, settings: settings(), packFile: packFile);
+    recs = records();
+    expect(recs.where((rec) => rec['type'] == 'identify_run_start').length, 3);
+    samples = (await VideoRunSamples.parseFile(paths.phoneJsonl.path))!;
+    expect(samples.runs, 3);
+    expect(samples.frames, 6);
+    expect(paths.phoneCsv.readAsStringSync(), samples.toIdentifyCsv());
+    // The identification's own files are as before: the readings are a file apart.
+    expect(paths.embeddingsJsonl('fake_model').readAsStringSync(), isNot(contains('"thermal"')));
   });
 
   test('tiny boxes are skipped and recorded, not embedded', () async {
