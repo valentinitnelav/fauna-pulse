@@ -10247,3 +10247,20 @@ unit tests (ChipTempsTest) pass, the app's Kotlin compiles; not run on a phone. 
 first reading after an app start is already between 0 and 1 °C is still misread until the next
 start on a warmer chip (FaunaLapse has the same limit).
 
+## Round 365 (2026-11-10): upstream 0.7.2 check, nothing to port
+
+Asked: the owner pulled the upstream plugin again and asked whether anything should be taken
+over, above all for the detector rate in live detection and on imported videos. Read: upstream's
+changelog and the Android and Dart diff from 0.6.16 (the last check, round 312) to 0.7.2, each
+item compared with the fork. Result: no speed change reaches the app. 0.7.0 is upstream's move to
+LiteRT 2.3.0; the app has 2.3.2 since round 357, the newest on Google's Maven server today.
+0.7.2's faster drawing is in the native overlay, which the app turns off
+(`setShowOverlays(false)`); the QR-code model import (0.7.1) and depth are not ours. Not ported,
+with reasons: the default NMS IoU 0.7 → 0.5 changes results, not speed, and the app sends its
+own setting (default 0.7; Ultralytics 8.4.170 itself still has 0.7), so it waits for tuning
+data; `litert-metadata` 2.3.x and the newer QNN libraries bring nothing until a round needs
+them. Upstream's performance notes measure an NPU path through LiteRT (prototype, not shipped;
+Google's docs list Snapdragon 8 Gen 1 and newer with Android 12, so none of the test phones).
+Open: 16-bit CPU maths for detectors that run on the CPU (the embedder's flag of round 356) was
+never measured; proposed to the owner as a measurement round.
+
