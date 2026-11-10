@@ -10264,3 +10264,48 @@ Google's docs list Snapdragon 8 Gen 1 and newer with Android 12, so none of the 
 Open: 16-bit CPU maths for detectors that run on the CPU (the embedder's flag of round 356) was
 never measured; proposed to the owner as a measurement round.
 
+## Round 366 (2026-11-10): 16-bit CPU maths measured for detectors; safe fallback to 32-bit
+
+Asked (after round 365 found no speed-up in the upstream plugin): on the three phones, does
+16-bit CPU maths (the embedder's switch of round 356) speed up detectors, and do the boxes change?
+
+Speed: the engine benchmark with a new 16-bit mode, the catalogue's detector files, 2 passes of
+10 runs per row, model time in ms on noise, as GPU | CPU 32-bit at 2, 4, 8 threads | CPU 16-bit
+at 2, 4, 8 threads:
+- Galaxy M12: flat-bug n 186 | 562, 310, 212 | 273, 151, 94; insectDCT v8s 546 | 1973, 1088,
+  651 | 773, 427, 267; flat-bug s 510 | 1949, 1074, 644 | 793, 434, 267.
+- Redmi Note 9S: 55 | 157, 142, 111 | 88, 82, 67; 133 | 475, 409, 353 | 223, 201, 168;
+  136 | 481, 413, 354 | 253, 220, 165.
+- Xiaomi 11T Pro: 13 | 136, 70, 69 | 64, 40, 41; 29 | 386, 238, 223 | 166, 113, 109;
+  29 | 411, 251, 233 | 181, 120, 113.
+So 1.7 to 2.5 times faster at equal threads, and on the Galaxy M12 the CPU then beats the GPU
+with 4 threads (1.2 times) and with 8 (2 times). The whole photo path at 2 threads (read, scale,
+model, boxes; from the box check's log clock) for flat-bug n: 636 → 321 ms per picture on the
+Galaxy M12 (its GPU 221 to 239), 183 → 107 on the Redmi (GPU 117), 155 → 81 on the Xiaomi
+(GPU 43). Files with 8-bit weights (MegaDetector `w8a32`, the int8 test files) compile in 16-bit
+maths and then fail at the first run, on every phone; a 16-bit MegaDetector file gains 1.6 to
+1.9 times. Hence the fallback in `LiteRtModel` (16-bit first, 32-bit when the warm-up run
+throws). It also covers the embedder: since round 356 an identification file with 8-bit weights
+would have failed to load on the CPU (possible only: no such file is offered, never seen).
+
+Boxes: 100 pictures of the benchmark session, confidence 0.25, 108 boxes over the three 16-bit
+files, one build per kind of maths. 32-bit against 16-bit CPU gave the same figures on all three
+phones: paired boxes move by 0.07 to 0.25 % of the picture on average (largest 1.9 %), their
+confidence by 0.004 to 0.010 (largest 0.042), no class changes; one box at 0.26 appeared and one
+at 0.25 disappeared. CPU against GPU differs by as much today (largest edge shift 5.5 %, on the
+Galaxy M12's GPU). The GPU rows of the two builds were identical, MegaDetector's boxes too.
+
+Decisions: `ObjectDetector.CPU_FP16` stays off until the owner decides (it changes results on the
+CPU); no setting (the embedder's switch is a constant too). Checked: analyzer, 1138 unit tests,
+the three phones (plain `adb install -r`, settings equal to the backups, test folders removed,
+the normal build put back).
+
+Open: (a) the live camera rate and heat on the Galaxy M12 with the CPU in 16-bit (the benchmark
+is model time; the photo path was timed at 2 threads only); (b) a phone whose cores are older
+than ARMv8.2 has no 16-bit maths: the fallback should catch it by the same error path as the
+8-bit files, but none was at hand, and this concerns the embedder's switch too before the next
+release; (c) if the switch goes on: the maths in the session's start record and DATA_GUIDE, all
+cores among the rows of "Benchmark engines", perhaps an automatic engine choice; (d) XNNPACK's
+source calls the 16-bit flag deprecated ("will be removed soon"), so a later LiteRT may lose it:
+time the CPU again at every runtime update.
+

@@ -334,7 +334,9 @@ class YOLO {
   /// times [iterations] real inferences on each. Returns one map per
   /// configuration with `label`, `useGpu`, `cpuThreads`, `accelerator`, and
   /// either `avgMs` / `minMs` / `compileMs` / `iterations` or an `error`
-  /// string (e.g. when the GPU cannot compile this model).
+  /// string (e.g. when the GPU cannot compile this model). [cpuFp16] chooses
+  /// the maths of the CPU rows: 16-bit (XNNPACK's FORCE_FP16) or 32-bit; left
+  /// out, they run as a detector on the CPU does (`ObjectDetector.CPU_FP16`).
   ///
   /// This is deliberately a user-triggered call, not something to run at every
   /// session start: it costs several seconds of full-speed inference and warms
@@ -343,6 +345,7 @@ class YOLO {
     String modelPath, {
     int iterations = 20,
     List<int> cpuThreadVariants = const [0, 2, 4],
+    bool? cpuFp16,
   }) async {
     // Same resolution step the live view uses, so asset-bundled models are
     // materialized to a real file path before the native side opens them.
@@ -352,6 +355,7 @@ class YOLO {
       'modelPath': resolvedPath,
       'iterations': iterations,
       'cpuThreadVariants': cpuThreadVariants,
+      'cpuFp16': ?cpuFp16,
     });
     return [
       for (final entry in result as List)

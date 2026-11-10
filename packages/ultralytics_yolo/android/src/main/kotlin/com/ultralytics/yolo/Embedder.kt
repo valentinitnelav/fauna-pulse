@@ -87,8 +87,8 @@ class Embedder(
          *  two 4 GB test phones (ARMv8.2 cores, LiteRT 2.2.0, BioCLIP 2): the model's memory halved
          *  (about 0.75 instead of 1.25 GB) and a crop took 1.5 instead of 3.4 s (Redmi Note 9S,
          *  2 threads) and 3.3 instead of 8.9 s (Galaxy M12, 8 threads); the embedding of the test
-         *  picture agreed with 32-bit to 0.9993 (the GPU check asks 0.995). Cores without 16-bit
-         *  maths ignore the flag. */
+         *  picture agreed with 32-bit to 0.9993 (the GPU check asks 0.995). A model or a phone
+         *  that cannot run in 16-bit is set up in 32-bit by LiteRtModel (round 366). */
         const val CPU_FP16 = true
 
         /** Thread counts the self-test behind "0 = automatic" tries ([chooseCpuThreads]): 2, 4 and

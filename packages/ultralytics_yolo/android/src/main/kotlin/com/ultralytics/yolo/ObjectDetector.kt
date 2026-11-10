@@ -52,7 +52,7 @@ class ObjectDetector(
             Log.w(TAG, "No embedded labels found and none provided; detections may lack class names.")
         }
 
-        rtModel = InferenceModel.create(context, modelPath, useGpu, "ObjectDetector", cpuThreads)
+        rtModel = InferenceModel.create(context, modelPath, useGpu, "ObjectDetector", cpuThreads, CPU_FP16)
 
         // Input dims [1, H, W, 3].
         val inDims = rtModel.inputDims
@@ -256,6 +256,12 @@ class ObjectDetector(
 
     companion object {
         private const val TAG = "ObjectDetector"
+
+        /** Whether a detector on the CPU computes in 16-bit maths (see [LiteRtModel]; the GPU
+         *  always does). Off until the owner decides: 16-bit files then run about twice as fast
+         *  on the CPU and the boxes move about as much as between CPU and GPU (round 366). */
+        const val CPU_FP16 = false
+
         // Load JNI library
         init {
             System.loadLibrary("ultralytics")

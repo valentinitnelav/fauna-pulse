@@ -127,6 +127,21 @@ The headline changes, with the round that introduced each (full rationale in
   verdicts are keyed by the app version too, so an update re-checks once.
   `Embedder.CPU_MEMORY_FACTOR` 2.15 to 1.4 (the 16-bit copy of BioCLIP 2 grows
   the heap by 0.75 GB, not 1.25).
+- **16-bit CPU maths: fallback, benchmark mode, detector switch** (r366): a file
+  with 8-bit weights cannot run in 16-bit CPU maths (the `w8a32` MegaDetector and
+  the int8 test files compile, then fail at their first run with "Failed to invoke
+  the compiled model", on all three test phones). `LiteRtModel` now sets such a
+  model up in 32-bit itself (`usesCpuFp16` says which maths runs), so `cpuFp16`
+  is safe to ask for with any file; before, the embedder would have failed to
+  load such a file on the CPU (none is offered). `benchmarkAccelerators` takes
+  `cpuFp16` (the CPU rows in 16-bit or 32-bit; left out = as the detectors run),
+  and `ObjectDetector.CPU_FP16` (off) is the one switch for the detectors' CPU
+  maths. Measured with `integration_test/cpu_threads_check_test.dart`
+  (`THREADS_CHECK_FP16`): the 16-bit detector files run 1.7 to 2.5 times faster
+  in 16-bit maths at the same thread count; on the Galaxy M12 the CPU with 4
+  or 8 threads then beats the GPU. Boxes move about as much as between CPU and
+  GPU today (`detector_outputs_check_test.dart`). Not tested: a phone whose
+  cores have no 16-bit maths (before ARMv8.2).
 - **Native lifecycle overhaul** (r161, review E2): real `YOLO.close()`,
   remove-then-close instance dispose, a plugin-owned cancellable scope instead
   of `GlobalScope`, one owned model-load executor with a generation token, and

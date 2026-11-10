@@ -7,8 +7,10 @@
 // Run:  flutter test integration_test/detector_outputs_check_test.dart -d <serial> --no-uninstall
 //         --dart-define=OUTPUTS_PICTURES=<folder on the phone with .jpg files>
 //         --dart-define=OUTPUTS_COUNT=40
+//         --dart-define=OUTPUTS_MODELS=<absolute .tflite path on the phone>[,<path>]
 // Always pass --no-uninstall (see video_decode_check_test.dart for why). Without OUTPUTS_PICTURES
-// the folder detector_outputs_check/ in the app's external files directory is used.
+// the folder detector_outputs_check/ in the app's external files directory is used; without
+// OUTPUTS_MODELS the bundled detectors.
 
 import 'dart:io';
 
@@ -20,7 +22,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 const _folder = String.fromEnvironment('OUTPUTS_PICTURES');
 const _count = int.fromEnvironment('OUTPUTS_COUNT', defaultValue: 40);
-const _models = [
+const _modelsArg = String.fromEnvironment('OUTPUTS_MODELS');
+const _bundled = [
   'assets/models/custom/MDV6-yolov10-c_int8_256.tflite',
   'assets/models/custom/MDV6-yolov10-c_float16_320.tflite',
   'assets/models/custom/ArthroNat_flatbug_yolo11n_int8_640.tflite',
@@ -47,7 +50,7 @@ void main() {
     final pictures = [for (var i = 0; i < all.length && i ~/ step < _count; i += step) all[i]];
     _log('PICTURES ${pictures.length} of ${all.length} in $folder');
     final bytes = [for (final p in pictures) await p.readAsBytes()];
-    for (final model in _models) {
+    for (final model in _modelsArg == '' ? _bundled : _modelsArg.split(',')) {
       final name = model.split('/').last;
       for (final gpu in [true, false]) {
         final acc = gpu ? 'GPU' : 'CPU';
@@ -69,5 +72,6 @@ void main() {
         _log('TOTAL $name $acc $boxes boxes on ${pictures.length} pictures');
       }
     }
+    _log('OUTPUTS DONE');
   }, timeout: const Timeout(Duration(minutes: 30)));
 }

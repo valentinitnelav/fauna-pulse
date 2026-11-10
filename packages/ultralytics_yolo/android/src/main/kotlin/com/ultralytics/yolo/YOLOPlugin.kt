@@ -181,6 +181,8 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
    * ones. Input is fixed-seed random noise - convolution cost does not depend on pixel values,
    * so noise times the same work a real frame would.
    *
+   * [cpuFp16] runs the CPU rows in 16-bit maths (see [LiteRtModel]); their labels then say so.
+   *
    * Returns one map per configuration: label, useGpu, cpuThreads, accelerator actually used,
    * avgMs / minMs / compileMs / iterations on success, or an "error" string on failure.
    */
@@ -189,11 +191,13 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
     modelPath: String,
     iterations: Int,
     threadVariants: List<Int>,
+    cpuFp16: Boolean,
   ): List<Map<String, Any>> {
     data class Config(val label: String, val useGpu: Boolean, val cpuThreads: Int)
     val configs = mutableListOf(Config("GPU", useGpu = true, cpuThreads = 0))
+    val cpu = if (cpuFp16) "CPU 16-bit" else "CPU"
     for (t in threadVariants.distinct()) {
-      val label = if (t == 0) "CPU (automatic: ${LiteRtModel.automaticCpuThreads()} threads)" else "CPU ($t threads)"
+      val label = if (t == 0) "$cpu (automatic: ${LiteRtModel.automaticCpuThreads()} threads)" else "$cpu ($t threads)"
       configs += Config(label, useGpu = false, cpuThreads = t)
     }
 
@@ -206,7 +210,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
       )
       try {
         val t0 = System.nanoTime()
-        val model = LiteRtModel(context, modelPath, c.useGpu, "AccelBenchmark", c.cpuThreads)
+        val model = LiteRtModel(context, modelPath, c.useGpu, "AccelBenchmark", c.cpuThreads, cpuFp16)
         try {
           entry["accelerator"] = model.accelerator
           // Tensor shape the model is fed ([1, H, W, 3]) - surfaced so the UI can show
@@ -218,6 +222,9 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
             // The ladder inside LiteRtModel fell back to CPU (blocklisted or failed to
             // compile). Timing that here would just duplicate the CPU-default entry.
             entry["error"] = "GPU unavailable for this model (blocklisted or failed to compile)"
+          } else if (!c.useGpu && cpuFp16 && !model.usesCpuFp16) {
+            // The model fell back to 32-bit: timing it here would repeat the 32-bit row under a wrong label.
+            entry["error"] = "16-bit maths cannot run this model (it runs in 32-bit)"
           } else {
             val inputSize = if (model.inputDims.isNotEmpty()) model.inputDims.fold(1) { a, b -> a * b } else 0
             if (inputSize <= 0) {
@@ -565,10 +572,12 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
           val threadVariants = (args?.get("cpuThreadVariants") as? List<*>)
             ?.mapNotNull { (it as? Number)?.toInt() }
             ?.ifEmpty { null } ?: listOf(0, 2, 4)
+          // Not given: the CPU rows time what a detector on the CPU really runs.
+          val cpuFp16 = args?.get("cpuFp16") as? Boolean ?: ObjectDetector.CPU_FP16
           val modelPath = resolveModelPath(originalPath)
           Thread({
             val results = runCatching {
-              runAcceleratorBenchmark(applicationContext, modelPath, iterations, threadVariants)
+              runAcceleratorBenchmark(applicationContext, modelPath, iterations, threadVariants, cpuFp16)
             }
             android.os.Handler(android.os.Looper.getMainLooper()).post {
               results.fold(

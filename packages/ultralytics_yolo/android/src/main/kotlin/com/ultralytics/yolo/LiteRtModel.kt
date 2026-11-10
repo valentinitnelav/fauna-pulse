@@ -36,8 +36,12 @@ class LiteRtModel(
     cpuThreads: Int = 0,
     // CPU maths in 16-bit (XNNPACK's FORCE_FP16): on ARMv8.2 cores (Cortex-A55, A76 and newer) a
     // 16-bit-weights model then keeps its weights in 16-bit (half the memory) and computes in
-    // 16-bit; on older cores XNNPACK ignores the flag. Slightly less precise, like the GPU.
-    private val cpuFp16: Boolean = false,
+    // 16-bit. Slightly less precise, like the GPU. Not every model runs in it (a file with 8-bit
+    // weights fails at its first run), and older cores have no 16-bit maths (XNNPACK's source
+    // reports an error then; not tried on such a phone): a model that fails in 16-bit is set up
+    // in 32-bit ([usesCpuFp16] says which runs). XNNPACK calls the flag deprecated, so check the
+    // speed again at every LiteRT update (integration_test/cpu_threads_check_test.dart).
+    cpuFp16: Boolean = false,
 ) : InferenceModel {
     private data class PreparedModel(
         val model: CompiledModel,
@@ -60,6 +64,9 @@ class LiteRtModel(
 
     /** Threads the CPU engine was given (the resolved count, never 0); unused on the GPU. */
     val cpuThreads: Int = if (cpuThreads > 0) cpuThreads else automaticCpuThreads()
+
+    /** True when the CPU engine runs this model in 16-bit maths (asked for, and the model ran in it). */
+    val usesCpuFp16: Boolean
     override val accelerationNote: String?
 
     /** Input tensor dimensions in NHWC convention, e.g. [1, 640, 640, 3], regardless of the model's native
@@ -145,12 +152,22 @@ class LiteRtModel(
                 note = e.message?.take(200) ?: e.javaClass.simpleName
             }
         }
-        if (prepared == null) {
-            prepared = prepareModel(modelPath, Accelerator.CPU, gpuCacheDir)
-            acc = "CPU"
+        var fp16 = false
+        if (prepared == null && cpuFp16) {
+            // 16-bit maths cannot run every model: a detector file with 8-bit weights (w8a32)
+            // compiled but failed at its first run on all three test phones (round 366).
+            // prepareModel's warm-up run throws in that case, and the 32-bit setup below takes over.
+            try {
+                prepared = prepareModel(modelPath, Accelerator.CPU, gpuCacheDir, fp16 = true)
+                fp16 = true
+            } catch (e: Throwable) {
+                Log.w(tag, "16-bit CPU maths could not run the model, using 32-bit: ${e.message}")
+            }
         }
+        if (prepared == null) prepared = prepareModel(modelPath, Accelerator.CPU, gpuCacheDir)
         model = prepared.model
         accelerator = acc
+        usesCpuFp16 = fp16
         accelerationNote = if (acc == "GPU") null else note
 
         inputBuffers = prepared.inputBuffers
@@ -163,7 +180,8 @@ class LiteRtModel(
 
         Log.i(
             tag,
-            "LiteRT compiled on $acc${if (acc == "CPU") " ($cpuThreads threads)" else ""}; inputDims=${inputDims.toList()} " +
+            "LiteRT compiled on $acc${if (acc == "CPU") " ($cpuThreads threads${if (fp16) ", 16-bit maths" else ""})" else ""}; " +
+                "inputDims=${inputDims.toList()} " +
                 "layout=${if (inputUsesNchw) "NCHW" else "NHWC"} " +
                 "outputDims=${outputDims.map { it.toList() }} outputCounts=${outputElementCounts.toList()}",
         )
@@ -198,7 +216,12 @@ class LiteRtModel(
         }
     }
 
-    private fun prepareModel(modelPath: String, accelerator: Accelerator, gpuCacheDir: java.io.File): PreparedModel {
+    private fun prepareModel(
+        modelPath: String,
+        accelerator: Accelerator,
+        gpuCacheDir: java.io.File,
+        fp16: Boolean = false,
+    ): PreparedModel {
         val options = CompiledModel.Options(accelerator)
         if (accelerator == Accelerator.CPU) {
             // litert 2.3.2 exposes numThreads / xnnPackFlags / xnnPackWeightCachePath. The weight
@@ -207,7 +230,7 @@ class LiteRtModel(
             // there is no crash-guard around it yet.
             options.cpuOptions = CompiledModel.CpuOptions(
                 numThreads = cpuThreads,
-                xnnPackFlags = if (cpuFp16) XNNPACK_FORCE_FP16 else null,
+                xnnPackFlags = if (fp16) XNNPACK_FORCE_FP16 else null,
             )
         }
         if (accelerator == Accelerator.GPU) {
