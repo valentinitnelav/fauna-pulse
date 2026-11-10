@@ -10228,3 +10228,22 @@ measured".
 
 Open: no heat pause occurred on the phone (tests only); a run with a single speed sample draws no
 point in the speed graphs.
+## Round 364 (2026-11-10): chip temperatures stay right in the cold
+
+Asked: a hand-off note from the FaunaLapse session said that the chip temperature rule of round
+361 is wrong in the cold; check it and make the conversions to degrees Celsius correct. Confirmed
+by reading the code: the unit of a thermal zone was guessed from every reading (1000 or more:
+thousandths, 200 or more: tenths, else degrees) and values at or below 0 were dropped. The kernel's
+rule is thousandths, so a chip below 1 °C (0 to 999) was read as up to 149 °C, a tenths zone
+between 10 and 15 °C as 100 to 149 °C, and frost was not recorded. No such reading is known to
+exist: the test phones were never that cold, so this could have happened and did not. Fix: the
+same rule as FaunaLapse (unit decided once per zone from its first reading, 0 or unreadable means
+thousandths; kept above -40 and below 150 °C; one decimal), in a new plugin file because the
+plugin has the Kotlin unit tests. Rejected: always thousandths (an old driver in whole degrees
+would read 0.04 °C) and choosing the unit by the battery temperature (fails for a hot chip beside
+a cool battery). The other conversions were checked and are right: the battery value is tenths of
+a degree by Android's documentation, and no Dart reader drops values at or below 0. Checked: 5 new
+unit tests (ChipTempsTest) pass, the app's Kotlin compiles; not run on a phone. Open: a zone whose
+first reading after an app start is already between 0 and 1 °C is still misread until the next
+start on a warmer chip (FaunaLapse has the same limit).
+

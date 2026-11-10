@@ -822,16 +822,15 @@ class MainActivity : FlutterFragmentActivity() {
         }
 
         // Chip sensors (round 361): the kernel lists its heat sensors under
-        // /sys/class/thermal, one folder per sensor ("type" = name, "temp" = usually
-        // thousandths of a degree). Whether an app may read them is the maker's choice:
+        // /sys/class/thermal, one folder per sensor ("type" = name, "temp" = thousandths
+        // of a degree by the kernel's rule). Whether an app may read them is the maker's choice:
         // Xiaomi phones (Redmi Note 9S, 11T Pro) allow it, the Samsung Galaxy M12 does not
         // even list the folder (both stay null then; on Xiaomi phones the headroom above is
         // the missing one, so the two routes complement each other). The battery sensor
         // alone misses chip throttling: the 11T Pro's frame rate once fell while the
         // battery read 39 to 40 °C.
-        val (cpuC, gpuC) = chipTemps()
-        out["cpuTempC"] = cpuC
-        out["gpuTempC"] = gpuC
+        out["cpuTempC"] = chipTemps.cpuC()
+        out["gpuTempC"] = chipTemps.gpuC()
 
         // Memory and processor use ride on this call: one reading per thermal sample,
         // no timer or channel of their own. Everything below is one binder call or a
@@ -866,35 +865,6 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }.getOrNull()
 
-    /** The thermal zones whose name says CPU or GPU, found once (the list does not change
-     *  while the app runs; empty where the folder is not readable). Qualcomm names them
-     *  cpu-0-0-usr, cpuss-0-usr, gpuss-0-step and so on; Exynos calls the GPU G3D. The
-     *  Boolean is "CPU" (true) or "GPU" (false). */
-    private val chipZones: List<Pair<File, Boolean>> by lazy {
-        val zones = File("/sys/class/thermal").listFiles { f -> f.name.startsWith("thermal_zone") }
-        (zones ?: emptyArray()).mapNotNull { z ->
-            val type = runCatching { File(z, "type").readText().trim().lowercase() }.getOrNull()
-                ?: return@mapNotNull null
-            when {
-                type.contains("cpu") -> Pair(File(z, "temp"), true)
-                type.contains("gpu") || type.contains("g3d") -> Pair(File(z, "temp"), false)
-                else -> null
-            }
-        }
-    }
-
-    /** Hottest CPU core sensor and hottest GPU sensor in degrees Celsius (null when none is
-     *  readable). Readings outside 0 to 150 are dropped: -40 means the sensor is absent. */
-    private fun chipTemps(): Pair<Double?, Double?> {
-        var cpu: Double? = null
-        var gpu: Double? = null
-        for ((file, isCpu) in chipZones) {
-            val raw = runCatching { file.readText().trim().toDouble() }.getOrNull() ?: continue
-            // Most kernels report thousandths of a degree, a few tenths or whole degrees.
-            val c = if (Math.abs(raw) >= 1000) raw / 1000 else if (Math.abs(raw) >= 200) raw / 10 else raw
-            if (c <= 0 || c >= 150) continue
-            if (isCpu) cpu = maxOf(cpu ?: c, c) else gpu = maxOf(gpu ?: c, c)
-        }
-        return Pair(cpu, gpu)
-    }
+    /** Chip sensors, with each zone's unit decided once (see ChipTemps in the plugin). */
+    private val chipTemps by lazy { ChipTemps() }
 }

@@ -141,6 +141,10 @@ The headline changes, with the round that introduced each (full rationale in
   logged (not passed to `FlutterError.reportError`) when the host handles
   `onModelError` and the error is not a programming `Error`, so a damaged model
   chosen by the user no longer writes an app crash file.
+- **Chip temperatures** (r364): new `ChipTemps.kt` (hottest CPU and GPU sensor
+  from `/sys/class/thermal`, each zone's unit decided once), used by the app's
+  `MainActivity`; it sits here because the plugin has the Kotlin unit tests
+  (`ChipTempsTest`).
 - **Embedder memory** (r319): `NativeMemory.kt` plus a JNI `purge()` in
   `native-lib.cpp` (bionic `mallopt` M_PURGE_ALL or M_PURGE, found with
   `dlsym`; `CMakeLists.txt` links libdl) asks the allocator to give freed pages

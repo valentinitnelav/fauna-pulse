@@ -193,7 +193,8 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
 - While the gate is idle or in no-AI modes, `fps` records leave out inference fields: never log
   stale or zero inference numbers.
 - **One native reading for the phone's state** (`DeviceThermal.read`, channel `getThermal`):
-  battery temperature, chip sensors (hottest CPU core and GPU from `/sys/class/thermal`, which
+  battery temperature, chip sensors (hottest CPU core and GPU from `/sys/class/thermal`, unit rule in the
+  plugin's `ChipTemps.kt`, the same as FaunaLapse's `ChipTemps.java`: change both together; which
   only some makers let apps read: Xiaomi yes, Samsung no; `thermal_headroom` is the reverse, so
   every heat figure is optional per phone; `integration_test/thermal_zones_check_test.dart` shows
   a phone's set), power, whole-phone memory and this process's CPU time together, every

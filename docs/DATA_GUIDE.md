@@ -755,7 +755,8 @@ pack (Android's battery broadcast, in tenths of a degree). It is a real measurem
 battery: the processor gets hot faster than this, which `thermal_status` and `thermal_headroom`
 (from the phone's own heat sensors) show earlier. `cpu_temp_c` and `gpu_temp_c` are the chip's
 own sensors in degrees (the hottest CPU core and the GPU, read from the phone's kernel); they
-react within seconds. Whether an app may read them is the phone maker's choice: Xiaomi phones
+react within seconds. Values below 0 °C are real frost readings (kept down to -40 °C, which
+marks an absent sensor). Whether an app may read them is the phone maker's choice: Xiaomi phones
 allow it, Samsung phones do not (both are then null; on Xiaomi phones `thermal_headroom` is the
 null one instead, so the two complement each other). The summary draws them beside the battery
 line.
