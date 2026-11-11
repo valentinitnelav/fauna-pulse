@@ -74,15 +74,16 @@
 
 **FaunaPulse** is a free (and ad-free), open-source smartphone app for wildlife monitoring that **allows you to integrate your custom AI-based object detection and classification models directly on your smartphone** (no AI in the cloud, your data stays yours).
 
-Think of **FaunaPulse** as the chassis of a car where you can drop in your own engine: it **provides the platform to run custom AI models, on-device**, for detecting, tracking and classifying your favorite fauna (from pollinators and birds to mammals).
+Think of **FaunaPulse** as the chassis of a car where you can drop in your own engine: it **provides the platform to run custom AI models, on-device**, for *detecting*, *tracking* and *classifying* your favorite fauna (from pollinators and birds to mammals).
 
 > [!IMPORTANT]
 > **Detection, tracking, and classification quality will vary based on the [custom AI models used][hf_fp_models]. With our [documentation and Python tools][fp_models], you can also export models tailored to your specific imagery and use case.**
 
-The first and primary scientific use case of FaunaPulse is estimating **visitation rates** in ecological studies. For example, how often pollinators visit a flower or inflorescence per unit of time and how long each visit lasts.
-With suitable object-detection and classification models, it can be configured for various wildlife groups and ecological observation settings.
+The primary scientific use case of FaunaPulse is estimating **visitation rates** in ecological studies (who visits whom and how many times). For example, how often pollinators visit a flower or inflorescence per unit of time and how long each visit lasts. This is a proxy for pollination which can be vital for the reproduction of many plants, including for crop yield and quality.
 
-For older or used Android smartphones not capable of supporting AI models, its sister app, [**FaunaLapse**][fauna_lapse], is a light application (under 200 KiB APK file) that can turn such phones into time-lapse cameras.
+With suitable object-detection and classification models, FaunaPulse can be configured for various wildlife groups and ecological observation needs.
+
+For older or used Android smartphones not capable of supporting AI models, its sister app, [**FaunaLapse**][fauna_lapse], is a light application that can turn such phones into time-lapse cameras. However, FaunaPulse can also work in non-AI mode, capturing time-lapse images and videos.
 
 FaunaPulse is open source under the **AGPL-3.0 license**, which it inherits from the [Ultralytics YOLO Flutter plugin](https://github.com/ultralytics/yolo-flutter-app) it is built on (details in [License](#license-agpl-30)).
 
@@ -91,11 +92,11 @@ FaunaPulse is open source under the **AGPL-3.0 license**, which it inherits from
 <details>
 	<summary>Expand:</summary>
 
-FaunaPulse is intended as a passive, non-invasive imaging tool. Detection, tracking, classification and any image processing run **fully on-device** using [LiteRT](https://github.com/google-ai-edge/litert), so an internet connection is not required in the field and your data stays under your control and privacy needs. Internet connection on your phone is required only for downloading the needed AI detectors and classifiers once, or you can place them yourself on the phone from your computer.
+Detection, tracking, classification and any image processing run **fully on-device** using [LiteRT](https://github.com/google-ai-edge/litert), so **an internet connection is not required in the field** and your data stays under your control and privacy needs. Internet connection on your phone is required only for downloading the needed AI detectors and classifiers once, or you can place them yourself on the phone from your computer.
 
-A draggable square **region of interest (ROI)** can be placed over a flower (or feeding site, nest entrance, animal path, observation area of interest, etc.). FaunaPulse then records activity within that region and also saves (locally, on device) ROI-cropped JPEG images (or videos) together with metadata. At the end of the recording session, it opens the **Session summary** screen with numbers and graphs about the visitation rates and the captured images with the tracked objects for preview and check (the **Dashboard** on the home screen sums up all sessions). Saved images and session metadata can later be exported on a PC for analysis in research workflows.
+A draggable square **region of interest (ROI)** can be placed over a flower (or feeding site, nest entrance, animal path, observation area of interest, etc.). FaunaPulse then records activity within that region and also saves (locally, on device) ROI-cropped JPEG images (or videos) together with metadata. At the end of the recording session, it opens the **Session summary** screen with numbers and graphs about the visitation rates and the captured images with the tracked objects for preview and check (the **Dashboard** on the home screen sums up all sessions). Saved images, videos and session metadata can later be exported on a PC for further (re)analysis or directly in research workflows.
 
-The **Identify organisms** step can run an image classifier such as [BioCLIP 2][bioclip] (also BioCLIP 2.5 or the insectDCT classifier) on the phone itself over the saved crops of every track ID (the model and a name list are downloaded in the app on the **Download & import models** screen, or imported; see `docs/IDENTIFICATION.md`). Identification needs a lot of the phone's memory: keep FaunaPulse on the screen until it ends, because if you switch to another app, Android may make it wait or stop it. BioCLIP and similar classification tools can of course still be used on a computer instead after the detection results are transferred from the smartphone. For that, you can also check the classification software developed by my colleague, Maximilian Sittinger, designed to run on a PC (with or without a GPU) - [insect-detect-post](https://github.com/maxsitt/insect-detect-post). The PC tool [fauna-pulse-export][fp_export] adapts FaunaPulse sessions to the data structure that software package ingests, and puts the names from both programs side by side per track ID.
+The **Identify organisms** step can run an image classifier such as [BioCLIP 2 or 2.5][bioclip] (also the insectDCT classifier) on the phone itself over the saved crops of every track ID (the model and a name list are downloaded in the app on the **Download & import models** screen, or imported; see `docs/IDENTIFICATION.md`). Identification needs a lot of the phone's memory: keep FaunaPulse on the screen until it ends, because if you switch to another app, Android may make it wait or stop it. BioCLIP and similar classification tools can of course still be used on a computer instead after the detection results are transferred from the smartphone. For that, you can also check the classification software developed by my colleague, Maximilian Sittinger, designed to run on a PC (with or without a GPU) - [insect-detect-post](https://github.com/maxsitt/insect-detect-post). The PC tool [fauna-pulse-export][fp_export] adapts FaunaPulse sessions to the data structure that software package ingests, and puts the names from both programs side by side per track ID.
 
 For interested end-users, saved images can also be reviewed and manually cropped as an extra feature. Organism crops can then be shared with or imported into identification apps such as: [Seek by iNaturalist](https://www.inaturalist.org/pages/seek_app), [ObsIdentify](https://observation.org/apps/obsidentify/), [BeeMachine](https://www.beemachine.ai/) or another preferred app or classification service. Therefore, you can choose the identification service best suited to your needs. Note that at the time of releasing this repository, the apps enumerated above do not perform bulk (en mass) identification, but they work with one image per upload and internet connection is needed. While this sharing feature is possible, FaunaPulse is designed with offline usage in mind and bulk processing (e.g. mass classification with BioCLIP models on device) for scaling monitoring while keeping your data local.
 
@@ -251,7 +252,7 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 | [CONTRIBUTING.md](docs/CONTRIBUTING.md) | Developer | Build, test and follow repository conventions. |
 | [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) | Developer | Which model formats the app runs; the conversion tools are in [fauna-pulse-models][fp_models]. |
 | [Model cards on Hugging Face][hf_fp_models] | Developer / tester | Where each model the app offers comes from, how it was converted for the phone, its licence and how to cite it. The conversion tools and the cards' sources are in [fauna-pulse-models][fp_models]. |
-| [IDENTIFICATION.md](docs/IDENTIFICATION.md) | Developer | How classification with [BioCLIP 2][bioclip] is adapted for smartphone usage |
+| [IDENTIFICATION.md](docs/IDENTIFICATION.md) | Developer | How classification with [BioCLIP 2][bioclip2] is adapted for smartphone usage |
 | [PERFORMANCE_BENCHMARKING.md](docs/PERFORMANCE_BENCHMARKING.md) | Developer | How to measure performance (paired-run protocol). |
 | [LEAN_QNN_PACKAGING.md](docs/LEAN_QNN_PACKAGING.md) | Maintainer | The lean (no-QNN) default build and the optional Snapdragon NPU edition (`-P qnn=true`). |
 | [FAUNAPULSE_FORK.md](./packages/ultralytics_yolo/FAUNAPULSE_FORK.md) | Developer / reviewer | What FaunaPulse changed in its copy of the Ultralytics plugin vs upstream; re-audit checklist. |
@@ -300,10 +301,10 @@ See also the [Installation & Testing Guide](docs/INSTALL.md) for how models reac
 ### Classifiers (identification models)
 
 - [BioCLIP 2][bioclip2]
-- [BioCLIP 2.5][bioclip25] (newer and larger; slow, because on most phones it runs on the main processor only)
+- [BioCLIP 2.5][bioclip25] (newer and larger but slower and requires more RAM on your phone)
 - [insectDCT][insectdct]
 
-Classifiers like [BioCLIP 2][bioclip2] already run in bulk (en-masse) on the phone, without an internet connection: **Identify organisms** on the **Session summary** screen, or in a session's ⋮ menu on the **Sessions** screen (see [IDENTIFICATION.md](docs/IDENTIFICATION.md)). This is experimental and the quality of results may be noisy.
+Classifiers like [BioCLIP 2][bioclip2] run in bulk (en-masse) on the phone, without an internet connection: **Identify organisms** on the **Session summary** screen, or in a session's ⋮ menu on the **Sessions** screen (see [IDENTIFICATION.md](docs/IDENTIFICATION.md)).
 
 BioCLIP chooses each animal's name from a name list. Such lists are prepared per region (e.g. Europe) and taxonomic categories (e.g. common orders of pollinators) for the animals you watch. Narrowing the scope of the large name lists can help with more realistic identification results. For example, there is no need to allow a model to think that zebras can be found within the wildlife of Europe or act as pollinators. At least not in this universe...
 
