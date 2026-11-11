@@ -1,19 +1,19 @@
-FaunaPulse turns your Android phone into an AI-powered wildlife camera for ecological field research.
+FaunaPulse turns your Android phone into an AI-powered wildlife camera for ecological field research. It detects, tracks and identifies animals on the phone itself, not in the cloud.
 
-Point your phone's camera at a flower, feeding site, nest entrance, or any area of interest, and FaunaPulse detects, tracks, and photographs visiting animals in real time - fully on-device. After a one-time download of the AI models, no internet connection is needed.
+Point your phone's camera at a flower, feeding site, nest entrance, or any area of interest. FaunaPulse detects, tracks and photographs the visiting animals in real time, and can identify them afterwards: it suggests a name for each animal. Detection and identification both run on your phone, not on a server. After a one-time download of the AI models, no internet connection is needed.
 
 KEY FEATURES
 - Real-time AI detection and tracking: every animal that enters the area you watch gets a track ID, and every detection is logged with its time
+- On-device identification of the recorded animals with BioCLIP vision models or a fixed-class insect classifier, with a confidence per taxonomic rank
 - Capture without AI: motion-triggered photos, or time-lapse photos or video clips, including a night mode using the phone's flashlight
 - AI later: find animals, track IDs and names afterwards in saved photos and videos, also in videos you import (an option for older phones)
-- Experimental on-device identification of the recorded animals with the BioCLIP 2 vision model or a fixed-class insect classifier, with a confidence per taxonomic rank
 - A draggable region of interest (ROI) to focus monitoring on a specific spot
 - Field notes and one GPS position per session
 - Session summaries with photos, video playback with the AI's boxes and graphs, plus a Dashboard over all sessions
 - Works offline: no account, no ads, no analytics, no data ever leaves your phone
 
 WHO IT'S FOR
-FaunaPulse was built for ecological research, especially estimating visitation rates of flower-visiting animals such as pollinators, but it can be configured with different detection models for other wildlife-monitoring use cases.
+FaunaPulse was built for ecological research, especially estimating visitation rates of flower-visiting animals such as pollinating insects, but it can be configured with different detection models for other wildlife-monitoring use cases.
 
 FaunaPulse is made for smartphones mounted upright (portrait) on a tripod, clamp or stake. Tablets are not supported.
 

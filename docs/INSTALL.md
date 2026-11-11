@@ -72,8 +72,7 @@ Save the `.apk` file to your phone in one of two ways:
   [Releases](https://github.com/valentinitnelav/fauna-pulse/releases) page);
 - or copy it over USB from your computer (for example into the phone's `Download` folder).
 
-The APK files are usually in the **Assets** section of a release on the
-[Releases](https://github.com/valentinitnelav/fauna-pulse/releases) page, for example:
+The APK files are usually in the **Assets** section of a release, for example:
 
 <img height="170" alt="Image" src="https://github.com/user-attachments/assets/0a614eea-354a-44ef-b3c8-41aee7a601f4" />
 
@@ -97,13 +96,7 @@ WikiHow has a tutorial with the necessary steps:
 
 Below is an example on a Samsung test phone. Some screens will look different on your phone,
 but they should be similar. An older version of FaunaPulse was used when the screenshots were
-taken.
-
-Once the APK file is downloaded, tap **Open** if asked. Otherwise go to the Downloads folder
-(or the place where your phone saves downloads) and tap the APK file. The app icon should
-already be visible. The name of the APK file changes with each release: below it is named
-`app-release.apk` as an example, but you may see names like
-`faunapulse-v0.9.0-beta.1-arm64-v8a.apk`.
+taken. In the screenshots the APK file is named `app-release.apk`.
 
 <table width="50%">
   <thead>
@@ -249,7 +242,8 @@ cite it and whether there is a newer version.
 [S1. Getting the models](#s1-getting-the-models)), add them in one of two ways:
 
 - **In-app import (easiest):** **AI models** (Home, bottom bar) → **Import model files…**.
-  Pick the `.tflite` file(s) from **Downloads** or another folder.
+  Pick the `.tflite` file(s) from **Downloads** or any other folder that Android's file picker
+  can read.
 - **HTTPS download:** **Menu** → **Download & import models** → **Download from a link…**.
   Paste a direct HTTPS link to a model file or name list (it works for `.tflite`, `.fpack` and
   `_qnn.onnx` files).
@@ -276,10 +270,8 @@ checksum (a fingerprint of the file) before they are kept.
   this phone**, where they can be chosen like the suggestions (no entry in the download list is
   needed).
 
-Added models are copied into private app storage, so you cannot browse them over USB.
-
-The tools to convert and quantise the models (store their numbers with less precision, so the files get smaller) are in
-the GitHub repository [fauna-pulse-models][fp_models].
+Added models are checked and copied into private app storage, so you cannot browse them over
+USB.
 
 ---
 
@@ -534,9 +526,8 @@ adb -s <device-id> install -r build/app/outputs/flutter-apk/app-release.apk
 </details>
 
 **Important: measure speed only with a release build.** A **debug build** gives very distorted
-numbers. Never measure inference speed, tracking accuracy or frames per second (FPS) on a debug
-build. Install a `--release` APK to measure the true hardware performance and processing delay
-of the app.
+numbers for inference speed, tracking accuracy and frames per second (FPS). Install a
+`--release` APK to measure the true hardware performance and processing delay of the app.
 
 <details>
 <summary>Debug and release builds: what is the difference?</summary>
@@ -586,19 +577,17 @@ conversions of MegaDetector V6, flat-bug, insectDCT, BioCLIP 2 and BioCLIP 2.5. 
 model card (source, licence, how to cite). The app downloads them itself
 ([A3](#a3-add-detection-models)).
 
-The tools to convert and quantise the models are in the GitHub repository
-[fauna-pulse-models][fp_models].
+The tools to convert and quantise the models (store their numbers with less precision, so the
+files get smaller) are in the GitHub repository [fauna-pulse-models][fp_models].
 
 **Models you receive from others:**
 
 - **Do not** re-share unpublished models you receive, commit them to git, or upload them
   anywhere public. Treat collaborator-owned models as confidential.
 - To use a model, load it with the in-app **Import model files…** button or **Download from a
-  link…** ([A3](#a3-add-detection-models)). Import accepts a file copied into any folder that
-  Android's file picker can read, including Downloads filled over USB.
+  link…** ([A3](#a3-add-detection-models)).
 
-Imported and downloaded models are checked and copied into private app storage (so they are not
-easily visible over USB). Every model file and name list may be up to 2 GiB.
+Every model file and name list may be up to 2 GiB.
 
 <details>
 <summary>Why the 2 GiB limit</summary>
@@ -611,9 +600,9 @@ mapping the whole file into memory, which stops at 2 GiB for now.
 
 ### Pack models with the APK file
 
-This is not encouraged for a public release, but it is possible if it becomes practical in the
-future, or if you find it convenient when debugging and testing on your phone. It is not
-encouraged for Google Play because the APK file can grow a lot in size.
+This is not encouraged for a public release, and not for Google Play because the APK file can
+grow a lot in size. It is possible for debugging and testing on your phone, or if it becomes
+practical in the future.
 
 For local development, models can be placed in `assets/models/` or `assets/models/custom/`
 before a debug or release build (those folders stay git-ignored).
@@ -653,7 +642,8 @@ Also:
 <summary>Packed models are no longer offered to users</summary>
 
 Since round 268 the model picker lists only downloaded or imported models, so a packed model is
-no longer offered to users. Since round 270 the list is empty: the release APK carries no model,
+no longer offered to users. Since round 270 the list of packed models
+(`assets/models/bundled_models.txt`) is empty: the release APK carries no model,
 and the camera starts without one (motion-triggered and time-lapse capture need none).
 
 </details>

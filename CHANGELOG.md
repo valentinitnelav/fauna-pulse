@@ -6,6 +6,42 @@ and `0.8.0-alpha.1`, then beta from `0.9.0-beta.1`) and the GitHub release is ma
 pre-release.
 -->
 
+## Next release (not released yet)
+
+Faster AI on the phone's processor, a list of the frame rates each camera offers, and more
+readings of the phone during long runs.
+
+- **Faster on the processor (CPU).** When a model runs on the phone's processor instead of
+  its graphics chip (GPU), it now computes with 16-bit numbers where the model file and the
+  processor allow it (most phones of the last few years). Detection models are about twice
+  as fast this way. BioCLIP 2 is 1.6 to 2.5 times faster and needs about 0.75 GB of memory
+  instead of 1.25 GB. Other models and older phones run as before. Session records say which
+  maths ran (`cpu_16bit`).
+- **Identify organisms.** The last step, which combines the results of each track ID, is 3
+  to 7 times faster. It uses several processor cores; the new setting *Cores for combining
+  results* chooses how many. Once per phone, a short self-test finds the fastest number of
+  processor threads for the model.
+- **Camera frame rate.** Settings list the frame rates that the phone's camera offers (they
+  differ between phones and lenses). Before, a rate the camera did not offer ran at the next
+  lower one without a word. A detector rate of 0, the new default, means "same as the
+  camera".
+- **Phone readings.** Next to the battery temperature, the app records the phone's memory,
+  the processor use of FaunaPulse and, where the phone allows it (for example Xiaomi
+  phones), the temperature of the processor and the graphics chip. They show on the camera
+  screen, on the *Identify organisms* and *Find animals in videos* screens, and as graphs in
+  the session summary. *Identify organisms* now saves its readings too.
+- **Session summary and Dashboard.** Bar charts have a value axis. The track ID timeline
+  moved into *Extra graphs*.
+- **Detection models only.** Model files made for segmentation, pose or rotated boxes are
+  refused when you import them, with the reason.
+- The Sessions list and Home open faster when the phone holds many sessions, and the Video
+  tab opens long sessions with less memory.
+- **Privacy policy** is in the Home menu, and the policy was brought up to date with the app.
+- Fixed: the text box of *Describe the problem* shrank to one line under the keyboard; a red
+  error screen in the Photos tab after changing the sample size.
+- The user guides were rewritten for easier reading.
+- Updated LiteRT, the library that runs the models, to 2.3.2.
+
 ## 0.10.0-beta.1 (2026-10-28)
 
 Analyses go on in the background, imported files are checked more strictly, and a few

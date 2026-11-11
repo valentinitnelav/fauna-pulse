@@ -41,7 +41,7 @@ pictures of the same scene: a continuous live stream and, on request, a full-res
 
 ## One camera, two image streams
 
-The app lets the phone camera produce two image "feeds". They serve two different jobs.
+The two image "feeds" serve two different jobs.
 
 **1. The live analysis stream.** A smaller but faster video feed, for example 1080×1440 px. Its
 size is capped by the phone's camera software (its Hardware Abstraction Layer, HAL).
@@ -110,8 +110,7 @@ See also: [Android: use multiple camera streams at the same time](https://develo
 | **Auto (high-res only when needed)** | Live frame if big enough, else a high-res photo |
 | **High-res photos always (full resolution)** | Always a high-res photo |
 
-**Fast crops** (the default): every photo is cut from the live frame. Nothing stalls, and the
-photo shows the exact trigger moment.
+**Fast crops** (the default): nothing stalls, and the photo shows the exact trigger moment.
 
 **Auto** asks, for every scheduled photo: *would cutting the ROI box out of the live frame meet
 the user's target size (for example 1024 px)?*
@@ -119,9 +118,8 @@ the user's target size (for example 1024 px)?*
 - **Yes** (the ROI box is large on screen): cut from the live frame. It costs little, so there is
   no significant camera interruption.
 - **No** (the ROI box is small, for example a small flower): take a high-res photo and cut the
-  box out of that instead. This costs about 1 s and a brief frame-rate dip, but the photo meets
-  the target. The high-res photo is cropped with the ROI's relative position (the same fraction
-  of the frame).
+  box out of that instead (the same fraction of the frame). This costs about 1 s and a brief
+  frame-rate dip, but the photo meets the target.
 
 If the app could not measure the phone's high-res photo size at the start, **Auto** and
 **High-res photos always** save fast crops instead, so you still get photos.
@@ -197,9 +195,8 @@ Both are logged, not hidden.
 
 ## Where each number lands in the session file (`session.jsonl`)
 
-For researchers who analyse the log.
-
-Each item gives the field, the record it is in, and its meaning.
+For researchers who analyse the log: each item gives the field, the record it is in, and its
+meaning.
 
 - `targetRoiSavedPx` (in `start_of_session` → `config`): the user's target side (e.g. 1024).
 - `saved_px` (in each `capture`): exact side of that JPEG.
@@ -234,7 +231,6 @@ computed with the same arithmetic the crop itself uses.
 <details>
 <summary>Page history</summary>
 
-- Last updated: round 65 (2026-07-03).
 - Since round 117 the default photo source is **fast crops**.
 - The high-res path was renamed from "still" in round 112; the log keeps the name `"still"`.
 

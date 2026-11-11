@@ -234,10 +234,8 @@ with `segment` (DATA_GUIDE §3).
 
 **Video frame rate (live detection video):** round 240.
 
-**Save bursts as** (round 238). *Video (MP4)* clips: the frame rate is set with *Video frame
-rate*; the detector runs on *Find animals in videos* (**Sessions** screen → the session's ⋮
-menu), as for imported videos.
-The clip's side is the *Saved photo side* (Photos tab; smaller when the ROI covers fewer camera
+**Save bursts as** (round 238). The detector runs later on *Find animals in videos*, as for
+imported videos. The clip's side is the *Saved photo side* (Photos tab; smaller when the ROI covers fewer camera
 pixels). In video mode *Photo step*, *ROI photo source* and the companion photo are greyed (not
 used), and *Photo duration* reads *Burst duration (clip length)*. A storage estimate shows under
 the setting: up to about 0.7 GB per recorded hour at 1024 px and the default 5 fps, 2.0 GB at
@@ -277,8 +275,7 @@ exposure to ramp. A 5 s field test produced a dark, blurry first burst photo, he
 default. Lower it only if your first-photo quality holds up.
 
 **Torch during bursts (night)** (round 180). Overnight time-lapses produce usable photos without
-anyone standing in the field. The torch comes on *Torch lead* seconds before each burst. It works
-together with *Turn camera off between bursts* (the camera wakes at whichever lead is longer, and
+anyone standing in the field. It works together with *Turn camera off between bursts* (the camera wakes at whichever lead is longer, and
 the torch re-lights right after the camera is back on) and with the screen-off (moon) button (the
 torch sits on the camera, not the screen). The very first burst of a recording, and of each
 scheduled window (each window restarts its burst clock), begins immediately and skips the lead.
@@ -298,8 +295,7 @@ turns off.
 
 **ROI photo source** (default `fast` since round 117; was `auto`).
 
-- **Fast crops only** (`fast`, the default) = crop the small live video frame: no camera stall,
-  and the photo shows the exact trigger moment.
+- **Fast crops only** (`fast`, the default) = crop the small live video frame.
 - **High-res photos always** (`still`) = take a full-resolution photo and cut the ROI out. Each
   high-res photo pauses the detection pipeline for 0.13–1.5 s (longer on older phones), lands a
   fraction of a second after the trigger, and often shows motion blur. A blurred high-res photo
@@ -328,7 +324,7 @@ photo saves smaller and the on-screen readout shows ⚠.
 toggle, off, under Detection → Tracking → Advanced). They land in `gt_frames/` with `ref_…`
 filenames (folder and record names kept from round 107 so old data stays readable), always via the
 fast live-frame crop (a high-res capture would stall detection). Their size follows *Saved photo
-side*. Greyed out in time-lapse mode because that whole session is already clock-driven photos.
+side*.
 
 </details>
 
@@ -375,15 +371,17 @@ recording goes on), or use the screen-off (moon) button on the camera screen.
 | **Camera frame rate** | `15 FPS` | How many frames per second the camera *hardware* captures. The list shows only the rates this camera offers: each phone and each lens has its own, for example 12, 15 or 30 on one phone and 15, 20, 24 or 30 on another. *No limit* lets the phone choose (~30 FPS on most phones). The detector never runs faster than this. |
 | **Use the GPU when it can run the model** | `on` | *(Detection tab → Advanced (engine & thresholds))* Prefer the GPU for the model. The app falls back to the CPU by itself if the GPU can't run the model. |
 
-**Detector rate and camera rate.** The camera frame rate is different from the detector rate.
-The detector rate only decides how many delivered frames the detector analyses; with no limit on
-the camera, the sensor and image processor keep running at full rate the whole session.
+**Detector rate and camera rate.** The detector rate only decides how many delivered frames the
+detector analyses; with no limit on the camera, the sensor and image processor keep running at
+full rate the whole session.
 
 **Why a list.** A camera runs only at the rates it offers, so a rate between two of them cannot
-run. The list changes with the lens. A saved rate the lens does not offer (saved on another lens,
-or by an older version of the app) shows as the rate that really runs: the highest one below it.
-A lens without 15 FPS starts at its next rate up, which is cooler than *No limit*. The list appears
-once the camera picture is on screen; until then only the saved rate is shown.
+run. The list changes with the lens, and it appears once the camera picture is on screen (until
+then only the saved rate is shown).
+
+A saved rate the lens does not offer (saved on another lens, or by an older version of the app)
+shows as the rate that really runs: the highest one below it. A lens without 15 FPS starts at its
+next rate up, which is cooler than *No limit*.
 
 The detector never runs above the camera rate: the *Max detector rate* box keeps the value typed
 and an amber note shows the rate used. With *No limit* on the camera, the *Max detector rate* may
@@ -395,16 +393,17 @@ it is limited).
 **GPU or CPU.** The app remembers models that crash the GPU. No speed check runs: the GPU is used
 whenever it can load the model.
 
-Only **Benchmark engines (GPU vs CPU)** (Detection tab →
-**Advanced (engine & thresholds)**) compares the two. It takes up to about 30 s. The
-**Engine benchmark** window then lists the time per picture ("ms per inference") for the GPU and
-for CPU thread counts. "CPU 16-bit" means the CPU computes with shorter numbers, as the GPU does:
-about twice as fast, and the boxes differ very slightly. Model files with 8-bit weights (for
-example MegaDetector) cannot do this, so their rows say only "CPU". On some phones with a weak
+Only **Benchmark engines (GPU vs CPU)** (Detection tab → **Advanced (engine & thresholds)**)
+compares the two. It takes up to about 30 s. The **Engine benchmark** window then lists the time
+per picture ("ms per inference") for the GPU and for CPU thread counts. On some phones with a weak
 GPU, the CPU with 4 or more threads is faster than the GPU.
 
-Tap **Use** (followed by the fastest choice) to take it, then tap **Apply**
-at the bottom of the Settings sheet. **Close** keeps your settings.
+"CPU 16-bit" means the CPU computes with shorter numbers, as the GPU does: about twice as fast,
+and the boxes differ very slightly. Model files with 8-bit weights (for example MegaDetector)
+cannot do this, so their rows say only "CPU".
+
+Tap **Use** (followed by the fastest choice) to take it, then tap **Apply** at the bottom of the
+Settings sheet. **Close** keeps your settings.
 
 For a model that runs on a Snapdragon AI chip (NPU), the Detection tab shows instead: "This model
 runs on the phone's AI chip (NPU), not on the GPU or CPU, so the benchmark and "CPU threads" do not
@@ -413,11 +412,10 @@ apply to it."
 <details>
 <summary>More about these settings: saved names, records, history</summary>
 
-**Screen off by itself after** (round 293, idea from the sister app FaunaLapse). After the set
-minutes the app stops holding the screen on, so the phone's own screen timeout switches it off.
-Recording goes on with the screen off (round 292). A touch, or waking and unlocking the phone,
-brings the screen back and restarts the count. `0` keeps the screen on, as before. 3 minutes gives
-time to check the first photos. While the phone charges (a power bank too), Android's "Stay awake"
+**Screen off by itself after** (round 293, idea from the sister app FaunaLapse; recording goes on
+with the screen off since round 292). A touch, or waking and unlocking the phone, brings the
+screen back and restarts the count. `0` keeps the screen on, as before. 3 minutes gives time to
+check the first photos. While the phone charges (a power bank too), Android's "Stay awake"
 developer option keeps the screen on, black. Config key `screenOffAfterMin`.
 
 **Stop at battery level** (round 296, idea from FaunaLapse). Applies only on the phone's own
@@ -437,17 +435,15 @@ new clip under 1 GB free. When the recording stops, the camera screen says why f
 ("Recording stopped: less than 200 MB free storage …") and the summary's Setup tab has a *Stopped
 by itself* row. Record `guard_stop` (`storage_low`). Config key `storageReserveMb`.
 
-**Max detector rate.** It has a 30 FPS maximum, and `0` means the same as the camera (config key
-`inferenceFps`). Round 313: the box keeps the value typed and an amber note shows the rate used;
-before, the camera rate rewrote this value.
+**Max detector rate:** config key `inferenceFps`. Round 313: the box keeps the value typed and an
+amber note shows the rate used; before, the camera rate rewrote this value.
 
 **Auto-adjust detector rate:** config key `autoThrottle`. **Min detector rate:** config key
 `minInferenceFps`. **Target processor load:** config key `throttleDutyTarget`.
 
-**Camera frame rate** (round 82, config key `cameraFpsCap`, `0` = no limit). The Max detector rate
-keeps its own value and shows the rate used (round 313). A lower rate also delays high-res photos (~0.4 s content lag at 15 FPS vs
-~0.17 s uncapped on the test phone, round 110); the `_live.jpg` companion covers the trigger
-moment either way.
+**Camera frame rate** (round 82, config key `cameraFpsCap`, `0` = no limit). A lower rate also
+delays high-res photos (~0.4 s content lag at 15 FPS vs ~0.17 s uncapped on the test phone, round
+110); the `_live.jpg` companion covers the trigger moment either way.
 
 </details>
 
@@ -532,9 +528,8 @@ never changes the other.
 
 **Tracking algorithm.** Two algorithms since round 105; inside the Advanced fold since round 159
 (comparing trackers is a research task). **ByteTrack** predicts where each insect went and matches
-by box overlap; **C-BIoU** enlarges the boxes before comparing them. Both are FaunaPulse's own
-simplified versions of these methods. Compare them on your own recordings with the replay harness
-(see *Log raw detections*) rather than trusting labels.
+by box overlap; **C-BIoU** enlarges the boxes before comparing them. Compare them with the replay
+harness (see *Log raw detections*) rather than trusting labels.
 
 **Log raw detections.** Replay command:
 `flutter test test/fauna_pulse/tracker_replay_test.dart --dart-define=REPLAY_SESSION=…/session.jsonl`.
@@ -551,9 +546,8 @@ round 308 videos have their own value (Video analysis, below).
 **Search margin, pass 2.** Round 313 keeps each value as typed instead of raising pass 2 with
 pass 1.
 
-**Ground-truth frames.** The round-107 **Ground-truth frames** toggle that used to live here is
-now **Reference photos** on the Setup tab (see "Region of Interest & photos"), on by default
-since round 152.
+**Ground-truth frames.** The round-107 toggle that used to live here is now **Reference photos**
+on the Setup tab (see "Region of Interest & photos").
 
 **Shared with videos:** round 308.
 
@@ -582,22 +576,21 @@ camera app, so these lenses do not appear even though you can see them on the ba
 That is a limit of the phone, not of FaunaPulse. When apps can use only one rear camera, the
 lens-switch button is off.
 
-**Live stream resolution.** The phone delivers the nearest size it supports. The short side caps how
-large a *fast* (no-stall) ROI crop can be. Detection accuracy does not change because every frame
-is shrunk to the model's input size anyway.
+**Live stream resolution.** The phone delivers the nearest size it supports. Its short side caps
+how large a *fast* (no-stall) ROI crop can be. Detection accuracy does not change because every
+frame is shrunk to the model's input size anyway.
 
-**Auto** chooses the smallest size the phone supports
-whose short side is at least the *Saved photo side* (1024 px by default). If no size reaches it,
-Auto picks the largest size the phone streams.
+**Auto** chooses the smallest size the phone supports whose short side is at least the *Saved
+photo side* (1024 px by default). If no size reaches it, Auto picks the largest size the phone
+streams. The menu item says which: "Auto (matches Saved photo side, ... px)" or "Auto (largest
+this phone streams, below ... px)".
 
-The menu item says which: "Auto (matches Saved
-photo side, ... px)" or "Auto (largest this phone streams, below ... px)". So fast crops can reach
-the *Saved photo side*, and the
-slow high-res path (≈0.4–0.8 s behind the trigger on the test phone) is needed less often. Sizes
-above the phone's real analysis ceiling are never picked by Auto.
+So fast crops can reach the *Saved photo side*, and the slow
+high-res path (≈0.4–0.8 s behind the trigger on the test phone) is needed less often. Auto never
+picks sizes above the phone's real analysis ceiling.
 
-Trade-off: larger streams cost
-more processing per frame, so more heat and battery. A size you pick by hand is never overridden.
+Trade-off: larger streams cost more processing per frame, so more heat and battery. A size you
+pick by hand is never overridden.
 
 **Lens.** The app snaps to the available lens closest to this value; single-lens phones just stay
 on their one lens.
@@ -674,8 +667,7 @@ readings are taken for the live preview anyway, so logging them is free: roughly
 8-hour session.
 
 In the session summary they appear under the **Extra graphs (temperature, FPS, power, track ID timeline)** section (it also holds the heat level graph). It is collapsed at first, and the app remembers
-whether you last left it open or closed. So the track ID
-charts (the main result) stay front and centre.
+whether you last left it open or closed. So the track ID charts (the main result) come first.
 
 A session whose videos were analysed, or that was identified, gets a choice above these graphs:
 the phone **While recording**, **While the detector ran** or **While identification ran**. The
@@ -871,26 +863,25 @@ Confidence, and a change of it shows "Settings changed".
 
 ## Video analysis (Find animals in videos screen)
 
-**Getting videos in.** Videos come in through **Import videos…**: a button on the home screen, also
-on the Find animals in videos screen (there it reads **Import other videos…** once a session with
-videos exists) and in the Sessions screen's ⋮ menu.
-
-The button opens Android's photo picker, whose ⋮ menu browses the phone's folders. The import asks only for a session name
-and when filming started (both logged, see [DATA_GUIDE.md §9](DATA_GUIDE.md)). "Find animals in
-videos" then finds the insects in them.
+**Getting videos in.** Videos come in through **Import videos…** (home screen, Sessions screen's ⋮
+menu, and this screen). The import asks only for a session name and when filming started (both
+logged, see [DATA_GUIDE.md §9](DATA_GUIDE.md)). The steps:
+[VIDEO_ANALYSIS.md, Step 1](VIDEO_ANALYSIS.md#step-1-import-or-record).
 
 **Settings belong to the analysis.** As for the photo analysis, these settings belong to the
-analysis, not to a recording. They are stored on the phone. A session's results always come from
+analysis, not to a recording, and are stored on the phone. A session's results always come from
 one set of settings: after a change the screen offers **Analyze again with these settings**.
 
 It first asks **Replace the earlier results?**, names the changed settings and warns when deleted
 clips lose their boxes and track IDs; **Replace and start** replaces the earlier results. The
-session summary's Setup tab lists the settings (Model & detection, Tracking), read back from the last run's records.
+session summary's Setup tab lists the settings (Model & detection, Tracking), read back from the
+last run's records.
 
 **Where the settings are.** The screen shows the session, the detection model, the proposed area
-and the main button (**Analyze N clips**). Every number to tune sits on its own screen, **Detection, track ID and identification
-settings**. Its entry under *Also identify them* names the values in use, one line per card. It
-can be opened before the first run and is greyed while a run goes on. It has three cards:
+and the main button (**Analyze N clips**). Every number to tune sits on its own screen,
+**Detection, track ID and identification settings**. Its entry under *Also identify them* names
+the values in use, one line per card. It can be opened before the first run and is greyed while
+a run goes on. It has three cards:
 
 - the **Detection** card: the rows marked (Detection) below;
 - the **Track IDs** card: the rows marked (Track IDs) below;
@@ -905,7 +896,7 @@ from the app's defaults, not from the camera's values, and a change never reache
 | **Confidence threshold** (Detection) | `0.25` (0.05–0.95) | Minimum score for a box to count; the live camera's default. Lower finds more faint boxes. A change needs a new analysis. |
 | **Frames analyzed per second** (Detection) | `5` (1–30) | How many pictures of each second of the video the detector looks at; the pictures in between are skipped. More follows fast flying insects better but takes longer. |
 | **Area to analyze** | the largest square in the middle, proposed | The square the detector looks at, shown on the first frame to accept or change. Insects outside it are ignored. Kept per session. |
-| **IoU threshold** (Detection) | `0.7` (0.05–0.95) | IoU = how much two boxes overlap (0 to 1). When two boxes overlap more than this, only the more confident box is kept, so one insect gets one box. Lower removes more overlapping boxes but can drop one of two insects sitting close together. 0.7 is the live camera's default. |
+| **IoU threshold** (Detection) | `0.7` (0.05–0.95) | As on the photo screen ([IoU threshold](#photo-analysis-analysis-screen)): when two boxes overlap more than this, only the more confident box is kept. 0.7 is the live camera's default. |
 | **Pause the analysis above** (Detection) | `43 °C` (35–45) | The run pauses at this battery temperature and resumes 3 °C lower. A hot battery ages faster, and a hot phone slows itself down anyway. The Identification card has its own value. |
 | **Measure the phone every** (Detection) | `10 s` (5–60) | How often the battery temperature, the memory in use, the processor cores FaunaPulse keeps busy, the power use and the analysis speed are written down during a run, also while it pauses to cool down. Shorter shows quick changes but gives a longer file. |
 | **Occlusion tolerance** (Track IDs) | `3 s` (0.2–10) | How long an insect can vanish (for example behind a petal) and keep its track ID. Longer: fewer track IDs split in two; too long: two visitors can merge into one. |
@@ -925,9 +916,7 @@ minimum track length back to their defaults (the algorithm choice and the kept f
 changed value makes the main button read *Find track IDs again with these settings*.
 
 **Confidence and New-track confidence.** Faint boxes can keep an insect's track ID while it is
-half-hidden, and *New-track confidence* decides which boxes may start one.
-
-A change of the
+half-hidden, and *New-track confidence* decides which boxes may start one. A change of the
 confidence needs a new analysis; a change of New-track confidence needs only the track IDs found
 again (seconds). To try settings, analyse once with a low confidence, then try New-track values.
 
@@ -984,15 +973,13 @@ become frames at the rate the video was analysed at, fixed for the whole run.
 area at full size). Off: *Find track IDs* keeps none and removes the ones kept before (a note says
 how many), unless their video is gone. Shown on the Setup tab as *Kept frames per track ID*.
 
-**Also identify them.** After the frames are kept, the screen opens *Identify organisms*,
-which starts by itself and ends on the results. The identification model and name list under the
-switch are the ones *Identify organisms* remembers. The switch needs *Keep frames of each track
-ID* because identification names the saved frames; otherwise the switch is greyed with the
-reason. With every clip analysed already (or the videos deleted) and the track IDs up to date, the
-main button reads *Identify the animals found*. Not offered for live detection sessions (their
-track IDs are named from the session's ⋮ menu). The Identification card of the settings screen
-holds the settings of *Identify organisms* (Identification, below; the same values), greyed with
-the reason while the automatic identification will not run.
+**Also identify them.** Works as on the photo screen (see [Also identify them](#also-identify-them)),
+but after the frames are kept. The switch needs *Keep frames of each track ID* because
+identification names the saved frames; otherwise the switch is greyed with the reason. With every
+clip analysed already (or the videos deleted) and the track IDs up to date, the main button reads
+*Identify the animals found*. The Identification card of the settings screen holds the settings
+of *Identify organisms* (Identification, below; the same values), greyed with the reason while
+the automatic identification will not run.
 
 </details>
 
@@ -1000,10 +987,9 @@ the reason while the automatic identification will not run.
 FaunaPulse on the screen until the identification ends. It needs a lot of memory: if you switch
 to another app, it may wait, or Android may stop it.
 
-With the app in the background, a model that
-does not fit in the phone's free memory waits for the app to be opened (notification "Animals
-found"). This also works after Android has closed the app meanwhile (once, within 24 hours; see
-[IDENTIFICATION.md](IDENTIFICATION.md), step 3).
+With the app in the background, a model that does not fit in the phone's free memory waits for
+the app to be opened (notification "Animals found"), also after Android has closed the app
+meanwhile (once, within 24 hours; see [IDENTIFICATION.md](IDENTIFICATION.md), step 3).
 
 <details>
 <summary>Saved names, records and history (video analysis)</summary>
@@ -1065,7 +1051,8 @@ are counted (not with 0 crops), and it opens the results when the run ends.
 | Setting | Default | Meaning |
 |---|---|---|
 | **Use the GPU when it can run the model** | on | Runs the model on the phone's graphics processor (GPU), on tested phones about ten times faster than the main processor (CPU). The first time, the app checks on a test picture that the GPU gives the same answers as the CPU; if not, or if the GPU cannot run the model, the CPU is used and the app says why. "Test speed" shows what this phone does. Off = CPU only. |
-| **CPU threads (0 = automatic)** | 0 (automatic) | Processor cores the CPU engine may use. 0 = automatic = 2. 4 keeps twice the cores busy, so the thermal pause comes sooner. Measure with "Test speed". |
+| **CPU threads (0 = automatic)** | 0 (automatic) | Processor cores (0 to 8) the model may use on the CPU. 0 = automatic: the first time a model runs on this phone's CPU, the app times 2, 4 and all cores on a test picture and keeps the fastest, or the fewest that come within 5 % of it, because fewer busy cores mean less heat (about a minute, once per model and app version). Measure a value with "Test speed". |
+| **Cores for combining results (0 = automatic)** | 0 (automatic) | Processor cores (0 to 8) for the step after the model run, which compares every crop with all names of the list. 0 = automatic: all cores (up to 8) on a phone with at least 5 GB of memory, 4 on a phone with less. Each core at work needs about 60 MB of memory, so lower it if the phone runs short of memory. Measurements: [IDENTIFICATION.md](IDENTIFICATION.md#settings). |
 | **Square crops** | on | The model always looks at a square picture. On: the box is widened to a square, so the insect keeps its shape and some flower shows around it. Off: only the box (plus the margin) is cut out and stretched to a square, so a long, thin insect looks squeezed. After a change, the next run asks whether to cut the stored crops again. |
 | **Crop margin** | 0 | Extra border added on every side of the detector box, as a share of the box's longer side (0.05 = 5 % of it). 0 = the box itself (made square when *Square crops* is on). Raise it if legs or antennae look cut off. |
 | **Smallest box to identify** | 48 px | Boxes whose longer side is smaller (in photo pixels) are skipped as too small. |
@@ -1114,9 +1101,11 @@ come from and how the answer is computed.
 - Identification settings: round 208. Shared with the videos' Identification card since round
   308. Automatic start from *Also identify them*: round 274.
 - **Use the GPU when it can run the model:** CPU fallback with the reason on screen since r211.
-- **CPU threads:** 0 = automatic = 2 since round 226 (LiteRT's own default is 1). BioCLIP-2 on the
-  Xiaomi (round 250, phone cool): 4.6 to 5.4 s per crop on 1 thread, 2.6 to 3.0 s on 2, 1.9 to
-  2.0 s on 4, 2.0 s on 8 (0.26 s on the GPU).
+- **CPU threads:** 0 = automatic was 2 from round 226 (LiteRT's own default is 1) until the
+  self-test of round 357, when the CPU began to compute in 16-bit and the fastest count started
+  to differ by phone (measurements in IDENTIFICATION.md, *The CPU engine*). BioCLIP-2 on the
+  Xiaomi with the earlier 32-bit maths (round 250, phone cool): 4.6 to 5.4 s per crop on 1 thread,
+  2.6 to 3.0 s on 2, 1.9 to 2.0 s on 4, 2.0 s on 8 (0.26 s on the GPU).
 - **Crop margin:** 0.05 in round 255, 0.15 before.
 - **Ignore crops far less sure than the best:** r219.
 - **Confidence needed to call a rank identified:** 0.80 until round 216. Conf. is the pooled

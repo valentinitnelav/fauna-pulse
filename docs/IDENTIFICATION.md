@@ -60,16 +60,19 @@ If you choose **Not now** under **To name them**, the animals are found and coun
 
 | Model | What it does | Size | Time per crop |
 |---|---|---|---|
-| **[BioCLIP 2][bioclip]** | Names any organism, choosing from a name list. | 0.6 GB | 0.22 s (GPU), 0.7 s (CPU) on the Xiaomi test phone; 1.2 and 3.3 s on the CPU of the two 4 GB test phones |
+| **[BioCLIP 2][bioclip]** | Names any organism, choosing from a name list. | 0.6 GB | 0.22 s (GPU), 0.7 s (CPU) on the Xiaomi test phone; 1.2 and 3.1 s on the CPU of the two 4 GB test phones |
 | **BioCLIP 2.5** | The larger successor of BioCLIP 2. | 1.27 GB | 5.3 to 5.6 s (CPU; the test phone's GPU has too little memory for it) |
 | **insectDCT classifier** | Names insects in 104 fixed classes of flower visitors, from order down to species where it can. | 42 MB | 0.02 s (GPU), 0.15 s (CPU) |
 
 The times were measured on a test phone (Xiaomi 11T Pro, plugged in). GPU means the graphics
-processor, CPU the main processor. A whole session of 9,193 crops took that phone's GPU 51 minutes
-for the model with BioCLIP 2, plus 1.5 minutes for the scoring and the result files; the CPUs of
-the two 4 GB test phones needed 3 h 43 min and 9 h 56 min for the model (plus 3 and 6 minutes of
-scoring), without a heat pause. BioCLIP 2.5 is an overnight job on the charger (about 1.5 hours per
-1000 crops). The insectDCT classifier also needs its class list (14 kB).
+processor, CPU the main processor. A whole session of 9,193 crops with BioCLIP 2 took:
+
+- on that phone's GPU, 51 minutes for the model, plus 1.5 minutes for the scoring and the result
+  files;
+- on the CPUs of the two 4 GB test phones, 3 h 43 min and 9 h 56 min for the model (plus 3 and
+  6 minutes of scoring), without a heat pause.
+
+BioCLIP 2.5 is an overnight job on the charger (about 1.5 hours per 1000 crops).
 
 It is not yet tested which model names this project's pollinators best (BioCLIP 2, BioCLIP 2.5
 or insectDCT).
@@ -89,8 +92,7 @@ A model can identify only with a name list made for it:
   model without a name list is flagged: it cannot identify.
 - **Identify organisms** offers only the lists made for the chosen model, and does not start
   without one.
-- A list works only with the model it was built for. The app refuses a list made for another
-  model.
+- The app refuses a list made for another model.
 
 ### Download & import models
 
@@ -218,10 +220,10 @@ session:
    **Identify organisms** button at the end.)
 2. Under **Model and name list**, pick the **Model (.tflite)** and the **Name list (.fpack)**. A
    line under them says how many names the list has. If no list fits the model, an amber line
-   says "No name list for this model, so it cannot identify". The screen shows how many crops will be processed: one per
-   photo per tracked animal, with a cap per track ID. After the first run on this phone it also
-   shows a time estimate, for example "120 crops from 8 track IDs (about 5 min on this phone,
-   plus any heat pauses)". The estimate leaves heat pauses out.
+   says "No name list for this model, so it cannot identify". The screen shows how many crops
+   will be processed: one per photo per tracked animal, with a cap per track ID. After the first
+   run on this phone it also shows a time estimate without heat pauses, for example "120 crops
+   from 8 track IDs (about 5 min on this phone, plus any heat pauses)".
 3. Plug the phone in and tap **Start**. The progress shows the crops done, the elapsed time, the
    estimated time left, the battery temperature, the memory in use on the whole phone (with
    FaunaPulse's own share, mostly the loaded model) and the processor cores FaunaPulse keeps
@@ -296,11 +298,9 @@ unidentified, 1 no organism.", with a note if the run was cancelled or some crop
 - The run does go on while another app is open or the screen is off (round 319), with a
   notification "FaunaPulse is identifying animals". But Android may close the app to free
   memory.
-- Swiping FaunaPulse away from the recent apps ends the run (what is done is kept).
-- When Android closed the app during a run that started with FaunaPulse on the screen, the next
-  opening of FaunaPulse (up to 24 hours after the run started) says so on Home for a few
-  seconds, and nothing starts by itself. Continue with *Identify organisms* from the session's ⋮
-  menu on the Sessions screen, which goes on where it stopped.
+- The note on Home after Android closed the app (see *Messages you may see*) appears for a run
+  that started with FaunaPulse on the screen, at the next opening of FaunaPulse up to 24 hours
+  after the run started.
 - On Android 13 and newer, the first run after the app opens asks for the notification
   permission if it is not granted yet. The run goes on whatever the answer.
 - When **Also identify them** starts the identification after *Find animals in videos* or *in
@@ -330,14 +330,13 @@ seconds.
 
 Confidence and "no organism" thresholds, the CSV rank, the merge settings and the suspect flags
 are all applied at scoring, so changing them never re-runs the model. **Crop margin** and
-**Square crops** are the exception: they change what the model saw, but the stored vectors do
-not know it. When either differs from what the stored crops were cut with, Start asks (*Crop
-settings changed*) whether to *Keep stored crops* (fast) or *Recompute all crops* (a full run).
-*Smallest box to identify* and *Crops per track ID* only add or remove crops.
+**Square crops** change what the model saw, but the stored vectors do not know it: Start asks
+(*Crop settings changed*) when either differs from what the stored crops were cut with (see
+*What a change costs* under [Settings](#settings)). *Smallest box to identify* and *Crops per
+track ID* only add or remove crops.
 
-**Update results** compares the stored embeddings against a different name list (for example a
-country-restricted one) without running the model again. For track IDs found in videos, *Find
-track IDs* numbers the track IDs anew each time. After it ran again, the stored crops belong to
+**Update results after new track IDs.** For track IDs found in videos, *Find track IDs*
+numbers the track IDs anew each time. After it ran again, the stored crops belong to
 the old numbers, so the button is hidden, a note says the next *Continue / re-run* starts over,
 and the session summary shows no answers on the frames until then (round 235).
 
@@ -364,17 +363,16 @@ one rank, such as the order Hymenoptera or the genus *Bombus*.
    durations. *Med. Conf.* is their median confidence.
 3. Tap a row to see its track IDs. Tap a track ID to open its sheet with the full ladder (see
    below).
-4. Tap the share icon at the top right (**Share results (CSV file)**) to hand the per-track-ID table (`tracks_<pack>.csv`, one row per track ID)
-   to another app. The same file
-   stays in the session folder under `identification/`, so you can also copy it over USB.
+4. Tap the share icon at the top right (**Share results (CSV file)**) to hand the per-track-ID
+   table (`tracks_<pack>.csv`, one row per track ID) to another app. The same file stays in the
+   session folder under `identification/`, so you can also copy it over USB.
 
 The header's *Name list* row shows the name list by its file name, as on **Identify organisms**
-(for example "bioclip-2_pollinator-orders-europe_v2.fpack (34,978 names)"). After the run, the
-**Photos** tab of the session summary shows each track ID's identification under its photos.
+(for example "bioclip-2_pollinator-orders-europe_v2.fpack (34,978 names)").
 
-One identification belongs to one **track ID** and combines all photos of that track ID. The
-Photos tab shows it under every photo of that track ID. It is not an answer per photo: the
-guesses per crop are in `predictions_<pack>.jsonl`.
+One identification belongs to one **track ID** and combines all photos of that track ID. After
+the run, the **Photos** tab of the session summary shows it under every photo of that track ID.
+It is not an answer per photo: the guesses per crop are in `predictions_<pack>.jsonl`.
 
 ### Words used on the results screens
 
@@ -432,8 +430,8 @@ The ladder rows that a flag concerns carry ⚠. A small grey "Flags in tracks CS
 bottom lists the flags as they are written to the CSV, with a dictionary.
 
 Nothing is deleted. The results table hides suspect track IDs behind the switch **Include N
-suspect track IDs** (off at first), the Photos tab
-marks them, and the CSV keeps every row. All four thresholds are settings.
+suspect track IDs** (off at first), the Photos tab marks them, and the CSV keeps every row. All
+four thresholds are settings.
 
 ### How sure is it?
 
@@ -457,11 +455,8 @@ tested on pollinator data ([Validation status](#how-the-answer-is-computed)).
   round 220 had them as one "Taxonomic tree" column.
 - Long column names over short values (for example "Species conf.") wrap onto two lines, with
   room for the sort arrow.
-- Since round 221 each flag is shown where it applies, as an amber ⚠ line whose ⓘ gives the
-  reason with the actual values: `merged`, `short`, `low_det` and `suspect` under the header,
-  `path_conflict`, `weak_id`, `unidentified` and `no_organism` under the ladder (the affected
-  rows carry ⚠; the `path_conflict` line names the rival taxon and why the ladder skips it),
-  `single_crop` above the crops table.
+- Each flag is shown where it applies (column *Shown* of the [Flags](#flags) table) since round
+  221.
 - *Time* and *Med. Conf.* can be reproduced from `tracks_<pack>.csv` (`bioclip_<rank>` /
   `p_<rank>` columns).
 
@@ -513,11 +508,10 @@ afterwards. Both are as designed.
 
 ## Settings
 
-Open **Identify organisms** → the **Advanced settings** fold. Settings are saved as you change them,
-and every run logs them in its `identify_start` record. The defaults come from the literature,
-from BioCLIP's documentation and from the `insect-detect-post` pipeline. The full list:
-[SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md),
-*Identification*.
+Open **Identify organisms** → the **Advanced settings** fold. Settings are saved as you change
+them, and every run logs them in its `identify_start` record. The defaults come from the
+literature, from BioCLIP's documentation and from the `insect-detect-post` pipeline. The full
+list: [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md), *Identification*.
 
 | Setting | Default | Notes |
 |---|---|---|
@@ -532,16 +526,16 @@ from BioCLIP's documentation and from the `insect-detect-post` pipeline. The ful
 | **Confidence needed to call a rank identified** | 0.6 | 0.7 to 0.8 are common in ecological studies; none is tested on pollinators. |
 | **"No organism" threshold** | 0.5 | Above this share for the "none of these" entries, a track ID is "no organism". |
 | **Pause above battery temperature** | 43 °C | The same limit as **Pause the analysis above** on **Detection, track ID and identification settings** (opened from **Find animals in videos**); the run goes on 3 °C lower. |
-| **Merge consecutive track IDs** | off | Joins a track ID to the previous one when the tracker lost the animal for a moment (the three checks are in a folded block below). When it is on, three fields appear under it. |
+| **Merge consecutive track IDs** | off | Joins a track ID to the previous one when the tracker lost the animal for a moment (the three checks are in a folded block below). |
 | **Largest gap between joined track IDs**, **Appearance similarity needed**, **Box size may differ by up to** | 3 s, 0.85, 50 % | Shown only with **Merge consecutive track IDs** on. |
-| *Suspect track IDs (flags only, nothing is deleted)*: **Short: duration below**, **Short: detections below**, **Weak: detector confidence below**, **Weak: order confidence below** | 2 s, 3, 0.20, 0.50 | Flags only, nothing is deleted. The duration and detector-confidence limits follow the `insect-detect-post` software, so the two tools agree. |
+| *Suspect track IDs (flags only, nothing is deleted)*: **Short: duration below**, **Short: detections below**, **Weak: detector confidence below**, **Weak: order confidence below** | 2 s, 3, 0.20, 0.50 | The duration and detector-confidence limits follow the `insect-detect-post` software, so the two tools agree. |
 | **CSV file only: rank of the "pred" columns** | family | Only for `tracks_<pack>.csv`; the screen always shows every rank. |
 
 **What a change costs.** Most settings act only when the answers are scored, so changing them
 never runs the model again. **Crop margin** and **Square crops** change what the model saw:
 **Start** then opens the window **Crop settings changed**: **Keep stored crops** (fast),
-**Recompute all crops** (a full run) or **Cancel**.
-Details are in the folded block *What a re-run computes again* above.
+**Recompute all crops** (a full run) or **Cancel**. Details are in the folded block *What a
+re-run computes again* above.
 
 <details>
 <summary>Why the crop defaults were chosen</summary>
@@ -560,13 +554,11 @@ Details are in the folded block *What a re-run computes again* above.
   side.
 - Neither shape nor margin is yet compared on pollinator photos. To compare them, re-run a
   session with *Recompute all crops* and another setting.
-- **Smallest box to identify 48 px:** the model looks at every crop at 224 px, so a smaller box
-  is enlarged more than 4 times and is mostly blur. On the default 1024 px photos that is an
-  insect about 5 % of the photo side.
-- **Crops per track ID 10** keeps a track ID's ten LARGEST boxes when it has more photos. The
-  photo count per track ID comes from the session's photo schedule (live detection default: one
-  photo per second for 10 s), so the cap rarely removes anything and only bounds the runtime of
-  long bursts.
+- **Smallest box to identify 48 px** (the reason is in the Settings table): on the default
+  1024 px photos that is an insect about 5 % of the photo side.
+- **Crops per track ID 10** (the ten largest boxes): the photo count per track ID comes from the
+  session's photo schedule (live detection default: one photo per second for 10 s), so the cap
+  rarely removes anything.
 
 </details>
 
@@ -599,16 +591,9 @@ track IDs). The outputs carry `track_ids` (JSON) / `merged_track_ids` (CSV, semi
 <summary>Suspect track IDs: the rule and its sources (round 212)</summary>
 
 Very short track IDs are often false detections, and a weak identification makes that more
-likely. A track ID is flagged:
-
-- `short` when its duration is below 2 s OR it has fewer than 3 detector frames;
-- `low_det` when the mean detector confidence is below 0.2;
-- `weak_id` when the probability at ORDER rank is below 0.5;
-- `suspect` when it is short AND (low_det OR weak_id OR "no organism").
-
-All four thresholds are settings. Nothing is deleted: the results table hides suspect track IDs
-behind a switch, the Photos tab marks them, and the CSV keeps every row with `n_detections` and
-a 0/1 `suspect` column, so the thresholds can be checked on your own data in R.
+likely. The rule (`short`, `low_det`, `weak_id`, `suspect`) is in the [Flags](#flags) table,
+with the four thresholds that are settings. The CSV keeps every row with `n_detections` and a
+0/1 `suspect` column, so the thresholds can be checked on your own data in R.
 
 The duration and detector-confidence criteria follow the optional track filter of the
 `insect-detect-post` software (Sittinger (2026), Software for post-processing of data captured
@@ -771,10 +756,9 @@ row and exported as `rival_*`. With `tau` >= 0.5 it can only happen below the re
 
 Two more numbers accompany Conf.:
 
-- **Agree**: how many crops, judged alone, put their top species under the taxon, shown as a
-  share (Agree, "50 %") and a count (Crops agree, "5/10"; one column each since round 222).
-- In the files, for every rank: the plain mean (`p_mean_<rank>`), the best single crop
-  (`p_max_<rank>`) and the mean over the agreeing crops (`p_agree_<rank>`). So
+- **Agree** (see *Words used on the results screens*); its share and count have one column each
+  since round 222.
+- In the files, for every rank, the columns of step 5 in *The five steps in full*. So
   insect-detect-post's weighted probability = `agree_<rank>` × `p_agree_<rank>`, and other
   pooling rules can be compared in R without re-scoring.
 
@@ -872,8 +856,7 @@ matrix maths is spread. Whether more threads are faster on a given phone is an e
 question. **Test speed** (Run section) loads the model with the current settings, embeds 10 of
 the session's own crops after a warm-up, one at a time with a progress line ("Crop 3 of 10,
 about 40 s left"; round 247, was 8 in one call with no feedback), and reports seconds per crop.
-So GPU on/off and thread counts can be compared in a minute each (a few minutes on an older
-phone's CPU); the app does not claim a speed it has not measured.
+The app does not claim a speed it has not measured.
 
 **The CPU engine.** The app loads models with LiteRT 2.3.2 (round 357; 2.2.0 in round 356),
 whose CPU kernels (XNNPACK) take the whole BioCLIP 2 graph; the earlier 2.1.5 left its 144 matrix
@@ -927,9 +910,8 @@ with the same ratios. The cause is not known (probably a phone slowed by heat, a
 
 Until round 356 "0 = automatic" meant 2 threads, the same as for the detectors: 4 was about a
 quarter faster but kept twice as many cores busy. With the 16-bit CPU maths of round 357 the best
-count differs by phone (table in *The CPU engine* above), so "0 = automatic" now means a one-time
-self-test of 2, 4 and all cores (the fewest within 5 % of the fastest wins); the heat pause protects
-a long run.
+count differs by phone, so "0 = automatic" now means the self-test in *The CPU engine* above; the
+heat pause protects a long run.
 
 </details>
 

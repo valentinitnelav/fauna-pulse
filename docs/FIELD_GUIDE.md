@@ -38,16 +38,17 @@ is in [DATA_GUIDE.md](DATA_GUIDE.md).
 
 ## 1. Before you go out
 
-- **Charge the phone fully.** For long sessions, bring a power bank. The detector and the
-  camera run all the time, and heat and battery are the main limits.
+- **Charge the phone fully.** Bring a power bank for any session longer than a few tens of
+  minutes. The detector and the camera run all the time, and heat and battery are the main
+  limits (see [section 8](#8-heat-what-to-expect-and-what-helps)).
 - **Free up storage.** Each track ID saves JPEG photos. Hours of activity can be hundreds of MB
   to several GB. Make sure the free space is well above what you expect to use.
 - **Choose your model and settings before you go,** so that you do not have to change them in
   the sun. Settings are kept between sessions: the last values you used come back.
-- **Fill in the field notes.** On the camera screen, tap the pin with a pencil (*Field notes
-  and position (saved with the session)*). It opens the **Field notes** page. The pin is locked
-  while recording, so fill in the notes before Record. The *Before you record* sheet also opens
-  them with **Change**.
+- **Fill in the field notes.** On the camera screen, the pin with a pencil (*Field notes and
+  position (saved with the session)*) opens the **Field notes** page. The pin is locked while
+  recording, so fill in the notes before Record (the *Before you record* sheet also opens them
+  with **Change**).
 
 The field notes hold:
 
@@ -93,24 +94,19 @@ the FaunaLapse app and the Camtrap DP standard for camera-trap data.
   photos. Use a tripod, a clamp or a stake with a phone holder, and check that it does not move
   in wind.
 - **Use a smartphone, upright (portrait).** FaunaPulse is made for smartphones; tablets are not
-  supported. The screen is locked upright, so the mount must hold the phone upright. Mounted
-  sideways, every saved photo and video is turned by 90 degrees and the AI can find and name
-  animals less well. When the phone looks straight down on flowers, this matters little (see
-  the folded block below).
+  supported. The screen is locked upright, so the mount must hold the phone upright (for a
+  sideways mount, see the folded block below).
 - **Distance to the flower.** There is no single correct distance: let the readout on the
   screen decide. Move the phone closer until the region of interest covers the flower *and* the
   label shows your *Saved photo side* with no ⚠ warning. Closer means more pixels on the
-  insect, but a smaller area watched.
-- **15 to 20 cm worked for us.** In our own field work 15 to 20 cm between the phone and the
-  flower worked well (the same as the setup tip for *Pollinators on flowers* on Home). This may
-  seem close, but further away the insects look too small and the detector may miss them.
+  insect, but a smaller area watched. In our own field work 15 to 20 cm worked well (the same
+  as the setup tip for *Pollinators on flowers* on Home). This may seem close, but further away
+  the insects look too small and the detector may miss them.
 - **Keep the flower still.** Wind moves flowers. We fixed the plant or the target flower to a thin wooden plant stick, the kind that
   garden centres and DIY stores sell cheaply in bundles.
 - **Do not re-aim during a session.** Moving or turning the phone breaks the running track IDs
   and puts the region of interest over another spot. To re-aim, stop the session and start a
   new one.
-- **Power.** Plan for a power bank on any session longer than a few tens of minutes (see
-  [section 8](#8-heat-what-to-expect-and-what-helps) on heat and battery).
 
 <details>
 <summary>A phone mounted sideways</summary>
@@ -127,10 +123,10 @@ in your field notes.
 
 ### Location and flight mode
 
-1. The app takes **one GPS fix per session** (a fix is one measured position). Tap the pin
-   with a pencil on the camera screen to open **Field notes**; under **Position**, **Change
-   position** opens the **Session position** window. The pin turns green when the position is
-   set and amber while the GPS searches.
+1. The app takes **one GPS fix per session** (a fix is one measured position). Set it in
+   **Field notes** (the pin with a pencil on the camera screen): **Position** → **Change position** opens the
+   **Session position** window. The pin turns green when the position is set and amber while
+   the GPS searches.
 2. **Get the fix first, then turn on flight mode.** The GPS receiver still works in flight
    mode, but assisted-GPS data (help data from the internet) cannot download there. A cold fix
    (the first one in a while) can then take minutes.
@@ -173,8 +169,10 @@ use your own videos** and **Find and name the animals** lead through the app.
 4. **Place the region of interest (ROI).** The ROI is the square box you drag over the flower.
    Only insects whose centre is inside this box are counted. Everything outside is ignored:
    this is how the app rejects movement in the background.
-   - Drag the box to move it. Pinch with two fingers to resize it, or tap the *ROI: … ✎* line
-     in the info panel to slide or type an exact **Square size**. It always stays a **square**.
+   - Drag the box to move it, and pinch with two fingers to resize it. It always stays a
+     **square**. For an exact size, tap the *ROI: … ✎* line in the open info panel: **Square
+     size: … × … px (largest …)** has a slider and a box to type the size. The size is rounded
+     to a multiple of 32 px. Tap **Done**.
    - The box snaps to a size that suits the model, so the size you see is exactly the size that
      is saved ("what you see is what you save"). While the app is still measuring the camera,
      the readout briefly shows "measuring…".
@@ -284,16 +282,15 @@ mode is running. **Green = photos are being taken or possible right now; grey = 
 | Live detection with video | "DETECTOR ON · VIDEO" / "SLEEPING · VIDEO ON" | detector on / asleep, video on |
 
 - **"DETECTOR SLEEPING"** means the detector rests to save heat and battery. **Sleeping is
-  normal and correct** on an empty flower: it is not a fault. The ROI border also turns grey
-  while sleeping, and in **Motion trigger** mode while nothing moves. See [section 7](#frame-rate-and-the-detector) for how this affects the FPS
-  number.
+  normal and correct** on an empty flower: it is not a fault. See
+  [section 7](#frame-rate-and-the-detector) for how this affects the FPS number.
 - **"NEXT BURST"** reads "NEXT BURST in 2 h 15 min" when the wait is an hour or more.
 - In time-lapse the label can end in " · camera off" (the camera rests between bursts) or
   " · torch" (the torch is lit for night photos).
 - On a narrow screen a long label may shorten itself with "…". This is on purpose, so the info
   toggle next to it always stays reachable.
 
-**ROI border colour.** It tells you at a glance what is happening:
+**ROI border colour:**
 
 | Border | Meaning |
 |---|---|
@@ -323,16 +320,11 @@ shows:
 
 Turning the panel off (Settings) removes that work on every frame, for the lightest preview.
 
-**Moving and sizing the yellow square (ROI).** Drag the square on the preview to move it, and
-pinch to resize it. For an exact size, tap the ROI line (it ends with ✎) in the open info panel:
-**Square size: … × … px (largest …)** has a slider and a box to type the size. The size is
-rounded to a multiple of 32 px. Tap **Done**.
-
 **Storage free.** How much room is left on the phone for photos and logs (a line in the open
 info panel). It is refreshed at every temperature sample. A ⚠ appears below 1 GB: clean up old
-sessions before you start a long recording. When the free storage drops below *Keep free
-storage* (Settings, Power tab) during a session, the recording stops by itself and says why:
-"Recording stopped: less than … MB free storage (Settings, Keep free storage)."
+sessions before you start a long recording. Below *Keep free storage* (Settings, Power tab)
+the recording stops by itself (see
+[Battery, storage and Android closing the app](#battery-storage-and-android-closing-the-app)).
 
 **Boxes and track IDs.** Coloured boxes with a number are drawn over each tracked insect. The
 **track ID** is what makes a visit measurable: the same insect keeps the same number from frame
@@ -350,8 +342,7 @@ the Settings, moon, lens and focus buttons are locked, and a tap on Record only 
 calibrating. Please wait a moment."
 
 The engine benchmark (**Benchmark engines (GPU vs CPU)** in
-Settings → Detection → **Advanced (engine & thresholds)**) never runs by itself: run it
-yourself if you want it.
+Settings → Detection → **Advanced (engine & thresholds)**) runs only when you start it.
 
 ## 4. Power-saving (blackout) during long sessions
 
@@ -438,9 +429,8 @@ player and **Copy videos to Gallery** (see [VIDEO_ANALYSIS.md](VIDEO_ANALYSIS.md
   *Photo cleanup* on the *Find animals in photos* screen); the others are marked with a red ✕.
   **Delete … marked photos (…)…** asks **Delete photos without detections?** first: this
   cannot be undone. With nothing marked, the button reads *Nothing to delete*.
-- **Copy photos to Gallery** at the bottom: its **Copy photos** button copies the session's
-  photos into the phone's own Gallery app, after a question with the number of photos and the
-  extra storage (details in section 6).
+- **Copy photos to Gallery** at the bottom copies the session's photos into the phone's own
+  Gallery app (see [section 6](#seeing-the-photos-in-the-phones-gallery-app)).
 - Tap a photo to open it. Swipe or use the arrows to go to the next one. Zoom with the slider or
   by pinching; a double tap resets the zoom. A button shows or hides the detection boxes. When
   both exist, a button switches between the fast "_live" crop and the high-resolution photo.
@@ -573,7 +563,7 @@ private storage. To browse the photos on the phone itself:
 
 Notes:
 
-- They are *copies*: the window shows how much extra storage they take.
+- They are *copies*, so they take extra storage.
 - The data log is not exported.
 - Pressing the button again skips photos already exported (no duplicates).
 - The feature needs Android 10 or newer.
@@ -610,17 +600,16 @@ Find your problem in the bold lines below. The problems are grouped:
 
 ### Frame rate and the detector
 
-**FPS dropped a lot after ~30 seconds.** Under direct sun the phone's own heat management slows
-the processor. The phone protects itself; this is not an app bug. Shade the phone if you can.
+**FPS dropped a lot after ~30 seconds, or after the phone warmed up.** In direct sun, or
+once the phone is warm, its own heat management slows the processor. The phone protects itself; this is not an
+app bug. The session keeps recording at a lower rate and recovers as the phone cools. Shade the
+phone if you can (see [section 8](#8-heat-what-to-expect-and-what-helps) for what to expect
+and what helps).
 
-The app defends against it with **Max detector rate** (Power tab, by default the same as the camera, which starts at 15 FPS) and the switch
-**Auto-adjust detector rate (reduces heat)**, which is on by default. A steady lower rate
-collects better data than a fast rate that collapses.
-
-**FPS dropped sharply after the phone warmed up.** That is the phone protecting itself from
-heat, not an app fault. The session keeps recording at a lower rate and recovers as the phone
-cools. See [section 8](#8-heat-what-to-expect-and-what-helps) for what to expect and what helps
-(shade first).
+The app defends against it with **Max detector rate** (Power tab, by default the same as the
+camera, which starts at 15 FPS) and the switch **Auto-adjust detector rate (reduces heat)**,
+which is on by default. A steady lower rate collects better data than a fast rate that
+collapses.
 
 **"DETECTOR SLEEPING" and it does not wake.** The motion gate only wakes on movement inside the
 ROI.
@@ -697,9 +686,7 @@ seconds or more. Usually another app took it over, or the phone's camera service
   back.
 
 Another red banner, "Cannot write to the session log (storage full or removed?). …", means
-that detections may no longer be saved: free up storage or stop the session. The banner about
-a model that gives no results is described under
-[Detection, photo size and the camera](#detection-photo-size-and-the-camera).
+that detections may no longer be saved: free up storage or stop the session.
 
 Each red banner has a **Report** button and an X to hide it. **Report** opens **Problem
 detected**; **Create report** makes a diagnostic report (settings, session log and the app's
@@ -737,8 +724,8 @@ for the folder.
 
 **Find animals and Identify in the background.** *Find animals in videos*, *Find animals in
 photos* and *Identify organisms* (also when started by *Also identify them*) go on while you use
-other apps or the screen is off. While a video plays, or while *Find animals in videos*, *Find
-animals in photos* or *Identify organisms* runs on the screen, the app keeps the screen on; afterwards the phone's own screen timeout applies again.
+other apps or the screen is off. While one of them runs on the screen, or while a video plays,
+the app keeps the screen on; afterwards the phone's own screen timeout applies again.
 
 - While one runs, a notification says so: "FaunaPulse is finding animals in videos", "… in
   photos" or "FaunaPulse is identifying animals".
@@ -764,16 +751,13 @@ model such as BioCLIP 2 needs more than 1 GB of the phone's memory. When another
 front, Android may make the identification wait, or close FaunaPulse to free memory.
 
 FaunaPulse is a measuring tool, so it does not try to guess when the phone has memory to spare.
-Plug the phone in and leave FaunaPulse open until the results show.
+Plug the phone in and leave FaunaPulse open until the results show. The screens say this too:
 
-The screens say this too:
-
-- With *Also identify them* on, *Find animals in videos* and *Find animals in photos* show under
-  the switch: "Identification needs a lot of memory. Keep FaunaPulse on the screen until it
+- *Find animals in videos* and *Find animals in photos*, under the switch *Also identify them*
+  when it is on: "Identification needs a lot of memory. Keep FaunaPulse on the screen until it
   ends: if you switch to another app, it may wait, or Android may stop it."
-- *Identify organisms* shows a similar line without "it may wait" ("… if you switch to another
-  app, Android may stop it."), because a started run there does not wait. It shows above
-  *Start* and during the run.
+- *Identify organisms*, above *Start* and during the run: the same line without "it may wait"
+  ("… Android may stop it."), because a started run there does not wait.
 
 **When the identification waits ("Animals found").** This can happen when *Also identify them*
 reaches the identification while FaunaPulse is in the background. The app first checks that the
@@ -813,8 +797,8 @@ start that identification again by surprise.
 
 **Notifications.** The notification channel of "Animals found" is called *Identification
 waiting*. Notifications need the phone's permission (Android 13 and newer). FaunaPulse asks for
-it when a recording starts. It also asks when *Find animals in videos*, *Find animals in photos*
-or *Identify organisms* starts (once each time the app is opened; the run goes on whatever you
+it when a recording starts, and when *Find animals in videos*, *Find animals in photos* or
+*Identify organisms* starts (once each time the app is opened; the run goes on whatever you
 answer). Without the permission no notification shows, but opening the app still starts the
 waiting identification.
 
@@ -822,9 +806,8 @@ waiting identification.
 
 ## 8. Heat: what to expect and what helps
 
-Phones protect themselves from overheating by slowing down without a word. This is called
-**"thermal throttling"**. There is no warning: the operating system just reduces what the
-hardware may do. On the phones we tested it slows the **camera** first, not the detection
+Phones protect themselves from overheating by slowing down. This is called **"thermal
+throttling"**. There is no warning: the operating system just reduces what the hardware may do. On the phones we tested it slows the **camera** first, not the detection
 model.
 
 What you see on the screen: the detector FPS dips (sometimes sharply). Then the app's

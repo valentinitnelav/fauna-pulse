@@ -100,10 +100,9 @@ files written before.
 ## 1. The file format
 
 Each session writes `session.jsonl`: **one JSON object per line** (newline-delimited JSON,
-"JSONL"). This is on purpose. Unlike one big JSON array, lines can be added without rewriting
-the file, so a crash or a dead battery never damages what was already saved. **The file is
-then simply missing its final `end_of_session` line, and that is how you detect an abnormal
-stop.**
+"JSONL"). Unlike one big JSON array, lines are added without rewriting the file, so a crash or
+a dead battery never damages what was already saved. **The file then lacks its final
+`end_of_session` line: that is how you detect an abnormal stop.**
 
 Every line has:
 
@@ -172,7 +171,7 @@ One per session, the first line. Session-wide metadata. Notable fields:
 - `free_storage_bytes`, `total_storage_bytes`: Free/total bytes on the session's storage volume at start.
 - `model_path`, `task`, `use_gpu`, `cpu_threads`: Requested model and task settings, and the number of CPU threads set for the detector.
 - `accelerator`: What was **actually** used (e.g. GPU, or CPU fallback for int8 models); the summary's *Detector ran on* row.
-- `cpu_16bit` (only when `accelerator` is CPU): `true` when the CPU computed with 16-bit numbers, `false` for 32-bit. Since app round 367 the CPU uses 16-bit maths when the model file is in 16-bit: about twice as fast, and the boxes differ from 32-bit about as much as between CPU and GPU (the GPU always uses 16-bit). Files with 8-bit weights (for example MegaDetector) and phones without 16-bit maths use 32-bit. No key in older sessions: their CPU used 32-bit.
+- `cpu_16bit` (only when `accelerator` is CPU): `true` when the CPU computed with 16-bit numbers, `false` for 32-bit. The CPU uses 16-bit maths when the model file is in 16-bit: about twice as fast, and the boxes differ from 32-bit about as much as between CPU and GPU (the GPU always uses 16-bit). Files with 8-bit weights (for example MegaDetector) and phones without 16-bit maths use 32-bit. No key in older sessions: their CPU used 32-bit.
 - `camera_full_width_px`, `camera_full_height_px`: Full-resolution (high-res) photo size.
 - `capture_dims_from_cache`: Present (`true`) when recording started before the live photo probe confirmed the cached photo size: the sizes above came from the previous measurement.
 - `location`: The session's single location fix: `lat`, `lon` (decimal degrees), `accuracy_m` (GPS only), `fix_time_ms`, `source` (`gps` / `manual` / `previous`). Absent when no location was set. Stripped from problem-report samples.
@@ -270,13 +269,14 @@ When each field arrived (sessions recorded with older builds do not have it):
   on; the top-level `inference_fps` is the rate that ran, `config.inferenceFps` the value typed (0 = same as the camera).
 - Round 335: FaunaPulse's help suggested an own field named `Device ID`, as FaunaLapse's help
   does. Round 336: the `device_id` key (the *Device ID* field).
+- Round 367: `cpu_16bit`; since then the CPU uses 16-bit maths when the model file is in 16-bit.
 
 </details>
 
 ### `detections`
 
-The core record: one per processed frame with insects. This is what you count. One line per
-frame; the frame's insects are entries in its `tracks` array:
+The core record, and what you count: one line per processed frame with at least one tracked
+insect, not one per track ID. The frame's insects are entries in its `tracks` array:
 
 | Field | Meaning |
 |---|---|
@@ -290,9 +290,7 @@ frame; the frame's insects are entries in its `tracks` array:
 | `frame_sensor_ms` | The frame's **sensor-exposure moment** mapped to epoch ms: the precise stamp, directly comparable to a `capture` record's `content_at_ms`. Absent on HALs without a usable sensor clock; prefer it over `frame_ms` when present. |
 | `tracks[].coasted` | Safety flag, normally **absent**: every box in a `detections` record is detector-observed (the tracker never logs its velocity-predicted positions). It would read `true` only if a future tracker version logged a predicted box: treat such an entry as an estimate, not an observation. |
 
-> Note: a `detections` line is written for **every processed frame** with at least one tracked
-> insect, not once per track ID. You rebuild a track ID by grouping consecutive entries that
-> share a `track_id` (see §4).
+> Note: you rebuild a track ID by grouping consecutive entries that share a `track_id` (see §4).
 
 <details>
 <summary>Older files: <code>detections</code>, and the legacy <code>detection</code> lines</summary>
@@ -349,8 +347,7 @@ How to use them:
 
 - **Track ID boundaries without per-frame grouping:** a track ID runs from `first_seen_ms` (on
   its `created` line) to `last_seen_ms` (on its `removed` line). The §4 snippets group the
-  `detections` frames and take the start from the `created` line, because `detections` lists a
-  track only from its confirmation on. A track ID still open when the session ended has no
+  `detections` frames and take the start from the `created` line (§4 says why). A track ID still open when the session ended has no
   `removed` line; its last `detections` frame is its end.
 - **Temporary loss vs analysis pause:** a `lost` → `recovered` pair brackets a real tracking
   gap. A hole in `detections` timestamps with **no** `lost` line in it is an analysis pause
@@ -362,14 +359,13 @@ How to use them:
 <details>
 <summary>Older files: <code>track_event</code></summary>
 
-`track_event` lines exist since round 116. Sessions recorded before round 116 do not have them:
-there, a track ID simply stops appearing in `detections` records and you cannot tell why.
+`track_event` lines exist since round 116; sessions recorded before do not have them.
 
 </details>
 
 ### `raw_detections`
 
-Boxes before tracking, only when the evaluation switch is on. Written only when **Session settings** →
+Written only when **Session settings** →
 **Detection** tab → **Tracking** → **Advanced (ByteTrack tuning)** (named **Advanced (C-BIoU tuning)** when that tracker is chosen) → **Log raw detections (evaluation)** is on: one line per
 processed frame (empty frames included, because the tracker ages its tracks by frames) with the
 detector's boxes **before** tracking. This is the input the offline tracker replay harness uses
@@ -570,8 +566,7 @@ way.
 Time-lapse video bursts. With *Save bursts as: Video* (start record `config.timeLapseSaveAs` =
 `"video"`) each burst is saved as one MP4 clip of the ROI in `videos/` instead of photos. So
 `roi_frames/` stays empty and there are no `timelapse_capture` or `capture` records. A
-continuous time-lapse (`timeLapseGapSeconds` 0) starts a new clip every burst length. The clips
-are analysed afterwards like imported videos (§9).
+continuous time-lapse (`timeLapseGapSeconds` 0) starts a new clip every burst length.
 
 **The clip:** the ROI square, upright, at the "Saved photo side" (smaller when the ROI covers
 fewer camera pixels, or when the phone's video encoder needs it). H.264 at
@@ -584,9 +579,8 @@ encoders keep a minimum quality, so low rates may come out larger.
   `side_px`, `requested_side_px` (only when the encoder took a smaller side), `bitrate` (bits per
   second), `encoder` (the phone's codec name). A start without a matching `video_clip` means the
   app was killed while that clip was open; such a file is usually unreadable.
-- **`video_clip`:** the clip was closed. The same fields as an imported clip (§9) plus how it
-  was recorded (list below). This record is written when the clip ends, so its `time_ms` is the
-  end.
+- **`video_clip`:** the clip was closed, so its `time_ms` is the clip's end. The same fields as
+  an imported clip (§9) plus how it was recorded (list below).
 - **`video_skipped`:** a burst, or part of one, without a clip. `burst`, `reason` (table below),
   `message`, and `file` when a clip file was involved (`stop_failed`, `no_frames`).
 
@@ -754,13 +748,15 @@ against its photo cadence).
 `battery_temp_c` is the temperature of the battery itself, from the sensor inside the battery
 pack (Android's battery broadcast, in tenths of a degree). It is a real measurement, but of the
 battery: the processor gets hot faster than this, which `thermal_status` and `thermal_headroom`
-(from the phone's own heat sensors) show earlier. `cpu_temp_c` and `gpu_temp_c` are the chip's
-own sensors in degrees (the hottest CPU core and the GPU, read from the phone's kernel); they
-react within seconds. Values below 0 °C are real frost readings (kept down to -40 °C, which
-marks an absent sensor). Whether an app may read them is the phone maker's choice: Xiaomi phones
-allow it, Samsung phones do not (both are then null; on Xiaomi phones `thermal_headroom` is the
-null one instead, so the two complement each other). The summary draws them beside the battery
-line.
+(from the phone's own heat sensors) show earlier.
+
+`cpu_temp_c` and `gpu_temp_c` come from the chip's own sensors, in degrees (the hottest CPU core
+and the GPU, read from the phone's kernel); they react within seconds. Values below 0 °C are
+real frost readings (kept down to -40 °C, which marks an absent sensor).
+
+Whether an app may read `cpu_temp_c` and `gpu_temp_c` is the phone maker's choice: Xiaomi phones allow it, Samsung phones do not (both are then
+null). On Xiaomi phones `thermal_headroom` is the null one instead, so the two complement each
+other. The summary draws them beside the battery line.
 
 The same record carries the phone's memory and this app's processor use (one native reading
 gives all of it, so these fields cost nothing extra; null when the phone gave nothing):
@@ -831,8 +827,7 @@ own battery-sensor values, logged RAW:
 
 - Sessions recorded with the short-lived round-148 build made these records opt-in (config
   `diagnosticsEnabled: false` in the start record's `config` block ⇒ none present). Round 149
-  went back to always on. Their absence there is that setting, not a logging failure; the
-  detection records (and therefore the track ID timeline) are unaffected either way.
+  went back to always on. Their absence there is that setting, not a logging failure.
 - `free_storage_bytes` / `total_storage_bytes` in `thermal` exist since round 68.
 - `gate_idle: true` in `fps` exists since round 77.
 - `is_plugged` exists since round 188.
@@ -903,11 +898,10 @@ renamed later, and so does a `video_cleanup` record when videos were deleted to 
 The session was renamed after recording. Written when the user picks **Rename session** in a
 session's ⋮ menu on the **Sessions** screen.
 
-The rename also
-rewrites `config.folderName` in the `start_of_session` record, so the log agrees with the
-folder. This record is the audit trail of that edit: the one allowed change after recording to
-a file that is otherwise only appended to. It appears AFTER `end_of_session` (one per rename,
-so several can add up).
+The rename also rewrites `config.folderName` in the `start_of_session` record, so the log
+agrees with the folder. This record is the audit trail of that edit: the one allowed change
+after recording to a file that is otherwise only appended to. It appears AFTER
+`end_of_session`, one per rename.
 
 | Field | Meaning |
 |---|---|
@@ -1153,8 +1147,8 @@ detector on the phone **after** the session is possible too: see §6.
 <summary>Why the phone does not re-run the detector during the session</summary>
 
 Re-running the detector **on the phone** for each still *during the session* was considered and
-rejected: heat is the app's main limit. Running it **after** the session is fine and
-exists since round 135 (§6).
+rejected: heat is the app's main limit. Running it after the session (§6) exists since
+round 135.
 
 </details>
 
@@ -1263,11 +1257,11 @@ a mostly native run is expected to be tiny compared to r168–r176 runs.
 
 For a motion or time-lapse session whose photo step is at most 0.5 s, *Find track IDs* on the
 same screen follows each insect from photo to photo with the tracker a live session uses (with
-the screen's own occlusion tolerance and minimum track length).
+the screen's own occlusion tolerance and minimum track length). Sparser sessions get an
+explanation instead: at a photo a second an insect can move too far between two photos to be
+matched.
 
-At a photo a second an insect
-can move too far between two photos to be matched, so sparser sessions get an explanation
-instead. It writes the same files as *Find track IDs* on videos (§9), replaced on every run:
+It writes the same files as *Find track IDs* on videos (§9), replaced on every run:
 
 - **`post_tracks.jsonl`:** `post_track_start` first, then `detections` records (one per photo
   with a track ID), `track_event` records and `post_track_end`. In the `detections` records,
@@ -1693,12 +1687,10 @@ IDs*).
   insect-detect-post side by side per track ID. Its README explains the steps and why the two
   can differ.
 - **Device names:** insect-detect-post tells devices apart by `device_id` (the camera's
-  hostname). The app and the export name the device the same way (`deviceNameOf`; the export's
-  `device_id_of` adds its `--device-id` option and `unknown camera` for sessions with no name):
-  the field notes' Device ID, else an own field named `Device ID` (FaunaLapse's help suggests
-  one), else FaunaLapse's `phone_id`, else the phone model. So phones of one model stay apart
-  when each has a Device ID. Both repositories test the rule with the same cases
-  (`device_name_cases.json`).
+  hostname). The app (`deviceNameOf`) and the export (`device_id_of`) name the device by the
+  rule under `tracks_<pack>.csv` above; the export adds its `--device-id` option and `unknown
+  camera` for sessions with no name. So phones of one model stay apart when each has a Device
+  ID. Both repositories test the rule with the same cases (`device_name_cases.json`).
 - **Session IDs still differ:** the export adds the session's 4-character token to the folder
   name (two phones may use the same folder name). So join FaunaPulse and insect-detect-post
   results with `compare`, whose `comparison.csv` holds both answers per track ID.
@@ -1787,6 +1779,8 @@ phone's camera app, a collaborator, a published dataset.
   together with the photo picker's own copies in the app's cache.
 - **A copy that fails** (for example full storage) deletes its half-made folder at once and says
   why on the *Import videos* screen.
+
+The folder then holds:
 
 - `videos/`: the clips ([`video_clip`](#video_clip-one-per-imported-clip))
 - `video_detections.jsonl`: the detector's boxes, phone samples ([below](#video_detectionsjsonl-find-animals-in-videos))
@@ -1934,9 +1928,7 @@ at the end of each run, the run writes one sample. A sample is up to three recor
 
 - **`thermal`:** the live record's fields without the storage ones, plus `clip` (the clip being
   analysed) and `paused: true` while the run waits to cool down.
-- **`power`:** the live record's fields, with the same raw-sensor caveats (§3: some phones report
-  milliamps, the Xiaomi a two-cell voltage, and any `is_charging` or `is_plugged` makes the
-  power figures meaningless).
+- **`power`:** the live record's fields, with the same raw-sensor caveats (§3).
 - **`analysis_speed`:** the time since the previous sample (fields below). The three means are
   left out when no frame was analysed. The record is left out when nothing was analysed and
   nothing paused (the first sample of a run).

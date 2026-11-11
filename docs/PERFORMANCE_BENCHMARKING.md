@@ -1,111 +1,110 @@
 # Performance benchmarking protocol
 
-How to measure FaunaPulse performance so that two runs can be compared honestly,
-and how to decide whether an optimization is real. Every claimed
-speed/heat/power improvement should come with numbers produced this way.
+How to measure FaunaPulse performance so that two runs can be compared
+honestly, and how to decide whether an optimization is real. Every claim of
+better speed, heat or power needs numbers made this way.
 
-In plain language: phone performance is noisy. The same app, same phone and
-same scene can differ by 10% between two runs just from starting temperature,
-background OS work, or sunlight on the case. The protocol below exists so a
-"5% faster" claim means something.
+Phone performance is noisy: the same app, phone and scene can differ by 10%
+between two runs, only from the starting temperature, background work of the
+system, or sun on the case. This protocol makes a "5% faster" claim mean
+something.
 
 ## The golden rules
 
-1. **Never quote debug-build numbers as device speed.** A `flutter run` /
-   debug APK runs measurably slower than a release build (review C2, round
-   132). Debug numbers may only be compared against other debug numbers from
-   the same binary.
-2. **Never compare across different binaries.** Every session log records
-   `app_version`, `app_build` and `build_mode` in its start record (round 132);
-   `tool/perf_summary.dart` prints them so mixed-binary comparisons are visible.
-3. **Power and energy numbers are only valid unplugged** (round 84): while
-   charging, the battery-terminal current measures charging, not consumption.
-   The summary tool withholds power/energy automatically when any sample in
-   the session was taken while plugged in. Note the field invariant
-   (2026-07-11): real field sessions run ON a power bank, so power claims are
-   lab claims by definition, made on battery.
-4. **Let the phone cool between runs.** Heat is the dominant confounder on the
-   Xiaomi (D3 field note: the second of two back-to-back runs measured up to
-   10% different purely from carry-over heat). Wait at least 10 minutes
-   between runs on the same phone, and record the starting temperature (the
-   start record carries it).
+1. **Never quote debug-build numbers as phone speed.** A `flutter run` or
+   debug APK is clearly slower than a release build (round 132). Compare debug
+   numbers only with debug numbers from the same binary.
+2. **Never compare different binaries.** Each session's start record has
+   `app_version`, `app_build` and `build_mode`; `tool/perf_summary.dart`
+   prints them, so mixed binaries are visible.
+3. **Power and energy numbers are valid only unplugged** (round 84): while
+   charging, the battery current measures charging, not use. The summary tool
+   hides power and energy when any sample was taken while plugged in. Field
+   sessions run on a power bank, so power claims are lab claims, made on
+   battery.
+4. **Let the phone cool between runs.** Heat is the main confounder on the
+   Xiaomi: the second of two back-to-back runs differed by up to 10% from the
+   heat left over. Wait at least 10 minutes between runs on the same phone, and
+   note the starting temperature (the start record has it).
 
 ## Device and build matrix
 
 | Phone | Role | Build | Notes |
 |---|---|---|---|
-| Xiaomi 2107113SG (SD888) | primary dev/perf phone | debug (MIUI deploy quirk; round 158 convention) | fast but hot: camera-first throttle from ~41-42 °C; its numbers show THERMAL behaviour well but absolute speed is debug-flavoured |
-| Samsung SM-M127F | release-test phone | release APK | never passed ~32 °C, compute-limited; its `battery_current_ua` is broken (round 132), use battery-% drop, not power_w |
+| Xiaomi 11T Pro 2107113SG (Snapdragon 888) | main development and performance phone | debug (MIUI install quirk) | fast but hot: the camera throttles from about 41-42 °C; good for HEAT behaviour, but its speed is a debug build's |
+| Samsung Galaxy M12 SM-M127F | release-test phone | release APK | never passed about 32 °C, limited by compute; `battery_current_ua` is broken, so use the battery-% drop, not `power_w` |
 
-State in every result table which phone and build produced each number. A
-release-build claim about absolute speed belongs on the Samsung (or a future
-release-deployable phone); a thermal-collapse claim belongs on the Xiaomi.
+In every result table, say which phone and build made each number. Claims
+about absolute release speed belong on the Samsung (or a later phone that
+takes release builds); claims about heat collapse belong on the Xiaomi.
 
 ## What to hold fixed in a paired comparison
 
 Change exactly ONE thing (the optimization under test). Hold fixed:
 
-- model file (same file, ideally note its size/hash), confidence/IoU
-- capture trigger (detector / motion / time-lapse) and all its settings
-- inference FPS cap, camera FPS cap, auto-throttle setting
-- stream resolution and saved-photo side
-- scene and mount: same tripod position, same view; prefer a static indoor
-  scene for speed tests (repeatable) and reserve outdoor scenes for
-  end-to-end validation
-- screen state: blackout on or off, consistently (round 82: blackout changes
-  the heat budget by ~10 °C; the log records `blackout_at_start` and every
-  toggle)
-- charging state (see golden rule 3), ambient conditions, starting
-  temperature (begin each run below a chosen threshold, e.g. 32 °C)
+- the model file (the same file; note its size or hash), confidence and IoU
+- the capture trigger (detector, motion or time-lapse) and all its settings
+- the detector rate, the camera frame rate (a camera runs only at the rates its
+  lens offers), the auto-adjust setting
+- GPU or CPU, and on the CPU 16-bit or 32-bit maths (`cpu_16bit` in the
+  records)
+- the stream resolution and the saved-photo side
+- scene and mount: the same tripod position and view. Use a still indoor scene
+  for speed tests (repeatable); keep outdoor scenes for end-to-end checks
+- screen state: blackout always on or always off (it changes the heat budget by
+  about 10 °C, round 82; the log records `blackout_at_start` and every switch)
+- charging state (golden rule 3), weather and room conditions, and starting
+  temperature (start each run below a chosen value, for example 32 °C)
 
-The session start record captures the whole config block, so an after-the-fact
-audit of "was anything else different?" is always possible.
+The session start record holds all settings, so you can always check later
+whether anything else was different.
 
 ## Run protocol
 
-- **Three paired runs, alternating order:** A-B, then B-A, then A-B (six
-  sessions). Alternation cancels the "the second run starts warmer / later in
-  the day" bias that a fixed order would bake in.
-- **Length:** at least 20-30 minutes per session for anything thermal
-  (throttling develops over tens of minutes); 10 minutes is acceptable for
-  pure pipeline-speed comparisons on a cool phone.
-- **Cold vs sustained:** the first ~2 minutes after REC include model load,
-  calibration and a cool chip; the honest steady-state lives in the last
-  minutes. `tool/perf_summary.dart` separates the two automatically (cold =
-  first 120 s of samples, sustained = last 600 s; both adjustable).
+- **Three paired runs, in alternating order:** A-B, B-A, A-B (six sessions).
+  This cancels the bias of a fixed order (the second run starts warmer, or
+  later in the day).
+- **Length:** at least 20-30 minutes per session for anything about heat
+  (throttling builds up over tens of minutes); 10 minutes is enough for pure
+  pipeline speed on a cool phone.
+- **Cold and sustained:** the first ~2 minutes after REC include model load,
+  calibration and a cool chip; the honest steady state is at the end.
+  `tool/perf_summary.dart` separates them (cold = first 120 s of samples,
+  sustained = last 600 s; change with `--cold=S` and `--sustained=S`).
 
 ## Reading the numbers
 
-Run the summary tool on the session folders (Dart SDK only, no Flutter):
+Run the summary tool on the session folders (needs only the Dart SDK, not
+Flutter):
 
 ```bash
 dart tool/perf_summary.dart sessions/run_a1 sessions/run_b1 sessions/run_a2 ...
 dart tool/perf_summary.dart --csv sessions/run_* > runs.csv   # for R / pandas
 ```
 
-It streams each `session.jsonl` (no size limit) and prints one comparison row
-per session plus per-session detail tables. Semantics it already honours, so
-you don't have to remember them:
+It reads each `session.jsonl` line by line (no size limit) and prints one
+comparison row and detail tables per session. It already handles these rules:
 
-- `pipeline_fps ?? fps` for pre-round-131 logs (round 85)
-- inference fields are ABSENT (not zero) while the motion gate sleeps (round
-  77); gate-idle time is reported as its own percentage
-- power/energy withheld whenever charging was detected (round 84)
-- malformed or truncated lines (crash mid-write) are counted and skipped
+- `pipeline_fps ?? fps` for older logs without `pipeline_fps` (round 85)
+- inference fields are MISSING (not zero) while the motion gate sleeps;
+  gate-idle time has its own percentage
+- power and energy are hidden whenever charging was seen (round 84)
+- broken or cut-off lines (a crash during a write) are counted and skipped
 
-Headline columns to compare in a paired test: sustained `pipe fps med`,
-sustained `inf ms med/p95`, `temp start→max`, `power W med` / `energy Wh`
-(unplugged runs only), `cap chg` (auto-throttle interventions), and `errors`.
+Main columns to compare in a paired test: sustained `pipe fps med`, sustained
+`inf ms med/p95`, `temp start→max`, `power W med` and `energy Wh` (unplugged
+runs only), `cap chg` (changes by the auto-adjust), and `errors`.
 
-⚠ **`power W` / `energy Wh` here are computed from the RAW logged `power_w`**
-(round 188 note): unlike the app's summary graph, `perf_summary.dart` applies
-NO unit correction (mA-scale current ⇒ ~1000× low on Samsung-class phones) and
-NO 2-cell voltage halving (⇒ ~2× high on Xiaomi-class phones), so its absolute
-W/Wh can disagree with the app for the same session. They are still fine for
-PAIRED comparisons on the SAME device (both runs are wrong by the same factor);
-for absolute numbers use the app summary or the battery-% drop. Aligning the
-tool with the app's corrections is a recorded follow-up — its output feeds
-benchmarking records, so its math must not change silently.
+⚠ **`power W` and `energy Wh` here come from the RAW logged `power_w`**
+(round 188). Unlike the app's summary graph, `perf_summary.dart` makes NO unit
+correction (a current in mA: about 1000× too low on Samsung-class phones) and
+does NOT halve the 2-cell voltage (about 2× too high on Xiaomi-class phones).
+So its absolute W and Wh can differ from the app's. They are fine for PAIRED
+comparisons on the SAME phone (both runs are wrong by the same factor); for
+absolute numbers use the app summary or the battery-% drop.
+
+Aligning the tool with the app's corrections is an open task. Its output feeds
+benchmark records, so its maths must not change silently.
 
 ## Acceptance criteria (when is an optimization real?)
 
@@ -113,33 +112,35 @@ Adopt a change only when BOTH hold:
 
 1. **All three paired runs agree in direction** (A better than B three times,
    or the reverse).
-2. **The median gain exceeds the run-to-run variation** of the same
-   configuration (compare the spread between the three A runs; a "gain"
-   smaller than that spread is noise).
+2. **The median gain is larger than the run-to-run spread** of the same
+   settings (compare the three A runs; a "gain" smaller than that spread is
+   noise).
 
-For capped/limited modes (inference cap active, motion gate, time-lapse), a
-speed win is not the goal; require instead: **equal useful delivered FPS**
-plus at least **5% lower power** or a **materially delayed thermal collapse**
-(later/lower temperature plateau on the Xiaomi).
+For limited modes (detector rate limit, motion gate, time-lapse), speed is not
+the goal. Require instead **the same useful delivered FPS** plus at least **5%
+lower power** or a **clearly later heat collapse** (a later or lower
+temperature plateau on the Xiaomi).
 
 Record the verdict (numbers, phones, builds, dates) in the round's entry in
 `AGENT_CHANGELOG.md`.
 
 ## Existing benchmarking assets (don't duplicate these)
 
-- **In-app engine benchmark** (Settings → AI, round 76): times GPU vs CPU
-  thread variants on noise input at the model's own resolution. Good for
-  picking an engine; NOT a pipeline benchmark (no camera, no tracker).
-- **Earlier measurements:** parity with the Ultralytics demo app, per-frame
-  conversion cost vs stream size, batch-analysis timing and the 10-minute
-  cool-down lesson (rounds 128 to 156 in `AGENT_CHANGELOG.md`).
-- **`integration_test/qnn_benchmark_test.dart`:** on-device QNN validation +
-  CPU/GPU/QNN micro-benchmark. Needs network (downloads models + bus.jpg) and
-  a QNN-capable Snapdragon. Opt-in flags are exact-spelling booleans:
-  `--dart-define=RUN_BENCH=true` and `--dart-define=RUN_SOAK=true` (`=1`
-  silently does nothing; fixed round 160). The pinned v0.3.5 release assets
-  are v73/v81 Hexagon context binaries: NEITHER runs on the SD888 Xiaomi
-  (v68, round 151), so QNN rows require a newer test device.
+- **In-app engine benchmark** (Settings → Detection → *Advanced (engine &
+  thresholds)*): times the GPU and CPU thread variants (also CPU 16-bit) on
+  noise input at the model's own resolution. Good for choosing an engine; NOT
+  a pipeline benchmark (no camera, no tracker).
+- **Earlier measurements:** parity with the Ultralytics demo app, the cost of
+  frame conversion per stream size, timing of analysis afterwards, and the
+  10-minute cool-down lesson (rounds 128 to 156 in `AGENT_CHANGELOG.md`).
+- **`integration_test/qnn_benchmark_test.dart`:** checks QNN on a phone and
+  times CPU, GPU and QNN. It needs the internet (it downloads models and
+  bus.jpg), a Snapdragon phone that can run QNN, and the NPU edition of the
+  app ([LEAN_QNN_PACKAGING.md](LEAN_QNN_PACKAGING.md)). Turn on the optional
+  parts with exactly `--dart-define=RUN_BENCH=true` and
+  `--dart-define=RUN_SOAK=true` (`=1` silently does nothing). The pinned
+  v0.3.5 release files are v73/v81 Hexagon context binaries: NEITHER runs on
+  the Snapdragon 888 Xiaomi (v68, round 151), so QNN rows need a newer phone.
 - **Tracker comparisons** are a different problem (accuracy, not speed): use
-  `tracking/tracker_replay.dart` with hand-counted ground truth, per the
-  round-105/108 workflow.
+  `tracking/tracker_replay.dart` with hand-counted ground truth, as in rounds
+  105 and 108.

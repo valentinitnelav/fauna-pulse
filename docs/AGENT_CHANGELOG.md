@@ -10324,3 +10324,19 @@ benchmark labels were right (MegaDetector's CPU rows timed). Open: live frame ra
 cores" benchmark row (the M12's best: 94 ms against 151 at 4 threads); a phone without 16-bit
 maths; re-time at each LiteRT update. A future larger MegaDetector should be exported in 16-bit.
 
+## Round 368 (2026-11-11): release readiness check, identification first in the store text, docs shortened
+
+Asked: check if the app is ready for a new release; shorten the docs where they are wordy or repeat
+themselves. GitHub's side is ready (checks green, no alerts, manifest unchanged).
+The gap: every phone check since 0.10.0-beta.1 ran a debug build, while LiteRT moved to 2.3.2 with
+its own GPU library and about 2,900 lines of plugin Kotlin went. Checked without a phone: the
+release code-shrinking task alone passes, and the GPU library holds no Java classes for it to
+strip. Round 366's "processor without 16-bit maths" was not reproduced: an x86_64 emulator with AVX
+and F16C hidden still ran a 16-bit file in 16-bit. It showed only that a file that cannot run in
+16-bit falls back through a caught exception, the path XNNPACK's source also gives the hardware
+error. Docs: one helper per page under a "lose no fact" brief, every diff read. The user pages were
+already tight (1 to 3 % fewer words): their length is detail the app shows on screen itself,
+listed for the maintainer, not cut. The developer pages match the code again, as do
+SETTINGS_REFERENCE's Identification rows. No code changed, so no tests ran. Open: a release build
+on a phone before the tag; an old phone for the 16-bit fallback; which on-screen details to cut.
+

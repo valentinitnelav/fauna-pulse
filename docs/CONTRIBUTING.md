@@ -7,10 +7,9 @@ code fits together, read [ARCHITECTURE.md](ARCHITECTURE.md) first.
 
 ## Toolchain & setup
 
-The Flutter/Android toolchain setup (SDK versions, `flutter doctor`, device
-setup) is covered in the [Installation & Testing Guide](INSTALL.md). The app
-lives at the repository root (not in a subfolder) and depends on the ultralytics
-plugin via a `path:` dependency:
+The [Installation & Testing Guide](INSTALL.md) covers the Flutter and Android
+tools (SDK versions, `flutter doctor`, phone setup). The app sits at the
+repository root and uses the Ultralytics plugin through a `path:` dependency:
 
 ```yaml
 dependencies:
@@ -20,21 +19,20 @@ dependencies:
 
 ## Branch and pull-request workflow
 
-FaunaPulse uses two long-lived branches:
+FaunaPulse has two long-lived branches:
 
-- `main` is the stable, public-facing branch. It must always be buildable and
-  receives changes only after review.
-- `develop` is the integration branch for ongoing work. Normal code,
-  documentation and dependency-update pull requests target `develop`.
+- `main` is the stable public branch. It must always build, and it receives
+  changes only after review.
+- `develop` is the branch for ongoing work. Normal code, documentation and
+  library-update pull requests target `develop`.
 
-The maintainer promotes reviewed changes from `develop` to `main`. An urgent
-release or security hotfix may target `main` directly, but that is the
-exception.
+The maintainer merges `develop` into `main` when it is stable. Only an urgent
+release or security fix may target `main` directly.
 
 For a normal contribution:
 
-1. Fork the repository and synchronize your fork's `develop` branch.
-2. Create a short-lived branch from the latest `develop`:
+1. Fork the repository and update your fork's `develop` branch.
+2. Make a short-lived branch from the latest `develop`:
 
    ```bash
    git switch develop
@@ -42,142 +40,142 @@ For a normal contribution:
    git switch -c fix/short-description # or some feature
    ```
 
-3. Make one focused change and run the relevant checks.
+3. Make one focused change and run the checks for it.
 4. Push the branch to your fork and open a pull request with **base:
    `develop`**.
-5. Delete the short-lived branch after the pull request is merged or closed.
+5. Delete the branch after the pull request is merged or closed.
 
-Use a concise branch prefix such as `fix/`, `feature/`, `docs/` or
-`test/`.
+Start the branch name with a short prefix such as `fix/`, `feature/`, `docs/`
+or `test/`.
 
 ### Library updates
 
-Dependabot only keeps a private list of security alerts (repository Security
-tab). It opens no pull requests: there is no `.github/dependabot.yml`, and its
-security updates are off, because their automatic fix attempts cannot change
-Android libraries that come in through other libraries and showed as failed
-runs on `main`. Before each release, check the open alerts and fix the real ones
-in a round on `develop`. Libraries are updated on purpose, in a round before a
-release. Gradle, the Android Gradle Plugin and Kotlin are updated together
-because they must stay compatible. Native libraries (LiteRT, QNN, ONNX Runtime)
-also need a check on a phone.
+Dependabot only keeps a private list of security alerts (Security tab of the
+repository). It opens no pull requests: there is no `.github/dependabot.yml`,
+and its security updates are off (their automatic fixes cannot change Android
+libraries that come in through other libraries, and showed as failed runs on
+`main`).
+
+Before each release, check the open alerts and fix the real ones in a round on
+`develop`. Libraries are updated on purpose, in a round before a release.
+Update Gradle, the Android Gradle Plugin and Kotlin together (they must stay
+compatible). Native libraries (LiteRT, QNN, ONNX Runtime) also need a check on
+a phone.
 
 GitHub cannot read Gradle files by itself. The workflow
-`.github/workflows/dependency_graph.yml` sends the list of Android libraries
-that ship in the app to GitHub, so that the alerts cover them too. Alerts are
-made for `main` only, so a change to that workflow shows its effect after the
-next release.
+`.github/workflows/dependency_graph.yml` sends the list of Android libraries in
+the app to GitHub, so the alerts cover them too. Alerts exist only for `main`,
+so a change to that workflow shows its effect after the next merge into `main`.
 
 ### Maintainer repository settings
 
 Keep `main` as the default branch. In GitHub's repository settings:
 
-- Enable **Automatically delete head branches** after pull requests are merged.
-- Under **Advanced Security**, enable **Dependabot alerts**. Leave Dependabot
+- Turn on **Automatically delete head branches** (after a merge).
+- Under **Advanced Security**, turn on **Dependabot alerts**. Leave Dependabot
   security updates and version updates off (see *Library updates*).
 - Protect `main` with a ruleset that blocks force pushes and deletion and
-  requires a pull request plus the security/release checks.
-- Periodically run `git fetch --prune` locally to remove references to branches
-  that GitHub has already deleted.
+  requires a pull request plus the security and release checks.
+- Run `git fetch --prune` locally from time to time, to remove references to
+  branches that GitHub has deleted.
 
 ## Everyday commands
 
 ```bash
-flutter pub get                      # after changing dependencies
-flutter analyze                      # static analysis (must be clean)
-flutter test test/fauna_pulse         # the app's unit tests
-flutter build apk --debug            # dev build (the Xiaomi dev phone runs this)
-flutter build apk --release          # release build (needs the keystore, INSTALL.md B4)
-flutter run                          # run on a connected device
+flutter pub get                                   # after changing dependencies
+flutter analyze                                   # static analysis (must be clean)
+flutter test test/fauna_pulse/*_test.dart         # while working (about 1,100 tests)
+flutter test                                      # whole suite, before a commit
+flutter build apk --debug --target-platform android-arm64   # debug build (test phones are arm64)
+flutter build apk --release                       # release build (needs the keystore, INSTALL.md B4)
+flutter run                                       # run on a connected phone
 ```
 
-Run `flutter analyze` and `flutter test test/fauna_pulse` before every PR.
+Before every pull request, run `flutter analyze` and the whole `flutter test`.
 
 ## Testing
 
-Unit tests live in `test/fauna_pulse/` and mirror the module map: ROI math,
-both trackers (plus the offline replay harness), the logger including its
-write-failure path, capture scheduling and crop geometry, frame processing
-(the per-frame logic extracted from the camera screen in round 73), config
-round-trip/migration, schedule and time-lapse plans, post-hoc analysis + SAHI,
-error reporting, and widget regressions. See [test/README.md](../test/README.md)
-for the commands, the replay harness, and the on-device integration tests.
+Unit tests live in `test/fauna_pulse/` and follow the module map: ROI maths,
+both trackers (plus the offline replay harness), the logger and its
+write-failure path, photo scheduling and crop geometry, frame processing,
+settings round trips and migrations, schedule and time-lapse plans, analysis
+afterwards and SAHI, error reports, and widget regressions.
+[test/README.md](../test/README.md) has the commands, the replay harness and
+the checks on a phone.
 
-**Benchmarking caveat:** debug builds run slower than release; don't quote
-debug FPS as a device's real speed. Convention since round 158: the Samsung is
-the release-test phone, the Xiaomi stays debug/dev (so the two signatures
-never fight on one device). For any performance claim follow the paired-run
-protocol in [PERFORMANCE_BENCHMARKING.md](PERFORMANCE_BENCHMARKING.md) and
-summarize sessions with `dart tool/perf_summary.dart`.
+**Benchmarking caveat:** debug builds are slower than release builds, so never
+quote debug FPS as a phone's real speed. For any performance claim, follow the
+paired-run protocol in [PERFORMANCE_BENCHMARKING.md](PERFORMANCE_BENCHMARKING.md)
+and summarise the sessions with `dart tool/perf_summary.dart`.
 
 ## Device quirks
 
-Recorded from field testing (kept here so they're not buried in the
-Claude-facing overview):
+Found in field tests. The Samsung runs release builds and the Xiaomi debug
+builds, so the two signatures never meet on one phone.
 
-- **Xiaomi (test device `2107113SG`):** the debug/dev phone. Install the
-  **debug** build, and on MIUI use the **"Install via USB"** path. Its GPU has
-  needed the crash guard. Thermal character: fast but hot (camera-first
-  throttle from ~41 °C).
-- **Samsung (Galaxy M12-class, mid-range):** the release-test phone (round 158).
-  Camera analysis stream caps around **960×720** (selecting higher silently
-  falls back), useful for validating the "truthful stream readout" behaviour.
-  Its `battery_current_ua` reading is broken (wrong scale), so compare energy
-  by battery-percent drop, never `power_w`.
+- **Xiaomi 11T Pro (`2107113SG`):** the development phone. On MIUI answer the
+  **"Install via USB"** question. Its GPU needed the GPU-crash guard. It is fast
+  but hot: the camera throttles from about 41 °C.
+- **Samsung Galaxy M12 (`SM-M127F`):** the release-test phone. Its camera
+  analysis stream stops at about **960×720** (a higher choice silently falls
+  back), which is useful to test that the app reports the stream it really got.
+  Its `battery_current_ua` reading has the wrong scale, so compare energy by the
+  drop in battery percent, never by `power_w`.
 
 ## Project rules (please follow)
 
 - **Every new tunable ships fully wired in the same change:** a Settings
-  control, persistence in `SessionConfig` (add to constructor, `toJson`,
-  `fromJson`) with a round-trip test, and a row in the end-of-session summary.
-  A parameter that exists only in code is considered incomplete. See
+  control, persistence in `SessionConfig` (constructor, `toJson`, `fromJson`)
+  with a round-trip test, and a row in the end-of-session summary. A parameter
+  that exists only in code is not finished. See
   [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md).
-- **Don't reimplement YUV→RGB or ROI cropping in Dart** — the native plugin
-  already does it (see ARCHITECTURE.md §2).
-- **Respect the keep-in-sync pairs** (ARCHITECTURE.md §4): ROI ÷32 snapping
-  across all three crop paths, and the Dart↔Kotlin crop rotation.
-- **Adding a custom model:** accepted formats are `.tflite` (including the
-  official `format=litert` exports) and `*_qnn.onnx` Snapdragon-NPU context
-  binaries; plain `.onnx` is rejected everywhere. Model files are git-ignored
-  (large, and some are collaborators'). The accepted formats are in
-  [MODEL_CONVERSION.md](MODEL_CONVERSION.md), the export tools in the separate repository
-  [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models); INSTALL.md covers how users
-  import models. Note the engine implication: whether a model runs on GPU or
-  CPU is decided by whether the GPU backend can compile the model's op graph,
-  **not** simply by int8 vs fp16.
+- **Do not write YUV→RGB conversion or ROI cropping in Dart:** the native
+  plugin already does both (ARCHITECTURE.md §2).
+- **Respect the keep-in-sync pairs** (ARCHITECTURE.md §4): ROI ÷32 snapping in
+  all three crop paths, and the Dart and Kotlin crop rotation.
+- **Adding a custom model:** the app accepts `.tflite` (also the official
+  `format=litert` exports) and `*_qnn.onnx` Snapdragon NPU context binaries;
+  plain `.onnx` is refused everywhere, and so are segmentation, pose and
+  rotated-box (OBB) exports (detectors must be plain detection models). Model
+  files are git-ignored (large, and some belong to collaborators). Formats:
+  [MODEL_CONVERSION.md](MODEL_CONVERSION.md); export tools: the separate
+  repository [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models);
+  how users import models: INSTALL.md. A model runs on the GPU if the GPU
+  backend can compile its operations, **not** simply because it is int8 or
+  fp16.
 
 ## Documentation maintenance
 
-- See documentation table in [/README.md](../README.md). Keep it up to date.
-- Keep the human-facing docs (this file, ARCHITECTURE, FIELD_GUIDE,
-  SETTINGS_REFERENCE, DATA_GUIDE) accurate when behaviour changes; they are the
-  durable references, whereas OVERVIEW is primarily for AI-assisted grounding.
-- [AGENT_CHANGELOG_OVERVIEW.md](AGENT_CHANGELOG_OVERVIEW.md) is the current-state
-  snapshot — **rewrite it in place, never append**, and keep it short. Update
-  it whenever a change alters a default, invariant, or the file map.
-- [AGENT_CHANGELOG.md](AGENT_CHANGELOG.md) is the append-only
-  development journal: a short round entry with why, what was checked and
-  what is open; the round's commit ("Round N: ...") says what changed.
-- Code comments tagged "perf review A1" (and similar item codes) refer to a
-  performance and robustness review of 2026 that is not part of the repository;
-  the round number next to the tag leads to its reasoning in AGENT_CHANGELOG.md.
+- Keep the documentation table in [/README.md](../README.md) up to date.
+- Keep the docs for people (this file, ARCHITECTURE, FIELD_GUIDE,
+  SETTINGS_REFERENCE, DATA_GUIDE) correct when behaviour changes. They are the
+  lasting references; the overview is mainly for coding agents.
+- [AGENT_CHANGELOG_OVERVIEW.md](AGENT_CHANGELOG_OVERVIEW.md) says what is true
+  now: **rewrite it in place, never append**, and keep it short. Update it
+  whenever a change alters a default, a rule or the file map.
+- [AGENT_CHANGELOG.md](AGENT_CHANGELOG.md) is the append-only development
+  history: a short entry per round with the reason, what was checked and what
+  is open; the round's commit ("Round N: ...") says what changed.
+- Code comments tagged "perf review A1" (and similar codes) refer to a
+  performance and robustness review of 2026 that is not in the repository; the
+  round number next to the tag leads to its reasoning in AGENT_CHANGELOG.md.
 
 ## Git etiquette
 
-Do not force-push or delete `main` or `develop`. Contributors may rewrite
-their own unmerged short-lived branch when needed, but should avoid rebasing it
-after review has started unless they tell reviewers.
+Do not force-push or delete `main` or `develop`. You may rewrite your own
+unmerged short-lived branch, but after review has started, rebase it only if
+you tell the reviewers.
 
-Use clear, descriptive commit messages. The maintainer assigns the repository's
-`Round N` identifier when integrating or squash-merging a contribution, so an
-external contributor does not need to guess the next round number. Never commit
-private session data, signing credentials or model weights.
+Write clear commit messages. The maintainer gives a contribution its
+`Round N` number when merging it, so you do not need to guess the next number.
+Never commit private session data, signing keys or model weights.
 
 ## License
 
 The project is **AGPL-3.0** (see [`LICENSE`](../LICENSE)), inherited from the
-Ultralytics `ultralytics_yolo` plugin it builds upon. That plugin
-(`packages/ultralytics_yolo/`) retains its own `LICENSE`. Contributions are made under AGPL-3.0.
+Ultralytics `ultralytics_yolo` plugin it builds on. That plugin
+(`packages/ultralytics_yolo/`) keeps its own `LICENSE`. Contributions are made
+under AGPL-3.0.
 
 Give credit where it is due. Code that follows a published method cites the
 paper (authors, year, venue, DOI) in a comment where it is implemented. Code

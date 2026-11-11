@@ -1,8 +1,8 @@
 # Video analysis: from imported videos to track IDs checked against a hand count
 
 FaunaPulse can find and follow flower visitors as track IDs in videos filmed elsewhere: the
-phone's own camera app, a collaborator, or a published dataset. This guide covers the whole path, from the import on the phone to a track ID
-count that has been checked against a hand count. Details for researchers and developers are
+phone's own camera app, a collaborator, or a published dataset. This guide goes from the import
+on the phone to a track ID count checked against a hand count. Details for researchers and developers are
 in folded blocks: click a line that starts with ▸ to open it.
 
 To try it in a few minutes first, follow the [tutorial](TUTORIAL_VIDEO_ANALYSIS.md) with two
@@ -95,9 +95,8 @@ camera's own start time. They go straight to step 2: their session summary opens
 <details>
 <summary>Free storage during the import, and failed copies</summary>
 
-- A note above the import button says that the videos are copied, so they take storage twice.
-  The session can copy them back to the Gallery later (open the session, **Video** tab, **Copy
-  videos to Gallery**).
+- A note above the import button says that the videos take storage twice. The session can copy
+  them back to the Gallery later (open the session, **Video** tab, **Copy videos to Gallery**).
 - The **Import videos** screen checks the free storage when it opens, when you come back to the
   app and again before the copy.
 - While the clips do not fit, a red line says how much is needed and how much is free, and the
@@ -117,8 +116,7 @@ camera's own start time. They go straight to step 2: their session summary opens
 <summary>The start time on the Import videos screen</summary>
 
 - The line under **Filming started** says what the file name and the time stored in the video gave.
-- **Change…** sets the day, hour and minute. The seconds become 0 (the time picker has no
-  seconds).
+- After **Change…** the seconds become 0 (the time picker has no seconds).
 - **Back to the time read from the file** (with several clips: **Back to the times read from
   the files**) undoes the change.
 
@@ -143,9 +141,8 @@ frame shrinks to a few pixels; a square keeps it large.
 
 **The settings screen.** Every number to tune sits on its own screen, **Detection, track ID and
 identification settings**. The entry under **Also identify them** opens it (also before the
-first run); its lines show the values in use. Everything there is saved as it changes.
-
-The cards and what they hold:
+first run); its lines show the values in use. Everything there is saved as it changes. Its
+cards:
 
 - **Detection**: the confidence threshold, **Frames analyzed per second** (default 5; live
   detection analyses 15), the IoU threshold, the pause temperature, how often the phone is
@@ -197,10 +194,10 @@ stopped.
   identifying animals". Opening FaunaPulse shows the progress, or the results when the run has
   ended.
 - When the identification model does not fit in the phone's free memory while the app is in the
-  background (often BioCLIP 2, on the CPU and also on the GPU, which needs about 4.5 times the
-  model file), the identification waits for you. The notification "Animals found" asks you to
-  open FaunaPulse, and it starts when you do, also after Android has closed the app meanwhile.
-  Details: [IDENTIFICATION.md](IDENTIFICATION.md), step 3.
+  background (often BioCLIP 2), the identification waits: the notification "Animals found" asks
+  you to open FaunaPulse, and it starts when you do. Details, also for when Android closed the app meanwhile:
+  [IDENTIFICATION.md](IDENTIFICATION.md#run-an-identification), *When FaunaPulse is in the
+  background, or Android closes it*.
 - On Android 13 and newer, the first run after the app opens asks for the notification
   permission if it is not granted yet. The run goes on whatever the answer.
 
@@ -304,9 +301,8 @@ change the settings above, run again and watch again. The player comes back on t
 and moment, with the same view and speed, to compare.
 
 **Free storage**, in the **Track IDs** part under the track ID result (above **Watch the
-results**), deletes videos. **Delete 4 clips without any track ID (1.2 GB)…** removes the clips
-without any track ID. **Delete all 8 clips, keep the saved frames (…)…** removes all clips. Each
-button shows the size it frees. They wait, with a line that gives the reason, until every clip is
+results**), deletes videos: **Delete 4 clips without any track ID (1.2 GB)…** or **Delete all 8
+clips, keep the saved frames (…)…**. Each button shows the size it frees. They wait, with a line that gives the reason, until every clip is
 analyzed, the track IDs include the latest analysis and the kept frames are saved.
 
 The boxes, track IDs and kept frames stay, so **Find track IDs** can still
@@ -434,10 +430,10 @@ Count by hand with the same rule, or the comparison measures the rule and not th
 - **Start and end.** A track ID starts when the insect is first detected in the analysed area and
   ends when it was last seen there.
 - **Minimum track length.** It is set in seconds. The detector must find the insect in that many
-  analysed frames in a row (the frames are shown under the setting: 1 s = 5 detections at 5 frames
-  per second). At least 2 detections in a row are always needed, even at 0 s. So a high
-  value also drops an insect it sees only on and off. The seconds become frames at the rate the
-  video was analysed at, fixed for the whole run.
+  analysed frames in a row, and in at least 2 even at 0 s. So a high value also drops an insect
+  it sees only on and off. How seconds become frames:
+  [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md#video-analysis-find-animals-in-videos-screen),
+  *More about each video setting*.
 - **In the picture, not on the flower.** The app sees an insect *in the picture*, not *on the
   flower*. Whether an insect that only flies through counts is your decision. For scoring the
   app, count every insect that appears in the analysed area; flower contact can be a second
@@ -512,9 +508,6 @@ What still differs:
 
 The copy keeps all 30 frames per second, so the frame-rate sweep
 ([§5](#5-which-frame-rate-is-enough-the-sweep)) can still try more.
-
-A square video gets the area **Whole picture** by itself since round 273. In the app, a video left
-without a rectangle starts on the largest square in the middle since round 273 too.
 
 </details>
 
@@ -858,7 +851,7 @@ Two published systems show both ends:
   live at about 12.5 fps (1080p) or 3.4 fps (4K) and note that too low a rate makes the track
   IDs of fast-moving insects "jump", so one insect is counted more than once.
 
-The app's default is 5 fps since round 254 (15 before). On the first 333 s of a 60-fps edited
+On the first 333 s of a 60-fps edited
 compilation of bees on flowers, analysed once at 15 fps, re-running the tracker on the frames of
 lower rates gave:
 

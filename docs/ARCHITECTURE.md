@@ -1,29 +1,28 @@
 # Architecture
 
-**Who this is for:** a new developer joining the project. It explains how a
-camera frame becomes a logged track ID, where the native (Kotlin) and Dart sides
-meet, and which pieces must be kept in sync. For per-directory file summaries,
-see [`lib/fauna_pulse/README.md`](../lib/fauna_pulse/README.md); for current
-defaults and invariants, see [AGENT_CHANGELOG_OVERVIEW.md](AGENT_CHANGELOG_OVERVIEW.md).
+**Who this is for:** a new developer on the project. It explains how a camera
+frame becomes a logged track ID, where the native (Kotlin) and Dart sides meet,
+and which pieces must be kept in sync. For short file summaries per folder, see
+[`lib/fauna_pulse/README.md`](../lib/fauna_pulse/README.md); for current
+defaults and rules, see [AGENT_CHANGELOG_OVERVIEW.md](AGENT_CHANGELOG_OVERVIEW.md).
 
 ---
 
 ## 1. The two sides
 
-The app is a **Flutter (Dart)** application running on top of a **modified copy of
-the Ultralytics YOLO plugin** whose performance-critical code is **native
-Android (Kotlin)**.
+The app is a **Flutter (Dart)** application on top of a **modified copy of the
+Ultralytics YOLO plugin**, whose speed-critical code is **native Android
+(Kotlin)**.
 
-- **App (Dart):** `lib/fauna_pulse/` — all custom code (ROI, tracking, capture
+- **App (Dart):** `lib/fauna_pulse/` holds all app code (ROI, tracking, photo
   scheduling, logging, screens). `lib/main.dart` is the entry point.
-- **Ultralytics plugin:** `packages/ultralytics_yolo/` — the camera + detector.
-  Dart widget (`YOLOView`) plus native Kotlin (CameraX capture + LiteRT
-  inference). Forked from upstream commit `22b2e5d` and modified for
-  ROI-crop inference and fast ROI capture.
+- **Ultralytics plugin:** `packages/ultralytics_yolo/`, the camera and the
+  detector: a Dart widget (`YOLOView`) plus native Kotlin (CameraX capture and
+  LiteRT 2.3.2 inference). Forked from upstream commit `22b2e5d` (§5).
 - **App native shell:** `android/app/src/main/kotlin/com/ultralytics/yolo/MainActivity.kt`
-  — hosts the full-resolution high-res photo crop and the device/thermal/keep-alive
-  method channels. App id: `com.faunapulse.app` (the Kotlin namespace
-  stays `com.ultralytics.yolo` for compatibility with the plugin).
+  holds the full-resolution photo crop and the app's method channels (§3). App
+  id: `com.faunapulse.app` (the Kotlin namespace stays `com.ultralytics.yolo`,
+  to match the plugin).
 
 ## 2. Per-frame data flow
 
@@ -34,16 +33,17 @@ Android (Kotlin)**.
  Motion gate check (if enabled) ── idle? ─────► drop frame (stay asleep)
    │  MotionGate.kt                              heartbeat "gateIdle" → Dart
    ▼
- Inference FPS cap ── over cap? ──────────────► drop frame
+ Detector rate ── too early? ─────────────────► drop frame
    │
    ▼
  ROI crop + resize to model input             ImageUtils.kt / ObjectDetector.kt
    │
    ▼
- LiteRT inference (GPU or CPU)                 LiteRtModel.kt (CompiledModel)
+ LiteRT inference (GPU, or CPU in 16-bit       LiteRtModel.kt (CompiledModel)
+ or 32-bit maths)
    │
    ▼
- NMS / postprocess (native C++ for detect)    ObjectDetector.kt
+ NMS / postprocess (native C++)                ObjectDetector.kt
    │
    ▼
  Result map over EventChannel  ───────────────► Dart
@@ -58,111 +58,126 @@ Android (Kotlin)**.
  session.jsonl  +  roi_frames/*.jpg
 ```
 
-Key point: **YUV→RGB conversion and ROI cropping happen natively** and must not
-be reimplemented in the Dart path (the plugin already does it). Frames the
-motion gate or FPS cap drop never leave the native layer.
+Key point: **YUV→RGB conversion and ROI cropping happen natively**; do not
+write them again in Dart. Frames dropped by the motion gate or the detector
+rate never leave the native layer. The camera runs only at the frame rates its
+lens offers; detector rate 0 = same as the camera.
+
+On the CPU, detectors and
+the identification model use 16-bit maths when the model and the phone allow
+it (`CPU_FP16` in `ObjectDetector.kt` and `Embedder.kt`), else 32-bit (always
+for files with 8-bit weights); records save this as `cpu_16bit`.
 
 ## 3. Native ↔ Dart contract
 
 Two mechanisms cross the boundary:
 
-**Streaming (per frame), plugin's `EventChannel`:** the native side sends a
-result map per emitted frame (detections with class, confidence, pixel +
-normalized boxes; timestamp; frame number; image size; ROI-active flag;
-motion-gate idle flag + score; accelerator; camera FPS). **No image bytes are
-sent per frame by default.** Consumed by `_onStreamingData`.
+**Streaming (per frame), the plugin's `EventChannel`:** one result map per
+emitted frame: detections (class, confidence, pixel and normalised boxes),
+timestamp, frame number, image size, ROI-active flag, motion-gate idle flag and
+score, accelerator, CPU 16-bit flag, camera FPS. **By default no image bytes
+are sent.** `_onStreamingData` reads it.
 
-**Method channels (request/response), app-specific (`faunapulse/*`):**
+**Method channels (request and answer), app-specific (`faunapulse/*`):**
 
 | Channel | Direction | Purpose |
 |---|---|---|
-| `faunapulse/crop` | Dart → native | `MainActivity.cropRoiJpeg` — take a full-resolution high-res photo and region-crop the ROI out of it. |
-| `faunapulse/thermal` | Dart → native | Battery temperature, current/voltage, charge counter, OS thermal status; since round 346 also the phone's memory (total, free, Android's low-memory line), this process's resident memory and its CPU time with the clock it was read at (`DeviceThermal` derives "cores busy" from two readings). Also `getFreeStorage` (round 68): free/total bytes of the session volume via `StatFs`. |
-| `faunapulse/keepalive` | Dart → native | Start/stop the foreground service that keeps a long session alive (`RecordingService`, from `services/recording_keepalive.dart`). Also `startAnalysis`/`stopAnalysis` (round 319): `AnalysisService`, a second foreground service (type `dataSync`, `mediaProcessing` on Android 15+) held by `services/analysis_keepalive.dart` (reference counted) while *Find animals in videos/photos* or Identify runs. The identification run itself lives in `identification/identification_run.dart` (`IdentificationRun`, one per session), so it can start and run while the app is in the background; the Identify screen only shows it. |
-| `faunapulse/diagnostics` | Dart → native | Capture logcat into the session folder. |
+| `faunapulse/crop` | Dart → native | `cropRoiJpeg`: take a full-resolution photo and cut the ROI out of it; also gallery saves. |
+| `faunapulse/thermal` | Dart → native | `getThermal` (Dart `DeviceThermal.read`): every phone reading in one call: battery temperature, current, voltage and charge counter, the OS heat status, chip temperatures (where the phone allows it), memory, and this process's memory and CPU time ("cores busy" comes from two readings). Also `getFreeStorage` (free and total bytes of the session volume). |
+| `faunapulse/keepalive` | Dart → native | Start and stop `RecordingService`, the foreground service that keeps a long session alive (`services/recording_keepalive.dart`). `startAnalysis`/`stopAnalysis`: `AnalysisService` (type `dataSync`, `mediaProcessing` on Android 15+), held with a reference count by `services/analysis_keepalive.dart` while *Find animals in videos/photos* or Identify runs. Also phone state and phone settings. |
+| `faunapulse/diagnostics` | Dart → native | Save logcat into the session folder; send a problem report by email. |
 
-The plugin also exposes ROI push, motion-gate config, lens/focus, and a fast
-live-frame ROI crop through the `YOLOView` controller.
+The identification run (`IdentificationRun` in
+`identification/identification_run.dart`, one per session) lives apart from its
+screen, so it runs while the app is in the background. The `YOLOView`
+controller sends the ROI, motion-gate settings, lens and focus, and asks for a
+fast ROI crop of the live frame.
 
 ## 4. Keep-in-sync pairs (edit both or neither)
 
-Some logic is duplicated across the language boundary or across capture paths;
-changing one without the other causes subtle field bugs (documented in
-AGENT_CHANGELOG.md rounds 57, 62, 63):
+Some logic exists twice (on both sides of the language boundary, or in several
+photo paths). Changing one copy alone causes subtle field bugs
+(AGENT_CHANGELOG.md rounds 57, 62, 63):
 
 - **ROI ÷32 snapping.** Three crop paths must all snap the side to a multiple
   of 32 and cap it to the source's short side: the fast live-frame crop
   (`ImageUtils.cropRoiFromFrame`, plugin Kotlin), the high-res photo crop
-  (`MainActivity.cropRoiJpeg`, app Kotlin), and the Dart fallback `_cropJpeg`
-  (`capture/roi_capture.dart`). The shared math lives in
-  `models/roi.dart` (`Roi.snapSideToGrid`, `snapToMultipleOf32`). Don't
-  "fix" snapping in one place only.
-- **Rotation/mirror of the saved crop.** Only the small ROI square is rotated,
-  not the full frame — the Dart side (`rawRectForUprightRect` / `uprightHighResDims`
-  in `roi_capture.dart`) and the Kotlin mirror in `MainActivity.kt` must
-  agree. Do **not** reintroduce full-frame `normalizeJpegOrientation`.
-- **ROI box geometry lives in one scale** (the analysis/stream grid). The
-  on-screen size readout, resize snapping, and inference ROI all use the
-  analysis frame; the high-res source only feeds the separate "saves N×N" label.
-  See the invariants in AGENT_CHANGELOG_OVERVIEW.md before touching ROI code.
-- **Phone samples of the jobs that run afterwards.** `VideoDetector` (video analysis) and
-  `IdentifyPhoneLog` (identification) write the phone's readings as the same kinds of records
-  (`thermal`, `power`, a speed record, pause and resume). One parser, `VideoRunSamples`
-  (`postprocess/video_run_samples.dart`), reads both files for the summary's graphs and for the
-  two CSV tables. A change to one writer's records, or to the parser, must be checked against
-  the other file (DATA_GUIDE §8 and §9).
-- **Across repositories (round 311): the PC export tools.** The model files are made in
-  [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models), whose `docs/AGENT_OVERVIEW.md`
-  lists every shared rule. The main pairs: the `.fpack` writer `bioclip_export/fpack.py` and
-  `identification/label_pack.dart` (plus the fixtures in `test/fauna_pulse/fixtures/`);
-  `fpack.class_probabilities` and `identification/track_fusion.dart`; the naming rule
-  (`tool/model_downloads/README.md`) and the file names the export scripts write. File size
-  needs no pair: the app takes every model file and name list up to 2 GiB, the ceiling the app
-  sets (an `.onnx` file cannot be larger, and the native code that reads a model's class names
-  and input size maps the whole file into memory, which stops at 2 GiB; `kMaxModelFileBytes` in `models/model_file_security.dart`), with no
-  separate detector limit, and the export tools set no limit of their own.
+  (`MainActivity.cropRoiJpeg`, app Kotlin) and the Dart fallback `_cropJpeg`
+  (`capture/roi_capture.dart`). The shared maths is in `models/roi.dart`
+  (`Roi.snapSideToGrid`, `snapToMultipleOf32`). Never fix snapping in one place
+  only.
+- **Rotation and mirroring of the saved crop.** Only the small ROI square is
+  rotated, not the full frame. The Dart side (`rawRectForUprightRect` and
+  `uprightHighResDims` in `roi_capture.dart`) and its Kotlin mirror in
+  `MainActivity.kt` must agree. Do **not** bring back full-frame
+  `normalizeJpegOrientation`.
+- **ROI box geometry uses one scale** (the analysis stream grid): the
+  on-screen size readout, resize snapping and inference ROI; the high-res
+  source only feeds the separate "saves N×N" label. Read the rules in
+  AGENT_CHANGELOG_OVERVIEW.md before touching ROI code.
+- **Phone readings of the jobs that run afterwards.** `VideoDetector` (video
+  analysis) and `IdentifyPhoneLog` (identification) write the same kinds of
+  records (`thermal`, `power`, a speed record, pause and resume). One parser,
+  `VideoRunSamples` (`postprocess/video_run_samples.dart`), reads both files
+  for the summary's graphs and the two CSV tables. Check a change to a writer
+  or the parser against the other file (DATA_GUIDE §8 and §9).
+- **Across repositories: the PC export tools.** The model files are made in [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models),
+  whose `docs/AGENT_OVERVIEW.md` lists every shared rule. The main pairs: the
+  `.fpack` writer `bioclip_export/fpack.py` and `identification/label_pack.dart`
+  (plus the fixtures in `test/fauna_pulse/fixtures/`);
+  `fpack.class_probabilities` and `identification/track_fusion.dart`; the naming
+  rule (`tool/model_downloads/README.md`) and the file names the export scripts
+  write. File size needs no pair: the app takes model files and name lists up
+  to 2 GiB, with no separate limit for detectors (`kMaxModelFileBytes` in
+  `models/model_file_security.dart`; an `.onnx` file cannot be larger, and the
+  native reader of class names and input size maps the whole file into memory,
+  which stops at 2 GiB), and the export tools set no limit.
 
 ## 5. What the plugin fork changed vs upstream
 
-The Ultralytics plugin in `packages/ultralytics_yolo/` is **not** stock — a new developer
-reading its (upstream) docs won't see these. The authoritative fork document
-(upstream base and audit history, the full change list, fork-only invariants,
-and the re-audit checklist) is
+The plugin is **not** stock, and the upstream docs do not show these changes.
+The upstream base, the audit history, every change, the fork-only rules and the
+re-audit checklist are in
 [`packages/ultralytics_yolo/FAUNAPULSE_FORK.md`](../packages/ultralytics_yolo/FAUNAPULSE_FORK.md).
-The headline changes:
+The main changes:
 
-- **ROI-crop inference**: the detector runs on the cropped ROI square (better
-  small-insect recall) instead of the whole letterboxed frame.
-- **Fast ROI capture** from the live analysis frame (no camera stall).
-- **Motion gate** (`MotionGate.kt`, opt-in): native brightness-diff gate that
-  sleeps the detector on a still ROI.
-- **GPU-crash guard** (`LiteRtModel.kt`): a 2-strike blocklist that drops a
-  model to CPU permanently if it crashes the GPU compile, plus a GPU program
-  cache.
-- **Camera2 interop funnel + power controls** (round 82): manual focus and the
-  camera-hardware FPS cap applied in one place (`applyInteropOptions`),
-  preview detach for blackout, and the round-129 inference deadline scheduler.
-- **Native lifecycle overhaul** (round 161): real model/instance disposal,
-  plugin-owned coroutine scope, terminal `YOLOView.release()`.
+- **ROI-crop inference:** the detector runs on the ROI square (finds more
+  small insects), not on the whole letterboxed frame.
+- **Fast ROI photos** from the live analysis frame (no camera stall).
+- **Motion gate** (`MotionGate.kt`, opt-in): a native brightness-difference
+  gate that lets the detector sleep while the ROI is still.
+- **GPU-crash guard** (`LiteRtModel.kt`): a 2-strike blocklist moves a model
+  that crashes the GPU compile to the CPU for good; plus a GPU program cache.
+- **LiteRT 2.3.2 and 16-bit CPU maths** (§2). The GPU accelerator is the
+  separate `litert-gpu` artifact (same version as `litert`); without it every
+  model runs on the CPU.
+- **Camera2 options and power controls:** manual focus and the camera
+  frame-rate cap set in one place (`applyInteropOptions`), the preview detached
+  for blackout, and a deadline scheduler for the detector rate.
+- **Native lifecycle:** real model and instance disposal, a coroutine scope
+  owned by the plugin, and a final `YOLOView.release()`.
+- **Detection only:** the example app, the showcase, the upstream-only docs and
+  the Kotlin code for segmentation, pose, OBB and classification are deleted;
+  the app refuses such model files at import.
 
 ## 6. Session lifecycle (Dart)
 
-`camera_session_screen.dart` orchestrates a session (its methods sit in
-`part` files under `screens/camera_session/`, one per part of the screen): it
-receives every frame in `_onStreamingData` and owns the UI, but since round 73
-the actual logic lives in `session/`: `frame_processor.dart` (per-frame ROI mapping, tracking,
-gate-idle state), `session_recorder.dart` (recording lifecycle: folder,
-logger, photos, keep-alive, stop order), plus the camera probes, schedule
-plan, and time-lapse camera parking. A recording opens the `SessionLogger`,
-writes `start_of_session`, wires the `RoiCaptureScheduler`, starts the
-wakelock + keep-alive foreground service and the sample timers
-(thermal/FPS/power), and on stop writes `end_of_session` and tears down in
-order. Rule: new session logic goes into `session/` (unit-testable), not into
-the screen.
+`screens/camera_session_screen.dart` runs a session; its methods sit in `part`
+files under `screens/camera_session/`, one per part of the screen. It receives
+every frame in `_onStreamingData` and owns the UI. The logic lives in
+`session/`: `frame_processor.dart` (per-frame ROI mapping, tracking, gate-idle
+state), `session_recorder.dart` (folder, logger, photos, keep-alive, stop
+order), the camera probes, the schedule plan and the time-lapse camera sleep.
+
+A recording opens the `SessionLogger`, writes `start_of_session`, connects the
+`RoiCaptureScheduler`, starts the wake lock, the keep-alive service and the
+sample timers (heat, FPS, power). On stop it writes `end_of_session` and shuts
+down in order. Rule: new session logic goes into `session/` (unit-testable),
+not into the screen.
 
 ## 7. Where to look next
 
-- Output format & analysis: [DATA_GUIDE.md](DATA_GUIDE.md)
-- Photo resolution pipeline: [HOW_PHOTO_RESOLUTION_WORKS.md](HOW_PHOTO_RESOLUTION_WORKS.md)
-- Full round-by-round Claude Code rationale: [AGENT_CHANGELOG.md](AGENT_CHANGELOG.md)
+- Output format and analysis: [DATA_GUIDE.md](DATA_GUIDE.md)
+- How photo resolution works: [HOW_PHOTO_RESOLUTION_WORKS.md](HOW_PHOTO_RESOLUTION_WORKS.md)
+- Reasons, round by round: [AGENT_CHANGELOG.md](AGENT_CHANGELOG.md)
 - Build, test, conventions: [CONTRIBUTING.md](CONTRIBUTING.md)
