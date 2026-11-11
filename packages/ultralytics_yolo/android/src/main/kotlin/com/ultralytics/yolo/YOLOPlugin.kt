@@ -181,7 +181,9 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
    * ones. Input is fixed-seed random noise - convolution cost does not depend on pixel values,
    * so noise times the same work a real frame would.
    *
-   * [cpuFp16] runs the CPU rows in 16-bit maths (see [LiteRtModel]); their labels then say so.
+   * [cpuFp16] asks for 16-bit maths in the CPU rows (see [LiteRtModel]). A row's label says
+   * "16-bit" only when the model really ran in it: a file with 8-bit weights falls back to
+   * 32-bit and is timed as such, because that is what a detector on the CPU then runs.
    *
    * Returns one map per configuration: label, useGpu, cpuThreads, accelerator actually used,
    * avgMs / minMs / compileMs / iterations on success, or an "error" string on failure.
@@ -193,18 +195,19 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
     threadVariants: List<Int>,
     cpuFp16: Boolean,
   ): List<Map<String, Any>> {
-    data class Config(val label: String, val useGpu: Boolean, val cpuThreads: Int)
-    val configs = mutableListOf(Config("GPU", useGpu = true, cpuThreads = 0))
-    val cpu = if (cpuFp16) "CPU 16-bit" else "CPU"
-    for (t in threadVariants.distinct()) {
-      val label = if (t == 0) "$cpu (automatic: ${LiteRtModel.automaticCpuThreads()} threads)" else "$cpu ($t threads)"
-      configs += Config(label, useGpu = false, cpuThreads = t)
+    data class Config(val useGpu: Boolean, val cpuThreads: Int)
+    val configs = mutableListOf(Config(useGpu = true, cpuThreads = 0))
+    for (t in threadVariants.distinct()) configs += Config(useGpu = false, cpuThreads = t)
+    fun label(c: Config, fp16: Boolean): String {
+      if (c.useGpu) return "GPU"
+      val cpu = if (fp16) "CPU 16-bit" else "CPU"
+      return if (c.cpuThreads == 0) "$cpu (automatic: ${LiteRtModel.automaticCpuThreads()} threads)" else "$cpu (${c.cpuThreads} threads)"
     }
 
     val out = mutableListOf<Map<String, Any>>()
     for (c in configs) {
       val entry = mutableMapOf<String, Any>(
-        "label" to c.label,
+        "label" to label(c, cpuFp16),
         "useGpu" to c.useGpu,
         "cpuThreads" to c.cpuThreads,
       )
@@ -213,6 +216,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
         val model = LiteRtModel(context, modelPath, c.useGpu, "AccelBenchmark", c.cpuThreads, cpuFp16)
         try {
           entry["accelerator"] = model.accelerator
+          if (!c.useGpu) entry["label"] = label(c, model.usesCpuFp16)
           // Tensor shape the model is fed ([1, H, W, 3]) - surfaced so the UI can show
           // the resolution the timings apply to. The benchmark input is noise generated
           // at exactly this size; camera capture/downscaling is not part of the timing.
@@ -222,9 +226,6 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
             // The ladder inside LiteRtModel fell back to CPU (blocklisted or failed to
             // compile). Timing that here would just duplicate the CPU-default entry.
             entry["error"] = "GPU unavailable for this model (blocklisted or failed to compile)"
-          } else if (!c.useGpu && cpuFp16 && !model.usesCpuFp16) {
-            // The model fell back to 32-bit: timing it here would repeat the 32-bit row under a wrong label.
-            entry["error"] = "16-bit maths cannot run this model (it runs in 32-bit)"
           } else {
             val inputSize = if (model.inputDims.isNotEmpty()) model.inputDims.fold(1) { a, b -> a * b } else 0
             if (inputSize <= 0) {
@@ -254,7 +255,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
       } catch (e: Throwable) {
         entry["error"] = e.message ?: e.javaClass.simpleName
       }
-      Log.i(TAG, "AccelBenchmark ${c.label}: $entry")
+      Log.i(TAG, "AccelBenchmark ${entry["label"]}: $entry")
       out += entry
     }
     return out
@@ -722,6 +723,26 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
             }
           }
 
+        }
+      }
+
+      // FaunaPulse (round 367): the engine the detector really runs on, for the photo and video run
+      // records (the live camera gets it with every frame). It builds the model first if needed, on
+      // the IO dispatcher because a build can take seconds; a model that fails here fails again in
+      // the run, which reports it as before.
+      "engineInfo" -> {
+        val instanceId = (call.arguments as? Map<*, *>)?.get("instanceId") as? String ?: "default"
+        pluginScope.launch(Dispatchers.IO) {
+          val info = runCatching {
+            val p = YOLOInstanceManager.shared.getInstance(instanceId)?.predictorInstance() as? BasePredictor
+            if (p == null) emptyMap() else mapOf("accelerator" to p.accelerator, "cpuFp16" to p.usesCpuFp16)
+          }
+          withContext(Dispatchers.Main) {
+            info.fold(
+              onSuccess = { result.success(it) },
+              onFailure = { e -> result.error("engine_info_error", e.message ?: e.javaClass.simpleName, null) },
+            )
+          }
         }
       }
       

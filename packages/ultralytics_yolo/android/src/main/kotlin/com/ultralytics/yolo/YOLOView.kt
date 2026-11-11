@@ -3102,6 +3102,11 @@ class YOLOView @JvmOverloads constructor(
                         // graph, NOT by dtype - int8 models can and do compile on GPU (verified:
                         // arthropod_yolov11_int8 runs on GPU, session_120). See LiteRtModel.
                         enhancedStreamData["accelerator"] = (p as? BasePredictor)?.accelerator ?: "unknown"
+                        // FaunaPulse (round 367): on the CPU, whether it computes in 16-bit maths
+                        // (LiteRtModel; files with 8-bit weights stay in 32-bit). Saved as cpu_16bit.
+                        (p as? BasePredictor)?.takeIf { it.accelerator == "CPU" }?.let {
+                            enhancedStreamData["cpuFp16"] = it.usesCpuFp16
+                        }
                         // Camera analysis delivery rate (frames/sec the sensor feeds the analyzer).
                         enhancedStreamData["cameraFps"] = lastDeliveredFps
 

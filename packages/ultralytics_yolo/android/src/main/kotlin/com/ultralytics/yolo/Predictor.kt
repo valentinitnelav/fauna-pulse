@@ -23,6 +23,9 @@ interface InferenceModel {
      *  runs the model or was not requested. */
     val accelerationNote: String? get() = null
 
+    /** True when the CPU runs this model in 16-bit maths (see [LiteRtModel]); false on the GPU or NPU. */
+    val usesCpuFp16: Boolean get() = false
+
     /** Input tensor dimensions in NHWC convention, e.g. [1, 640, 640, 3]. */
     val inputDims: IntArray
 
@@ -127,6 +130,10 @@ abstract class BasePredictor : Predictor {
      *  reporting. Note: GPU can't compile int8 models, so those run on CPU. */
     val accelerator: String
         get() = if (isInterpreterInitialized()) rtModel.accelerator else "unknown"
+
+    /** See [InferenceModel.usesCpuFp16]; written into session records (`cpu_16bit`). */
+    val usesCpuFp16: Boolean
+        get() = isInterpreterInitialized() && rtModel.usesCpuFp16
 
     protected var t0: Long = 0L
     protected var t2: Double = 0.0

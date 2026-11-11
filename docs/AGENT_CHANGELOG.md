@@ -10309,3 +10309,18 @@ cores among the rows of "Benchmark engines", perhaps an automatic engine choice;
 source calls the 16-bit flag deprecated ("will be removed soon"), so a later LiteRT may lose it:
 time the CPU again at every runtime update.
 
+## Round 367 (2026-11-11): 16-bit CPU maths on for detectors; the engine that ran is recorded
+
+The owner chose the short version of the round 366 advice: switch on and record the maths, without
+the live check on the Galaxy M12 or an automatic engine choice. MegaDetector itself gains nothing
+(its file has 8-bit weights and stays in 32-bit), but heavy 16-bit models that a phone's GPU cannot
+run, and phones with a weak GPU, get about twice the CPU speed, and the fallback makes the switch
+safe. Photo and video runs recorded only the requested engine, so they now record the engine that
+really ran too. With the switch on, the engine benchmark would have shown MegaDetector's CPU rows as
+errors; they are now timed and labelled by the maths that really ran. Checked: analyzer, unit
+tests, and a temporary device check on the Galaxy M12 (not kept): flat-bug n on the CPU gave
+`cpu_16bit` true in the live, photo and video records, MegaDetector false, the GPU no key, and the
+benchmark labels were right (MegaDetector's CPU rows timed). Open: live frame rate and heat on the Galaxy M12; an "all
+cores" benchmark row (the M12's best: 94 ms against 151 at 4 threads); a phone without 16-bit
+maths; re-time at each LiteRT update. A future larger MegaDetector should be exported in 16-bit.
+

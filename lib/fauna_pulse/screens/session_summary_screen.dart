@@ -43,6 +43,7 @@ import '../capture/crop_export.dart';
 import '../capture/roi_capture.dart' show roiStreamSideFromLog;
 import '../capture/roi_video.dart' show VideoClipTotals;
 import '../models/field_notes.dart';
+import '../session/detector_engine.dart';
 import '../session/location_fix.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/photo_box_matcher.dart';
@@ -132,6 +133,7 @@ class _SessionSummaryScreenState extends State<SessionSummaryScreen> {
 
   String? _model;
 
+  // "CPU (16-bit maths)" and so on (engineLabel), from the start record.
   String? _accelerator;
 
   // The whole start-of-session record, kept so the settings section can list

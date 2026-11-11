@@ -73,6 +73,7 @@ import '../postprocess/video_detector.dart';
 import '../postprocess/video_frame_keeper.dart';
 import '../postprocess/video_tracker.dart';
 import '../services/analysis_keepalive.dart';
+import '../session/detector_engine.dart';
 import '../tracking/byte_track.dart';
 import '../tracking/c_biou_track.dart';
 import '../tracking/tracker.dart';
@@ -769,6 +770,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     try {
       await yolo.loadModel();
       modelLoaded = true;
+      final engine = await engineRecordFieldsOf(yolo);
       await _readMissingLengths(session, startOver: startOver);
       var appVersion = '';
       try {
@@ -780,6 +782,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
       result = await VideoDetector(backend: NativeVideoBackend(yolo.instanceId)).run(
         session.dir,
         config: config,
+        engine: engine,
         onProgress: (p) {
           if (!mounted) return;
           setState(() {

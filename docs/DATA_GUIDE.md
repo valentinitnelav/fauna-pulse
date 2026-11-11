@@ -172,6 +172,7 @@ One per session, the first line. Session-wide metadata. Notable fields:
 - `free_storage_bytes`, `total_storage_bytes`: Free/total bytes on the session's storage volume at start.
 - `model_path`, `task`, `use_gpu`, `cpu_threads`: Requested model and task settings, and the number of CPU threads set for the detector.
 - `accelerator`: What was **actually** used (e.g. GPU, or CPU fallback for int8 models); the summary's *Detector ran on* row.
+- `cpu_16bit` (only when `accelerator` is CPU): `true` when the CPU computed with 16-bit numbers, `false` for 32-bit. Since app round 367 the CPU uses 16-bit maths when the model file is in 16-bit: about twice as fast, and the boxes differ from 32-bit about as much as between CPU and GPU (the GPU always uses 16-bit). Files with 8-bit weights (for example MegaDetector) and phones without 16-bit maths use 32-bit. No key in older sessions: their CPU used 32-bit.
 - `camera_full_width_px`, `camera_full_height_px`: Full-resolution (high-res) photo size.
 - `capture_dims_from_cache`: Present (`true`) when recording started before the live photo probe confirmed the cached photo size: the sizes above came from the previous measurement.
 - `location`: The session's single location fix: `lat`, `lon` (decimal degrees), `accuracy_m` (GPS only), `fix_time_ms`, `source` (`gps` / `manual` / `previous`). Absent when no location was set. Stripped from problem-report samples.
@@ -1176,8 +1177,9 @@ join or sort.
 | `post_end` | once per run |
 | `post_cleanup` | when photos were deleted by a keep rule |
 
-- **`post_start`:** `model`, `model_name`, `confidence`, `iou`, `use_gpu`, `photos_total`,
-  `photos_pending`, `app_version`; `reanalyzed_all: true` when **Re-analyze photos already
+- **`post_start`:** `model`, `model_name`, `confidence`, `iou`, `use_gpu`, `accelerator` and
+  `cpu_16bit` (the engine that really ran, as in the session start record; newer sessions only),
+  `photos_total`, `photos_pending`, `app_version`; `reanalyzed_all: true` when **Re-analyze photos already
   done** forced a full rerun. When small-insect tiling (SAHI) was on, a `sahi` map records the
   tiling settings (below). No `sahi` key = a plain single-pass run.
 - **`post_detection`:** `jpeg` (filename in `roi_frames/`, joinable exactly as in §5),
@@ -1874,8 +1876,9 @@ Records carry `time_ms` (when written), no `time_iso`.
   - `settings`: `model`, `confidence`, `iou`, `analysis_fps` (frames looked at per video
     second), `roi` (`[center_x, center_y, side]` as fractions of the upright picture, side as a
     fraction of its width, or `null` for the whole picture), `max_side_px`;
-  - `model_name`, `use_gpu`, `thermal_limit_c` (the pause temperature), `sample_s` (the
-    "Measure the phone every" setting);
+  - `model_name`, `use_gpu`, `accelerator` and `cpu_16bit` (the engine that really ran, as in
+    the session start record; newer sessions only), `thermal_limit_c` (the pause temperature),
+    `sample_s` (the "Measure the phone every" setting);
   - `clips_total`, `clips_pending`, `clips_cut_off` (see below), `started_over` (when earlier
     results were replaced), `app_version`.
 - **`video_clip_start`:** per clip: `clip`, `start_epoch_ms`, `start_time_source`,

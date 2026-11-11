@@ -208,6 +208,13 @@ class YOLO {
     await _modelManager!.predictorInstance();
   }
 
+  /// FaunaPulse (round 367): the engine the loaded model really runs on, for run records:
+  /// `accelerator` ("GPU", "CPU" or "NPU") and `cpuFp16` (true when the CPU computes in 16-bit
+  /// maths, see LiteRtModel.kt). Builds the model if no prediction has done so yet. Android
+  /// only (throws elsewhere); empty before [loadModel].
+  Future<Map<String, Object?>> engineInfo() async =>
+      _isInitialized ? _modelManager!.engineInfo() : const {};
+
   /// Runs inference on a single image.
   ///
   /// Takes raw image bytes as input and returns a map containing the inference results.

@@ -382,6 +382,8 @@ class VideoDetector {
   /// file was made with other settings, unless [startOver] (which replaces
   /// it). A clip that fails is logged (`video_clip_error`) and skipped; the
   /// next run retries it. The phone is measured every [sampleEvery].
+  /// [engine]: the engine the detector really runs on (`engineRecordFields`
+  /// in detector_engine.dart), written into the `video_run_start` record.
   Future<VideoRunResult> run(
     Directory sessionDir, {
     required VideoRunConfig config,
@@ -391,6 +393,7 @@ class VideoDetector {
     Duration sampleEvery = const Duration(seconds: 10),
     String appVersion = '',
     bool startOver = false,
+    Map<String, Object?> engine = const {},
   }) async {
     final started = now();
     final every = sampleEvery < const Duration(seconds: 1) ? const Duration(seconds: 1) : sampleEvery;
@@ -440,6 +443,7 @@ class VideoDetector {
       'settings': config.identity,
       'model_name': config.modelName,
       'use_gpu': config.useGpu,
+      ...engine,
       'thermal_limit_c': thermalLimitC,
       'clips_total': clips.length,
       'clips_pending': pending.length,

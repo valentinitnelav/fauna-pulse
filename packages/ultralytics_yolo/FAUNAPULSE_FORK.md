@@ -142,6 +142,15 @@ The headline changes, with the round that introduced each (full rationale in
   or 8 threads then beats the GPU. Boxes move about as much as between CPU and
   GPU today (`detector_outputs_check_test.dart`). Not tested: a phone whose
   cores have no 16-bit maths (before ARMv8.2).
+- **16-bit CPU maths on for detectors, engine reported** (r367):
+  `ObjectDetector.CPU_FP16` is on. `InferenceModel.usesCpuFp16` (false unless
+  `LiteRtModel` runs in 16-bit) reaches the app three ways: the live camera's
+  frame data (`cpuFp16`, CPU only), a new `engineInfo` method call (`YOLO.engineInfo()`:
+  accelerator and maths of a loaded model, built on the IO dispatcher if no
+  prediction has built it yet) for photo and video runs, and the engine
+  benchmark, whose CPU rows are now labelled by the maths that really ran (a
+  file with 8-bit weights is timed in 32-bit instead of being reported as an
+  error, because that is what a detector on the CPU then runs).
 - **Native lifecycle overhaul** (r161, review E2): real `YOLO.close()`,
   remove-then-close instance dispose, a plugin-owned cancellable scope instead
   of `GlobalScope`, one owned model-load executor with a generation token, and

@@ -151,6 +151,14 @@ class YOLOModelManager {
     }
   }
 
+  /// See [YOLO.engineInfo].
+  Future<Map<String, Object?>> engineInfo() async {
+    final r = await _channel.invokeMethod<Map>('engineInfo', {
+      if (_instanceId != 'default') 'instanceId': _instanceId,
+    });
+    return {...?r?.cast<String, Object?>()};
+  }
+
   Future<bool> loadModel() async {
     if (!_isInitialized) {
       await initializeInstance();

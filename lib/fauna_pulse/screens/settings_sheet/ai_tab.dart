@@ -438,6 +438,8 @@ extension _SettingsAiTab on _SettingsSheetState {
                 'check. During a session the real rate is lower, because the '
                 'camera and tracking also need time, and it never goes above '
                 '"Max detector rate" (Power tab).\n\n'
+                '"CPU 16-bit": the CPU computes with shorter numbers, as the '
+                'GPU does. It is faster, and the boxes differ very slightly.\n\n'
                 'Tap "Use …" to choose the fastest, then tap Apply at the '
                 'bottom of Session settings.',
                 style: TextStyle(fontSize: 12),

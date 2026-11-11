@@ -44,6 +44,7 @@ import '../postprocess/sahi.dart';
 import '../postprocess/sahi_profile.dart';
 import '../postprocess/video_tracker.dart' show PostTrackSummary, VideoTrackResult, VideoTracker, trackerUserValues;
 import '../services/analysis_keepalive.dart';
+import '../session/detector_engine.dart';
 import '../tracking/tracker.dart' show TrackerAlgorithm;
 import '../widgets/duration_setting_field.dart';
 import '../widgets/numeric_setting_field.dart';
@@ -479,6 +480,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     final yolo = YOLO(modelPath: model.id, useGpu: appConfig.useGpu);
     try {
       await yolo.loadModel();
+      final engine = await engineRecordFieldsOf(yolo);
       final info = await PackageInfo.fromPlatform();
       // Round 156 (perf review D3): the annotated JPEG the plugin renders per
       // predict call is never shown here (boxes are drawn from coordinates),
@@ -530,6 +532,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         force: _forceReanalyze,
         appVersion: '${info.version}+${info.buildNumber}',
         phaseProfile: profile,
+        engine: engine,
         isCancelled: () => _cancelRequested,
         onProgress: (done, total, avgMs) {
           if (!mounted) return;

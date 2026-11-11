@@ -89,13 +89,18 @@ void main() {
     File('${dir.path}/session.jsonl').writeAsStringSync(
       '${jsonEncode({'type': 'video_clip', 'file': 'videos/a.mp4', 'start_epoch_ms': 1000000})}\n',
     );
-    final result = await detector(FakeBackend({'a.mp4': 5, 'b.MOV': 2})).run(dir, config: config);
+    final result = await detector(
+      FakeBackend({'a.mp4': 5, 'b.MOV': 2}),
+    ).run(dir, config: config, engine: const {'accelerator': 'GPU'});
 
     expect(result.clipsDone, 2);
     expect(result.framesAnalysed, 7);
     final recs = records(dir);
     expect(recs.first['type'], 'video_run_start');
     expect(recs.first['settings']['analysis_fps'], 10);
+    // Round 367: the engine that really ran.
+    expect(recs.first['accelerator'], 'GPU');
+    expect(recs.first.containsKey('cpu_16bit'), isFalse);
     final raws = recs.where((r) => r['type'] == 'raw_detections').toList();
     expect(raws.first['frame_ms'], 1000000);
     expect(raws[1]['frame_ms'], 1000100);

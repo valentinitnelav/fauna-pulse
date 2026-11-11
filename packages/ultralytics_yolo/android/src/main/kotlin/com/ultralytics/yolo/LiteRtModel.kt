@@ -66,7 +66,7 @@ class LiteRtModel(
     val cpuThreads: Int = if (cpuThreads > 0) cpuThreads else automaticCpuThreads()
 
     /** True when the CPU engine runs this model in 16-bit maths (asked for, and the model ran in it). */
-    val usesCpuFp16: Boolean
+    override val usesCpuFp16: Boolean
     override val accelerationNote: String?
 
     /** Input tensor dimensions in NHWC convention, e.g. [1, 640, 640, 3], regardless of the model's native

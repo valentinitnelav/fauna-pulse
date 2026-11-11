@@ -144,6 +144,8 @@ extension _CameraFrames on _CameraSessionScreenState {
     final h = (data['imageHeight'] as num?)?.toInt() ?? _imageHeight;
     final fps = (data['fps'] as num?)?.toDouble() ?? _fpsVN.value;
     final accel = (data['accelerator'] as String?) ?? _accelerator;
+    // Sent with the engine on frames that ran the model; only the session start record reads it.
+    if (data.containsKey('accelerator')) _cpuFp16 = data['cpuFp16'] as bool?;
     final preMs = (data['preMs'] as num?)?.toDouble() ?? 0;
     final inferMs = (data['inferenceMs'] as num?)?.toDouble() ?? 0;
     final postMs = (data['postMs'] as num?)?.toDouble() ?? 0;

@@ -103,6 +103,7 @@ extension _SummarySetupTab on _SessionSummaryScreenState {
         addNote('Chosen on the "Find animals in videos" screen.');
         add('Model', run['model_name'] ?? vs['model']);
         add('GPU requested', run['use_gpu']);
+        add('Detector ran on', engineLabel(run));
         add('Confidence threshold', vs['confidence']);
         add('IoU threshold', vs['iou']);
         add('Frames analyzed per second', vs['analysis_fps']);

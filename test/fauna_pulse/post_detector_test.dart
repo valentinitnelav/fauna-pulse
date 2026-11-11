@@ -144,7 +144,11 @@ void main() {
           return fakeResult();
         },
       );
-      final result = await detector.run(sessionDir, config: config);
+      final result = await detector.run(
+        sessionDir,
+        config: config,
+        engine: const {'accelerator': 'CPU', 'cpu_16bit': true},
+      );
 
       expect(result.processed, 3);
       expect(result.failed, 0);
@@ -154,6 +158,9 @@ void main() {
       final recs = records();
       expect(recs.first['type'], 'post_start');
       expect(recs.first['photos_pending'], 3);
+      // Round 367: the engine that really ran.
+      expect(recs.first['accelerator'], 'CPU');
+      expect(recs.first['cpu_16bit'], isTrue);
       final dets = recs.where((r) => r['type'] == 'post_detection').toList();
       expect(dets, hasLength(3));
       expect(dets.first['captured_at_ms'], isNotNull);

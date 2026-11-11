@@ -132,7 +132,7 @@ void main() {
         File('${tmp.path}/session.jsonl').writeAsStringSync(
           [
             '{"type":"start_of_session","time_ms":1000,"session_id":"t",'
-                '"model_path":"$modelPath","accelerator":"GPU",'
+                '"model_path":"$modelPath","accelerator":"CPU","cpu_16bit":true,'
                 '"config":{"captureTrigger":"${c.trigger}",'
                 '"modelPath":"$modelPath"}}',
             '{"type":"end_of_session","time_ms":60000,'
@@ -159,6 +159,11 @@ void main() {
         );
         expect(
           find.text('Detector ran on'),
+          c.usesAi ? findsOneWidget : findsNothing,
+        );
+        // Round 367: the maths of the CPU, from cpu_16bit.
+        expect(
+          find.text('CPU (16-bit maths)'),
           c.usesAi ? findsOneWidget : findsNothing,
         );
         expect(

@@ -258,9 +258,10 @@ class ObjectDetector(
         private const val TAG = "ObjectDetector"
 
         /** Whether a detector on the CPU computes in 16-bit maths (see [LiteRtModel]; the GPU
-         *  always does). Off until the owner decides: 16-bit files then run about twice as fast
-         *  on the CPU and the boxes move about as much as between CPU and GPU (round 366). */
-        const val CPU_FP16 = false
+         *  always does). Measured in round 366: 16-bit files run 1.7 to 2.5 times faster on the
+         *  CPU, and the boxes move about as much as between CPU and GPU. Files with 8-bit weights
+         *  stay in 32-bit. Session records say which maths ran (`cpu_16bit`). */
+        const val CPU_FP16 = true
 
         // Load JNI library
         init {

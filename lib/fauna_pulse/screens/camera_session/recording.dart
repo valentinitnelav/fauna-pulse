@@ -305,8 +305,9 @@ extension _CameraRecording on _CameraSessionScreenState {
         'cpu_threads': _config.cpuThreads,
         // What was actually used (vs the request above). CPU fallback happens
         // per model when the GPU backend can't compile its graph — int8 models
-        // CAN run on GPU (verified round 77, session_120).
-        'accelerator': _accelerator,
+        // CAN run on GPU (verified round 77, session_120). On the CPU also
+        // cpu_16bit (round 367).
+        ...engineRecordFields(_accelerator, _cpuFp16),
         'camera_full_width_px': _captureWidth,
         'camera_full_height_px': _captureHeight,
         // Round 121: the dims above load instantly from the persistent

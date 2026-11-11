@@ -223,6 +223,9 @@ class PostDetector {
   /// [phaseProfile] (round 168, perf review E6 step 1): the accumulator a
   /// SAHI [predict] wrapper fills per photo; its totals are embedded in the
   /// `post_end` record as `phases`. Null for plain runs.
+  ///
+  /// [engine]: the engine the detector really runs on (`engineRecordFields`
+  /// in detector_engine.dart), written into the `post_start` record.
   Future<PostRunResult> run(
     Directory sessionDir, {
     required PostRunConfig config,
@@ -231,6 +234,7 @@ class PostDetector {
     String appVersion = '',
     bool force = false,
     SahiPhaseProfile? phaseProfile,
+    Map<String, Object?> engine = const {},
   }) async {
     final started = DateTime.now();
     final framesDir = Directory('${sessionDir.path}/roi_frames');
@@ -272,6 +276,7 @@ class PostDetector {
       'confidence': config.confidence,
       'iou': config.iou,
       'use_gpu': config.useGpu,
+      ...engine,
       'photos_total': candidates.length,
       'photos_pending': pending.length,
       if (force) 'reanalyzed_all': true,

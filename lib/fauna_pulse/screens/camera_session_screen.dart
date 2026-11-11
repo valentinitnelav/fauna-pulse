@@ -46,6 +46,7 @@ import '../models/track.dart';
 import '../perf/adaptive_inference_throttle.dart';
 import '../perf/slow_phone_hint.dart';
 import '../session/camera_diagnostics_controller.dart';
+import '../session/detector_engine.dart';
 import '../session/frame_processor.dart';
 import '../session/location_fix.dart';
 import '../session/schedule_plan.dart';
@@ -252,6 +253,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
   // Which processor actually runs inference ("GPU"/"CPU"/"NPU"), reported by the
   // native side. Note: GPU can't run int8-quantized models and falls back to CPU.
   String _accelerator = '';
+  // On the CPU: whether it computes in 16-bit maths (null on the GPU). See detector_engine.dart.
+  bool? _cpuFp16;
 
   // Camera-supported analysis stream resolutions ("WxH"), for the settings menu.
   List<String> get _streamResolutions => _probes.streamResolutions;

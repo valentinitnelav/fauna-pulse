@@ -398,7 +398,10 @@ whenever it can load the model.
 Only **Benchmark engines (GPU vs CPU)** (Detection tab →
 **Advanced (engine & thresholds)**) compares the two. It takes up to about 30 s. The
 **Engine benchmark** window then lists the time per picture ("ms per inference") for the GPU and
-for CPU thread counts.
+for CPU thread counts. "CPU 16-bit" means the CPU computes with shorter numbers, as the GPU does:
+about twice as fast, and the boxes differ very slightly. Model files with 8-bit weights (for
+example MegaDetector) cannot do this, so their rows say only "CPU". On some phones with a weak
+GPU, the CPU with 4 or more threads is faster than the GPU.
 
 Tap **Use** (followed by the fastest choice) to take it, then tap **Apply**
 at the bottom of the Settings sheet. **Close** keeps your settings.

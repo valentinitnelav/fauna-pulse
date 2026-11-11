@@ -192,7 +192,7 @@ extension _SummaryLoading on _SessionSummaryScreenState {
             final rec = _tryDecode(l);
             _startRec = rec;
             _model = rec?['model_path'] as String?;
-            _accelerator = rec?['accelerator'] as String?;
+            _accelerator = engineLabel(rec);
             _startMs = (rec?['time_ms'] as num?)?.toInt();
             _startBatteryPct = (rec?['battery_percent'] as num?)?.toInt();
             _readChargingFlag(rec);
