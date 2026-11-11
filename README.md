@@ -140,10 +140,10 @@ More demo & tutorial videos are in the [FaunaPulse YouTube playlist](https://www
 
 ## News & posts
 
-<!-- Gallery: newest post first, left to right, 5 cells per row. A new post goes into the first
+<!-- Gallery: newest post first, left to right, 4 cells per row. A new post goes into the first
 cell and the others move one cell to the right. The number of cells sets the thumbnail size: the
-cells always share the full page width, so width="20%" must equal 100% divided by the number of
-cells (it only keeps the columns equal). Keep the empty cells (<td width="20%"></td>): without
+cells always share the full page width, so width="25%" must equal 100% divided by the number of
+cells (it only keeps the columns equal). Keep the empty cells (<td width="25%"></td>): without
 them the first picture grows to the full page width. Keep captions to about 6 to 8 words: they
 wrap in narrow columns. Keep about 2 rows here and move older posts to docs/NEWS.md. Leave out
 like counts (they go out of date) and results that are not published yet (every release archives
@@ -151,14 +151,13 @@ this file on Zenodo). -->
 
 <table>
   <tr>
-    <td width="20%" valign="top">
+    <td width="25%" valign="top">
       <a href="https://www.linkedin.com/feed/update/urn:li:activity:7524514211994083329/"><img src="https://github.com/user-attachments/assets/f533a5e3-3724-4126-ba0e-b5eac7170182" alt="Flyer: FaunaPulse names a tracked organism from all its photos" width="100%"></a><br>
       <strong>2026-11-06:</strong> <a href="https://www.linkedin.com/feed/update/urn:li:activity:7524514211994083329/">Naming insects from all their photos</a>
     </td>
-    <td width="20%"></td>
-    <td width="20%"></td>
-    <td width="20%"></td>
-    <td width="20%"></td>
+    <td width="25%"></td>
+    <td width="25%"></td>
+    <td width="25%"></td>
   </tr>
 </table>
 
