@@ -354,14 +354,16 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
 ## Test phones
 
 `adb devices -l` first: the connected phones change. Rules for using them: AGENTS.md, *Phones*.
+All three hold debug builds (check: `dumpsys package com.faunapulse.app` shows `DEBUGGABLE`). A
+release build has another signature and cannot be installed over them (an uninstall deletes the
+sessions): try it as a side-by-side copy, `-P releaseIdSuffix=.rc` (`test/README.md`).
 - **Xiaomi 11T Pro `2107113SG`** (Snapdragon 888, 7.4 GB, Android 14): main phone, debug builds.
   PIN lock (a person unlocks it). It reports the laptop's USB cable as AC power, so keep it awake
   with `svc power stayon true`. Runs hot (camera throttles at ~41-42 °C). Battery voltage reads
   as 2 cells (the summary halves it). It often shares its mobile internet with the laptop over
   USB: avoid big downloads while it is connected. `adb shell` reads its sessions under
   `/sdcard/Android/data/com.faunapulse.app/files/sessions/` (no `run-as` needed).
-- **Samsung `SM-M127F`** (Exynos 850, 3.9 GB, Android 13): runs release-signed APKs, so no
-  `run-as`, and a debug build needs an uninstall (deletes its data: ask the owner).
+- **Samsung `SM-M127F`** (Exynos 850, 3.9 GB, Android 13): debug builds.
   `battery_current_ua` is broken. Swipe lock (adb can wake and swipe).
 - **Redmi Note 9S** (Snapdragon 720G, 3.6 GB, Android 12 MIUI): debug builds. Memory-bound:
   BioCLIP 2 loaded in the background is killed. MIUI asks "Install via USB?" for a new package.

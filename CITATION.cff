@@ -8,7 +8,7 @@ abstract: >-
   user-defined region of interest, enabling estimation of visitation frequency and
   duration. The application supports user-provided detection models,
   motion-triggered and time-lapse image capture with nocturnal monitoring. An
-  experimental identification step runs after recording: the BioCLIP 2 vision model
+  identification step runs after recording: the BioCLIP 2 vision model
   assigns each tracked visit to a taxon on the phone, choosing from a user-prepared
   list of candidate taxa and reporting a confidence per taxonomic rank. By
   performing inference directly on the smartphone, FaunaPulse enables portable and
@@ -19,8 +19,8 @@ abstract: >-
 type: software
 license: AGPL-3.0-only
 repository-code: "https://github.com/valentinitnelav/fauna-pulse"
-version: "0.10.0-beta.1"
-date-released: "2026-10-28"
+version: "0.11.0-beta.1"
+date-released: "2026-11-12"
 keywords:
   - pollinators
   - pollination ecology

@@ -110,13 +110,14 @@ and summarise the sessions with `dart tool/perf_summary.dart`.
 
 ## Device quirks
 
-Found in field tests. The Samsung runs release builds and the Xiaomi debug
-builds, so the two signatures never meet on one phone.
+Found in field tests. The test phones hold debug builds. A release build has
+another signature and cannot be installed over them, so try it as a
+side-by-side copy ([test/README.md](../test/README.md)).
 
 - **Xiaomi 11T Pro (`2107113SG`):** the development phone. On MIUI answer the
   **"Install via USB"** question. Its GPU needed the GPU-crash guard. It is fast
   but hot: the camera throttles from about 41 °C.
-- **Samsung Galaxy M12 (`SM-M127F`):** the release-test phone. Its camera
+- **Samsung Galaxy M12 (`SM-M127F`):** a slow phone that stays cool. Its camera
   analysis stream stops at about **960×720** (a higher choice silently falls
   back), which is useful to test that the app reports the stream it really got.
   Its `battery_current_ua` reading has the wrong scale, so compare energy by the

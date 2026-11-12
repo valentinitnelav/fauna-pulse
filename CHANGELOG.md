@@ -6,7 +6,7 @@ and `0.8.0-alpha.1`, then beta from `0.9.0-beta.1`) and the GitHub release is ma
 pre-release.
 -->
 
-## Next release (not released yet)
+## 0.11.0-beta.1 (2026-11-12)
 
 Faster AI on the phone's processor, a list of the frame rates each camera offers, and more
 readings of the phone during long runs.

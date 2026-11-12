@@ -188,6 +188,20 @@ adb -s <serial> shell am start -n com.faunapulse.app.check/com.ultralytics.yolo.
 adb -s <serial> logcat -v brief flutter:I '*:S'
 ```
 
+A release build has another signature than a debug build, so it cannot be installed over the
+debug build on a test phone (and an uninstall deletes that phone's sessions). To try a release
+build before a release, build a side-by-side release copy and remove only that copy afterwards:
+
+```bash
+flutter build apk --release --target-platform android-arm64 -P releaseIdSuffix=.rc
+adb -s <serial> install -r build/app/outputs/flutter-apk/app-release.apk
+adb -s <serial> shell am start -n com.faunapulse.app.rc/com.ultralytics.yolo.MainActivity
+adb -s <serial> uninstall com.faunapulse.app.rc   # afterwards; never the app without ".rc"
+```
+
+The copy starts empty (no models, no sessions, no permissions): import a model on its
+**Download & import models** screen. Never pass `releaseIdSuffix` for a build that is published.
+
 The QNN benchmark needs network access (downloads models and a test image) and
 a QNN-capable Snapdragon (Hexagon v73+; the SD888 Xiaomi test phone is v68 and
 cannot run the pinned assets, round 151). The opt-in flags are exact-spelling

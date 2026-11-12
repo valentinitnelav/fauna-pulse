@@ -1,6 +1,7 @@
 # Identify organisms
 
-**Status:** experimental. The method and its defaults are not yet tested on pollinator data.
+**Validation in progress:** the method and its defaults are not yet tested on large pollinator data (see
+[Validation status](#how-the-answer-is-computed)).
 
 This page explains how FaunaPulse names the animals it found in a session. It is for citizen
 scientists, students and researchers. Methods, measurements and file details for researchers and

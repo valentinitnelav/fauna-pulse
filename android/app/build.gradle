@@ -82,6 +82,13 @@ android {
             // preReleaseBuild guard below) instead of shipping a debug-signed APK.
             signingConfig = signingConfigs.release
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Test a release build next to an installed debug build (different
+            // signature) without replacing it: -P releaseIdSuffix=.rc (test/README.md).
+            // The test phones hold debug builds, and an uninstall would delete their
+            // sessions. Never pass it for a build that is published.
+            if (project.hasProperty('releaseIdSuffix')) {
+                applicationIdSuffix = project.property('releaseIdSuffix')
+            }
         }
         debug {
             // Test a debug build next to an installed Play build (different

@@ -10340,3 +10340,14 @@ listed for the maintainer, not cut. The developer pages match the code again, as
 SETTINGS_REFERENCE's Identification rows. No code changed, so no tests ran. Open: a release build
 on a phone before the tag; an old phone for the 16-bit fallback; which on-screen details to cut.
 
+## Round 369 (2026-11-12): version 0.11.0-beta.1, release dry run, a release build next to a debug build
+
+Asked: version 0.11.0-beta.1 with its version files and a dry run; cut repeats in the README without changing its style. The dry run
+passed on the laptop (the release gate, then the APK script: versionCode 16 in both files). Release build takes
+`-P releaseIdSuffix=.rc`, a separate package next to the debug app, as `debugIdSuffix` does for
+debug checks (the release lint ran again after that edit). On the Samsung Galaxy M12 that copy
+imported flatbug-n (640, 16-bit), loaded it on the GPU, timed GPU 183 ms and CPU 16-bit 156 ms
+(4 threads) in the engine benchmark and recorded 25 s without an `app_error`; the copy was then
+removed and the phone's own app was not touched. So code shrinking keeps LiteRT 2.3.2 and its GPU
+library working.
+

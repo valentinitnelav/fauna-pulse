@@ -1,0 +1,7 @@
+Version 0.11.0-beta.1
+- Faster on the phone's processor (CPU): detection about 2x, BioCLIP 2 up to 2.5x, with less memory.
+- Identify organisms: combining the results is 3 to 7 times faster.
+- Settings list the frame rates your camera offers.
+- More phone readings (memory, processor, chip temperatures on some phones), with graphs.
+- Charts with a value axis; fixes.
+Full details: see CHANGELOG.md on the project's GitHub page.

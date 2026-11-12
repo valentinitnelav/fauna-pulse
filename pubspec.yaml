@@ -3,7 +3,7 @@
 name: fauna_pulse
 description: "FaunaPulse: a smartphone application for on-device detection, tracking and identification of animals."
 publish_to: "none"
-version: 0.10.0-beta.1+15
+version: 0.11.0-beta.1+16
 
 environment:
   sdk: ^3.8.1

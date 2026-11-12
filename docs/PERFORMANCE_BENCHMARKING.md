@@ -32,11 +32,11 @@ something.
 | Phone | Role | Build | Notes |
 |---|---|---|---|
 | Xiaomi 11T Pro 2107113SG (Snapdragon 888) | main development and performance phone | debug (MIUI install quirk) | fast but hot: the camera throttles from about 41-42 °C; good for HEAT behaviour, but its speed is a debug build's |
-| Samsung Galaxy M12 SM-M127F | release-test phone | release APK | never passed about 32 °C, limited by compute; `battery_current_ua` is broken, so use the battery-% drop, not `power_w` |
+| Samsung Galaxy M12 SM-M127F | slow phone that stays cool | debug; a release APK as a side-by-side copy ([test/README.md](../test/README.md)) | never passed about 32 °C, limited by compute; `battery_current_ua` is broken, so use the battery-% drop, not `power_w` |
 
 In every result table, say which phone and build made each number. Claims
-about absolute release speed belong on the Samsung (or a later phone that
-takes release builds); claims about heat collapse belong on the Xiaomi.
+about absolute release speed need a release build (on a test phone: the
+side-by-side copy); claims about heat collapse belong on the Xiaomi.
 
 ## What to hold fixed in a paired comparison
 
