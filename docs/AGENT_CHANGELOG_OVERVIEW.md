@@ -344,6 +344,11 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   edition). Backup = shared preferences only (as `PRIVACY_POLICY.md` says); cleartext traffic
   blocked. CI actions are pinned by commit; the Flutter version in `security_checks.yml` equals
   the local `flutter --version` (change both in the same round).
+- **Icon files:** the Play icon (`ic_launcher-playstore.png`) is a full flat square in the colour
+  of `ic_launcher_background`, with no rounded corners or shadow of its own (Play adds both, so a
+  drawn card shows as a second border). The rounded picture, for the app and the README, is
+  `assets/images/faunapulse_icon.png`. All sizes come from one clean picture: replace them
+  together.
 - **Versioning:** pubspec `version:` is the single source; bump the build number for every tester
   APK; tags `v<version>`. Since 0.9.0 (beta) an update keeps older sessions and saved settings
   readable. Move together: pubspec version, CITATION.cff (`version`, `date-released`, version

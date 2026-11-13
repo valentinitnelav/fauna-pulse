@@ -2,17 +2,23 @@ cff-version: 1.2.0
 message: "If you use FaunaPulse in your research, please cite the software using the metadata provided below. Source code and documentation at https://github.com/valentinitnelav/fauna-pulse"
 title: "FaunaPulse: a smartphone application for on-device detection, tracking and identification of animals"
 abstract: >-
-  FaunaPulse is an offline smartphone application for monitoring animal activity
-  using on-device computer vision. It detects and tracks moving organisms in real
-  time using configurable object-detection models and records visits to a
-  user-defined region of interest, enabling estimation of visitation frequency and
-  duration. The application supports user-provided detection models,
-  motion-triggered and time-lapse image capture with nocturnal monitoring. An
-  identification step runs after recording: the BioCLIP 2 vision model
-  assigns each tracked visit to a taxon on the phone, choosing from a user-prepared
-  list of candidate taxa and reporting a confidence per taxonomic rank. By
-  performing inference directly on the smartphone, FaunaPulse enables portable and
-  low-cost ecological monitoring without requiring an internet connection.
+  FaunaPulse is a free, open-source Android application that turns a smartphone
+  into an automated offline camera for monitoring animal activity.
+  It detects and tracks animals in real time inside a user-defined region of
+  interest (for example a flower, a feeding site or a nest entrance), using a
+  replaceable object-detection model, and logs every detection with its time, so
+  that visitation frequency and duration can be estimated. Capture also works
+  without AI (motion-triggered photos, time-lapse photos including at night,
+  scheduled videos), and detection can run afterwards on saved photos, or with
+  tracking on saved or imported videos. An identification step then names the
+  tracked animals of a whole session in bulk, combining several saved photos of
+  each animal into one answer with a confidence per taxonomic rank. It uses
+  BioCLIP 2 or 2.5 (vision foundation models that choose from a list of
+  candidate taxa: ready-made name lists, for example for the main pollinator
+  orders of Europe or the mammals and birds of the world, or a list prepared by
+  the user) or a fixed-class insect classifier. Detection, tracking and
+  identification all run on the phone: once the models are on it, no internet
+  connection or cloud service is needed.
   Source code and documentation at https://github.com/valentinitnelav/fauna-pulse
   Compatible models for detection and identification are available at
   https://huggingface.co/collections/Valen-Peregrine/faunapulse

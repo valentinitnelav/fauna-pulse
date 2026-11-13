@@ -10351,3 +10351,19 @@ imported flatbug-n (640, 16-bit), loaded it on the GPU, timed GPU 183 ms and CPU
 removed and the phone's own app was not touched. So code shrinking keeps LiteRT 2.3.2 and its GPU
 library working.
 
+## Round 370 (2026-11-12): app icon rebuilt on one flat colour (no card inside the card)
+
+The Play icon was the first drawing scaled down, a picture of a rounded card with its own shadow on a
+slightly darker margin, and Google Play rounds the icon again. Play's rules ask for a full square
+without own corners or shadow (read on the Play icon specification page; the radius is now 30 %).
+The in-app icon was a square crop of the taller card, so it had a rim on two sides only. Every
+icon file was rebuilt from the first drawing (in git history) by a script kept outside the
+repository: the artwork keeps its old size, everything else is one flat colour equal to
+`ic_launcher_background`, and the noise and light halos are gone (Hamming scaling; Lanczos drew
+the halos). The rounded icons keep a thin rim, now on all four sides. Rejected: redrawing the
+logo as vector shapes (it would change the look). The README now shows the rounded in-app icon,
+because the Play file is a plain square. Checked: pixel values (flat background, artwork boxes
+within 3 px of the old ones), before and after pictures with Play's and a launcher's masks, the
+home screen tests and a debug build. Not checked on a phone. Open: the owner uploads the new icon
+and the feature graphic (not tracked; only its icon was replaced) in Play Console.
+
