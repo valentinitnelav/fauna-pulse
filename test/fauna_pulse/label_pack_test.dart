@@ -10,7 +10,157 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/label_pack.dart';
 
+/// A label pack of [labels] with one f32 number per row and the extra header [blocks].
+Uint8List _packWith(List<List<String>> labels, Map<String, dynamic> blocks) {
+  final hdr = utf8.encode(jsonEncode({'dim': 1, 'rows': labels.length, 'dtype': 'f32', 'labels': labels, ...blocks}));
+  return (BytesBuilder()
+        ..add('FPK1'.codeUnits)
+        ..add((ByteData(4)..setUint32(0, hdr.length, Endian.little)).buffer.asUint8List())
+        ..add(hdr)
+        ..add(Float32List.fromList(List.filled(labels.length, 1.0)).buffer.asUint8List()))
+      .takeBytes();
+}
+
 void main() {
+  // Round 372: the blocks of the `_v3` packs, read from the fixture fpack.py writes
+  // (fauna-pulse-models, `_write_regions_fixture`: tiny_pack with made-up country lists).
+  group('round 372: GBIF keys and country lists', () {
+    final fixture = File('test/fauna_pulse/fixtures/tiny_pack_regions.fpack');
+    final tenRows = [
+      for (var i = 0; i < 10; i++) ['Animalia', 'Arthropoda', 'Insecta', 'Diptera', 'Syrphidae', 'Genus', 'species', ''],
+    ];
+
+    test('the fixture: a key and a name per row, bits per country, neighbours', () {
+      final pack = LabelPack.parseBytes(fixture.readAsBytesSync());
+      expect(pack.gbifKeys, ['3B7X4', '6FY28', 'FN46', 'MFWK', '43P3V', '']);
+      expect(pack.gbifSpecies.first, 'Eristalis tenax');
+      expect(pack.gbifSpecies.last, '', reason: 'the sink row has no key');
+      final regions = pack.regions!;
+      expect(regions.countries.keys, unorderedEquals(['AT', 'DE', 'MT']));
+      expect(regions.countries['DE']!.names, 4);
+      expect(regions.countries['DE']!.namesInCountry, 5);
+      expect(regions.withNeighbours('DE'), ['DE', 'AT']);
+      expect(regions.withNeighbours('MT'), ['MT'], reason: 'no neighbours listed');
+      expect(regions.withNeighbours('XX'), isEmpty, reason: 'a country the pack does not know');
+      // The writer's own answer: the rows of a country with its neighbours.
+      final union = (pack.header['test_union'] as Map).cast<String, dynamic>();
+      for (final code in union.keys) {
+        final bits = regions.rowBits(regions.withNeighbours(code));
+        expect([for (var r = 0; r < pack.rows; r++) if (PackRegions.hasRow(bits, r)) r], union[code], reason: code);
+        expect(PackRegions.countRows(bits), (union[code] as List).length);
+      }
+      expect(PackRegions.countRows(regions.rowBits(['MT', 'XX'])), 1);
+      // The same rows, names and vectors as the plain fixture.
+      final plain = LabelPack.parseBytes(File('test/fauna_pulse/fixtures/tiny_pack.fpack').readAsBytesSync());
+      expect(pack.matrix, plain.matrix);
+      expect([for (final l in pack.labels) l.keyAt(6)], [for (final l in plain.labels) l.keyAt(6)]);
+    });
+
+    test('the bits are read least significant bit first', () {
+      // fpack.py's example: rows {0, 9} of a 10-row pack are "AQI=".
+      final regions = PackRegions.tryParse({
+        'countries': {
+          'DE': {'rows': 'AQI=', 'names': 2, 'names_in_country': 2},
+        },
+      }, 10)!;
+      final bits = regions.rowBits(['DE']);
+      expect([for (var r = 0; r < 10; r++) if (PackRegions.hasRow(bits, r)) r], [0, 9]);
+      // Bits past the last row (here rows 10 to 15) are dropped.
+      final stray = PackRegions.tryParse({
+        'countries': {
+          'DE': {'rows': base64.encode([0x01, 0xFE]), 'names': 2, 'names_in_country': 2},
+        },
+      }, 10)!;
+      expect(PackRegions.countRows(stray.rowBits(['DE'])), 2);
+    });
+
+    test('the loaded pack and a worker\'s copy do not carry the blocks as header text', () {
+      final pack = LabelPack.parseBytes(fixture.readAsBytesSync());
+      expect((pack.header['gbif'] as Map).keys, ['source']);
+      expect((pack.header['regions'] as Map).containsKey('countries'), isFalse);
+      expect((pack.header['regions'] as Map).containsKey('neighbours'), isFalse);
+      expect((pack.header['regions'] as Map)['min_occurrences'], 3);
+      final worker = pack.forWorker();
+      expect(worker.header, isEmpty);
+      expect(worker.gbifKeys, isEmpty);
+      expect(worker.regions, isNull);
+      expect(worker.matrix, isEmpty);
+      expect(worker.labels, same(pack.labels));
+      expect(worker.logitScale, pack.logitScale);
+    });
+
+    test('readHeader keeps the country lists and drops the per-name keys', () async {
+      final hdr = await LabelPack.readHeader(fixture);
+      expect((hdr['gbif'] as Map).keys, ['source']);
+      expect(PackRegions.tryParse(hdr['regions'], hdr['rows'] as int)!.countries.length, 3);
+    });
+
+    test('a pack without the blocks has none', () {
+      final pack = LabelPack.parseBytes(File('test/fauna_pulse/fixtures/tiny_pack.fpack').readAsBytesSync());
+      expect(pack.gbifKeys, isEmpty);
+      expect(pack.gbifSpecies, isEmpty);
+      expect(pack.regions, isNull);
+    });
+
+    test('a key of digits only stays text, also when another tool wrote it as a number', () {
+      final labels = tenRows.sublist(0, 3);
+      final pack = LabelPack.parseBytes(
+        _packWith(labels, {
+          'gbif': {
+            'species_key': ['78358', 78358, null],
+            'species': ['Genus a', 'Genus b', null],
+          },
+        }),
+      );
+      expect(pack.gbifKeys, ['78358', '78358', '']);
+      expect(pack.gbifSpecies, ['Genus a', 'Genus b', '']);
+    });
+
+    test('damaged blocks are left out and the pack still loads', () {
+      Map<String, dynamic> country(Object? rows, {Object? names = 1}) => {
+        'countries': {
+          'DE': {'rows': rows, 'names': names, 'names_in_country': 1},
+        },
+      };
+      final good = base64.encode([0x01, 0x02]);
+      expect(PackRegions.tryParse(country(good), 10), isNotNull);
+      final bad = <Object?>[
+        null,
+        'text',
+        [1, 2],
+        <String, dynamic>{},
+        {'countries': <String, dynamic>{}},
+        {'countries': 'DE'},
+        {'countries': {'DE': 'x'}},
+        country('not base64 !!'),
+        country(base64.encode([0x01])), // too few bytes for 10 rows
+        country(base64.encode([0x01, 0x02, 0x03])), // too many
+        country(7),
+        country(good, names: 'many'),
+      ];
+      for (final block in bad) {
+        expect(PackRegions.tryParse(block, 10), isNull, reason: '$block');
+        final pack = LabelPack.parseBytes(_packWith(tenRows, {'regions': block, 'gbif': block}));
+        expect(pack.rows, 10, reason: '$block');
+        expect(pack.regions, isNull);
+        expect(pack.gbifKeys, isEmpty);
+      }
+      // Neighbours of the wrong shape are skipped; the country lists stay.
+      final odd = PackRegions.tryParse({...country(good), 'neighbours': {'DE': 'AT', 'AT': [1, 'DE']}}, 10)!;
+      expect(odd.withNeighbours('DE'), ['DE']);
+      // Keys without names, or one list of the wrong length: neither is kept.
+      for (final gbif in [
+        {'species_key': List.filled(10, 'K')},
+        {'species_key': List.filled(9, 'K'), 'species': List.filled(10, 'n')},
+        {'species_key': 'K', 'species': 3},
+      ]) {
+        final pack = LabelPack.parseBytes(_packWith(tenRows, {'gbif': gbif}));
+        expect(pack.gbifKeys, isEmpty, reason: '$gbif');
+        expect(pack.gbifSpecies, isEmpty, reason: '$gbif');
+      }
+    });
+  });
+
   test('round 359: dotsIntoMany equals dotsInto bit for bit, eights and the leftovers', () {
     final rnd = math.Random(7);
     const dim = 768, rows = 37;
@@ -152,8 +302,9 @@ void main() {
     expect(LabelPack.parseBytes(pack(named)).rows, 1);
   });
 
-  // Round 327: the header is read whole (on the screen's thread) each time the AI models screen
-  // opens, so a hand-made file with a huge header would freeze the app; real headers are a few MB.
+  // Round 327: the header is read whole each time the AI models screen opens (since round 372 in
+  // a helper isolate), so a hand-made file with a huge header would cost that memory and time at
+  // every listing; real headers are a few MB.
   test('a header above 16 MB is refused before it is read', () async {
     final hdr = utf8.encode(jsonEncode({'dim': 0, 'rows': 0, 'labels': [], 'pad': 'a' * (17 << 20)}));
     final f = File('${Directory.systemTemp.createTempSync('fpack').path}/big.fpack')

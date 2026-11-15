@@ -113,6 +113,102 @@ void main() {
     expect(progress.last.$2, tracksCsv.trim().split('\n').length - 1);
   });
 
+  IdentificationJob jobWith(EmbedFn embed) => IdentificationJob(
+    embed: embed,
+    crop: (a) async => cropBatchSync(a),
+    thermal: () async => const ThermalReading(batteryTempC: 30),
+  );
+  List<List<String>> tracksTable(Directory session, String stem) => [
+    for (final line in IdentificationPaths(session).tracksCsv(stem).readAsStringSync().trim().split('\n')) line.split(','),
+  ];
+
+  test('round 372: the GBIF name and key of the species end the tracks table; nothing else changes', () async {
+    // tiny_pack_regions.fpack is tiny_pack.fpack (same rows and vectors) with the two blocks.
+    final keyedPack = File('test/fauna_pulse/fixtures/tiny_pack_regions.fpack');
+    final session = makeSession('keys');
+    final job = jobWith(fakeEmbed);
+    expect((await job.run(session, settings: settings(), packFile: packFile)).error, isNull);
+    expect((await job.run(session, settings: settings(), packFile: keyedPack)).error, isNull);
+    final plain = tracksTable(session, 'tiny_pack'), keyed = tracksTable(session, 'tiny_pack_regions');
+    expect(keyed.first.sublist(keyed.first.length - 2), ['gbif_species', 'gbif_species_key']);
+    expect(plain.first, keyed.first, reason: 'the same columns for every name list');
+    expect([for (final row in keyed.skip(1)) row.sublist(row.length - 2)], [
+      ['Eristalis tenax', '3B7X4'],
+      ['Apis mellifera', 'FN46'],
+    ]);
+    expect([for (final row in plain.skip(1)) row.sublist(row.length - 2)], [
+      ['', ''],
+      ['', ''],
+    ]);
+    final packId = plain.first.indexOf('pack_id');
+    for (var i = 1; i < plain.length; i++) {
+      for (var c = 0; c < plain[i].length - 2; c++) {
+        if (c != packId) expect(keyed[i][c], plain[i][c], reason: 'row $i, ${plain.first[c]}');
+      }
+    }
+    // The worker isolates get the pack without its blocks and write the same file.
+    final sameIsolate = IdentificationPaths(session).tracksCsv('tiny_pack_regions').readAsStringSync();
+    await IdentificationJob.scoreSession(
+      session,
+      modelName: 'fake_model.tflite',
+      modelId: 'fake',
+      packFile: keyedPack,
+      settings: settings().toJson(),
+      workers: 3,
+    );
+    expect(IdentificationPaths(session).tracksCsv('tiny_pack_regions').readAsStringSync(), sameIsolate);
+  });
+
+  test('round 372: a key of digits only is written as it is; a name answered above species gets no key', () async {
+    // Row 1 is a name the pack builder answers only at family (empty genus and species slots);
+    // it still carries the key of its published name, which no track ID may get.
+    final hdr = utf8.encode(
+      jsonEncode({
+        'pack_id': 'keys-test',
+        'model_id': 'fake',
+        'dim': 4,
+        'rows': 3,
+        'dtype': 'f32',
+        'sink_rows': 1,
+        'logit_scale': 100.0,
+        'labels': [
+          ['Animalia', 'Arthropoda', 'Insecta', 'Diptera', 'Syrphidae', 'Eristalis', 'tenax', ''],
+          ['Animalia', 'Arthropoda', 'Insecta', 'Coleoptera', 'Anthicidae', '', '', ''],
+          ['none', '', '', '', '', '', 'flower', 'a photo of a flower.'],
+        ],
+        'gbif': {
+          'species_key': ['78358', 'L5P66', null],
+          'species': ['Eristalis tenax', 'Hirticomus quadriguttatus', null],
+        },
+      }),
+    );
+    final vectors = Float32List.fromList([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]);
+    final keysPack = File('${tmp.path}/fake_keys.fpack')
+      ..writeAsBytesSync(
+        (BytesBuilder()
+              ..add('FPK1'.codeUnits)
+              ..add((ByteData(4)..setUint32(0, hdr.length, Endian.little)).buffer.asUint8List())
+              ..add(hdr)
+              ..add(vectors.buffer.asUint8List()))
+            .takeBytes(),
+      );
+    // Red crops (track ID 1) embed as row 0, the blue one (track ID 2) as row 1.
+    final job = jobWith((rgb) async => [
+      for (final buf in rgb) Float32List.sublistView(vectors, (buf[0] > buf[2] ? 0 : 1) * 4, (buf[0] > buf[2] ? 1 : 2) * 4),
+    ]);
+    final session = makeSession('digits');
+    expect((await job.run(session, settings: settings(), packFile: keysPack)).error, isNull);
+    final table = tracksTable(session, 'fake_keys');
+    String cell(int row, String column) => table[row][table.first.indexOf(column)];
+    expect(cell(1, 'bioclip_species'), 'Eristalis tenax');
+    expect(cell(1, 'gbif_species'), 'Eristalis tenax');
+    expect(cell(1, 'gbif_species_key'), '78358');
+    expect(cell(2, 'bioclip_family'), 'Anthicidae');
+    expect(cell(2, 'bioclip_species'), '');
+    expect(cell(2, 'gbif_species'), '');
+    expect(cell(2, 'gbif_species_key'), '');
+  });
+
   test('round 305: a track ID starts at its first sighting and counts its first frames', () async {
     final session = makeSession('first_seen');
     // Track 1 was first seen 0.4 s before its first box, in 3 earlier frames.
@@ -252,8 +348,8 @@ void main() {
     expect(csvLines[1], contains('TestPhone,s1,1,2,'));
     // Round 335: no Device ID, so the phone model names the device; it also has its own last
     // column.
-    expect(header, endsWith(',model_class_p,phone_model'));
-    expect(csvLines[1], endsWith(',TestPhone'));
+    expect(header, endsWith(',model_class_p,phone_model,gbif_species,gbif_species_key'));
+    expect(csvLines[1], endsWith(',TestPhone,,'));
     expect(csvLines[1], contains('Syrphidae')); // family at target rank 'family'
     expect(paths.readme.existsSync(), isTrue);
     expect(paths.predictionsJsonl('tiny_pack').readAsLinesSync().length, 3);
@@ -285,7 +381,7 @@ void main() {
     final paths = IdentificationPaths(session);
     final csv = paths.tracksCsv('tiny_pack').readAsLinesSync();
     expect(csv[1], startsWith('plot 3 - A,plot1,1,')); // "/" cannot be in insect-detect-post's folder names
-    expect(csv[1], endsWith(',TestPhone'));
+    expect(csv[1], endsWith(',TestPhone,,'));
     final json = jsonDecode(paths.tracksJson('tiny_pack').readAsStringSync()) as Map<String, dynamic>;
     expect(json['device_id'], 'plot 3 - A');
     expect(json['phone_model'], 'TestPhone');
@@ -327,7 +423,7 @@ void main() {
     expect((tracks[1]['crops'] as List).first['top1'], 'Syrphidae');
     expect((tracks[1]['crops'] as List).first['top1_class'], 'Syrphidae');
     final csv = paths.tracksCsv('tiny_classes').readAsLinesSync();
-    expect(csv.first, endsWith(',model_class,model_class_p,phone_model'));
+    expect(csv.first, endsWith(',model_class,model_class_p,phone_model,gbif_species,gbif_species_key'));
     expect(csv[1], contains(',Eristalis tenax,0.9'));
     expect(paths.cropsCsv('tiny_classes').readAsLinesSync()[1], endsWith(',Eristalis tenax'));
   });
@@ -802,7 +898,7 @@ void main() {
     expect(t1['flags'], contains('short'));
     expect(t1['flags'], isNot(contains('suspect')));
     final csv = paths.tracksCsv('tiny_pack').readAsStringSync();
-    expect(csv.split('\n').first, endsWith(',merged_track_ids,n_detections,suspect,rival_rank,rival_taxon,rival_p,model_class,model_class_p,phone_model'));
+    expect(csv.split('\n').first, endsWith(',merged_track_ids,n_detections,suspect,rival_rank,rival_taxon,rival_p,model_class,model_class_p,phone_model,gbif_species,gbif_species_key'));
     // The compact summary list carries the verdict for the Photos tab.
     final lite = (s['tracks'] as List).cast<Map<String, dynamic>>();
     expect(lite.firstWhere((t) => t['track_id'] == 2)['suspect'], isTrue);

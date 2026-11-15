@@ -276,6 +276,12 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
 - A name list pairs with its model by the first part of the file name (`listBelongsTo`, else the
   header's `model_id`); a classifier pairs with the `.fpack` of the same name. A row counts only
   down to the rank above its first empty slot (`rollUp`).
+- A name list may carry two optional header blocks: `gbif` (a GBIF species key per name, written
+  to `tracks_<pack>.csv`) and `regions` (the names GBIF lists per country, and each country's
+  neighbours). `LabelPack` keeps them in typed fields, not in `header`; a damaged block is left
+  out, never an error. Scoring workers get `LabelPack.forWorker()` (an isolate message copies
+  what it carries, once per worker). A published name list is never changed: a fix is a new
+  version.
 - GPU: checked once per model file and phone build against the CPU, refused when memory is short
   (`Embedder.kt`). fp16 everywhere (int8 changed answers). BioCLIP 2 needs the 4-D attention
   export; BioCLIP 2.5 is CPU-only on today's phones.

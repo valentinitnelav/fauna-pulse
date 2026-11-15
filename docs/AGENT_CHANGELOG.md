@@ -10383,3 +10383,27 @@ were: the lines on which model names pollinators best and on square crops. Check
 analyze` on the two changed Dart files; no test names the changed help text. Open: a pass mark per
 insect group and the organism check, then FaunaPulse's own sessions with the detector's boxes.
 
+## Round 372 (2026-11-15): name lists with GBIF keys and country lists are read; keys in the tracks table
+
+Asked: make the app read the two new header blocks of the next Europe name list (version 3, built
+in fauna-pulse-models, not published yet): a GBIF species key per name, and the names GBIF lists
+per country with each country's neighbours. A published list is never changed, so the app must
+read the file before it is published. This round reads both blocks and writes the keys; the
+country choice follows in the next rounds. Decisions (owner): version 3 keeps the four orders of
+version 2 (the test data had too few spiders and true bugs to judge a list with them, and their
+order is enough); the two key columns go at the end of `tracks_<pack>.csv`, like every column
+since round 210 (fauna-pulse-export can write them in insect-detect-post's place). Design: a
+missing or damaged block is left out and the list loads as a plain one, because the import check
+reads only the header and must not accept what the scoring cannot load. The blocks live in typed
+fields, and scoring workers get a copy without them (an isolate message would copy megabytes per
+worker). Found on the way: decoding a list's header took 0.10 s on the laptop on the screen's
+thread at every listing (0.15 s with the new blocks), so it moved to a helper isolate. Checked:
+unit tests on the fixture that fauna-pulse-models' `fpack.py` writes (keys, bits, neighbours,
+damaged blocks, a key of digits only, no key for a name answered above species, the worker
+path); with local copies of versions 2 and 3, 400 made-up track IDs gave identical tables, plus
+a key for every track ID with a species (34,978 keys, 248 countries); `flutter analyze`; the
+whole suite (1,773 tests passed; in a first full run the 2,000-photo FaunaLapse import stress
+test timed out, it needs 17 s of its 30 s limit alone, with or without this round's changes).
+Not checked on a phone. Open: the country choice in the scoring, the country from the session
+position, then the catalogue.
+

@@ -652,6 +652,12 @@ no extra bookkeeping is needed:
 A merged track ID lists all its ids in `merged_track_ids`. So a join on `track_id` (or on file
 name for work per crop) lines up detections, photos and identifications.
 
+**Join the results with GBIF data.** When the name list carries GBIF keys,
+`tracks_<pack>.csv` ends with `gbif_species` (the name GBIF accepts for `bioclip_species`) and
+`gbif_species_key`. `insect-detect-post` writes the same keys, so the results of both programs
+and GBIF's own data join on the key, also where two names are synonyms. Read the key as text:
+some keys are digits only.
+
 ## How the answer is computed
 
 *This section and the next two are for researchers and developers.*
@@ -1075,6 +1081,9 @@ cores.
   species and keeps the species of Diptera, Hymenoptera, Coleoptera and Lepidoptera with at
   least 3 records in Europe. The model cards on Hugging Face give the full citations of the
   names, the lists and the method.
+- **The GBIF keys in the results** (`gbif_species`, `gbif_species_key`) come from that same
+  mapping table. A name list that has them stores them with its sources (data from GBIF.org
+  with the query date, and the Catalogue of Life release).
 
 <!-- Reference links used in this file -->
 

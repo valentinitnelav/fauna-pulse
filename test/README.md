@@ -110,8 +110,9 @@ benchmarks.
 
 The PC export tools live in the separate repository
 [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models). Its `bioclip_export/fpack.py` writes the
-`.fpack` fixtures (`fixtures/tiny_pack.fpack`, `tiny_classes.fpack`) that
-`label_pack_test.dart` and `track_fusion_test.dart` read; after a format change,
+`.fpack` fixtures (`fixtures/tiny_pack.fpack`, `tiny_classes.fpack`, and
+`tiny_pack_regions.fpack`: the first one with GBIF keys and country lists) that
+`label_pack_test.dart`, `track_fusion_test.dart` and `identification_job_test.dart` read; after a format change,
 regenerate them there (command in its README, "Keep in sync with the app").
 `model_file_kind_test.dart` also checks real exported files when
 `FAUNAPULSE_MODELS_REPO` points at a clone of that repository (its `*_export/out/`

@@ -31,6 +31,19 @@
 // "label_pack" or "class_list", the words of assets/model_downloads.json;
 // files written before say "classes" for a class list and nothing for a label
 // pack, and are read the same way ([isClassListHeader]).
+//
+// Round 372, two optional header blocks (packs named `_v3` and later; format reference:
+// fpack.py's module docstring in fauna-pulse-models). A pack without them, or with a damaged
+// one, loads as a plain pack:
+//   "gbif":    species_key[rows], species[rows]: the Catalogue of Life species key GBIF uses
+//              and its accepted name for every row (null for sink rows). Keys are text, also
+//              the ones made of digits only.
+//   "regions": countries[code] = {rows: base64 of ceil(rows / 8) bytes, bit i = row i, least
+//              significant bit first; names; names_in_country}, the names GBIF lists in that
+//              country, and neighbours[code] = [codes]. Sink rows are never set.
+// Idea of narrowing the names to a region: BioCLIP's documentation ("Geo-Restricted Taxon List
+// Predictions", Imageomics). The lists and the key table are built as in insect-detect-post
+// (Sittinger 2026) from GBIF.org records; the pack's own source notes name the query date.
 
 import 'dart:convert';
 import 'dart:io';
@@ -114,6 +127,100 @@ double halfToFloat(int h) {
   return sign == 1 ? -value : value;
 }
 
+/// Round 372: one country of a pack's `regions` block.
+class PackCountry {
+  /// One bit per pack row (row 0 = bit 0 of byte 0): set when GBIF lists the row's name there.
+  final Uint8List bits;
+
+  /// Distinct names of the pack listed there, and the country's whole GBIF list for the
+  /// pack's orders (the pack holds [names] of them: its coverage of the country).
+  final int names;
+  final int namesInCountry;
+
+  const PackCountry(this.bits, this.names, this.namesInCountry);
+}
+
+/// Round 372: the optional `regions` block, which names GBIF lists in which country.
+class PackRegions {
+  final Map<String, PackCountry> countries;
+
+  /// Country code -> the codes next to it (a shared land border or a short sea crossing; the
+  /// rule is the pack builder's, fauna-pulse-models `country_neighbours.py`).
+  final Map<String, List<String>> neighbours;
+  final int _bytes;
+
+  const PackRegions._(this.countries, this.neighbours, this._bytes);
+
+  /// The block of a pack with [rows] rows, or null when [block] is missing or damaged (a
+  /// hand-made file must not stop the pack from loading: it then has no country lists).
+  static PackRegions? tryParse(Object? block, int rows) {
+    if (block is! Map || rows <= 0) return null;
+    final raw = block['countries'], rawNext = block['neighbours'];
+    if (raw is! Map || raw.isEmpty) return null;
+    final nBytes = (rows + 7) ~/ 8;
+    final countries = <String, PackCountry>{};
+    for (final e in raw.entries) {
+      final code = e.key, v = e.value;
+      if (code is! String || v is! Map) return null;
+      final b64 = v['rows'], names = v['names'], inCountry = v['names_in_country'];
+      if (b64 is! String || names is! int || inCountry is! int) return null;
+      final Uint8List bits;
+      try {
+        bits = base64.decode(b64);
+      } on FormatException {
+        return null;
+      }
+      if (bits.length != nBytes) return null;
+      if (rows % 8 != 0) bits[nBytes - 1] &= (1 << (rows % 8)) - 1; // no rows past the last one
+      countries[code] = PackCountry(bits, names, inCountry);
+    }
+    final next = <String, List<String>>{};
+    if (rawNext is Map) {
+      for (final e in rawNext.entries) {
+        final code = e.key, v = e.value;
+        if (code is String && v is List) next[code] = [for (final c in v) if (c is String) c];
+      }
+    }
+    return PackRegions._(countries, next, nBytes);
+  }
+
+  /// [code] and its neighbours, the ones the pack has a list for (a neighbour without one adds
+  /// no names); empty when the pack has no list for [code] itself.
+  List<String> withNeighbours(String code) => [
+    if (countries.containsKey(code)) ...[
+      code,
+      for (final c in neighbours[code] ?? const <String>[])
+        if (c != code && countries.containsKey(c)) c,
+    ],
+  ];
+
+  /// The rows GBIF lists in any of [codes], as bits like [PackCountry.bits]; a code the pack
+  /// does not know adds nothing.
+  Uint8List rowBits(Iterable<String> codes) {
+    final out = Uint8List(_bytes);
+    for (final c in codes) {
+      final bits = countries[c]?.bits;
+      if (bits == null) continue;
+      for (var i = 0; i < _bytes; i++) {
+        out[i] |= bits[i];
+      }
+    }
+    return out;
+  }
+
+  static bool hasRow(Uint8List bits, int row) => bits[row >> 3] & (1 << (row & 7)) != 0;
+
+  static int countRows(Uint8List bits) {
+    var n = 0;
+    for (var b in bits) {
+      for (; b != 0; b &= b - 1) {
+        n++;
+      }
+    }
+    return n;
+  }
+}
+
 class LabelPack {
   final String packId;
   final String modelId;
@@ -137,6 +244,14 @@ class LabelPack {
   final Int32List headIndex;
   final List<String> classNames;
 
+  /// Round 372, the optional `gbif` block: every row's GBIF species key and accepted name
+  /// ('' for a row without one, such as a sink row); both empty when the pack has no block.
+  final List<String> gbifKeys;
+  final List<String> gbifSpecies;
+
+  /// Round 372, the optional `regions` block; null when the pack has none.
+  final PackRegions? regions;
+
   bool get isClassList => headSizes.isNotEmpty;
 
   LabelPack({
@@ -153,6 +268,9 @@ class LabelPack {
     this.headSizes = const [],
     Int32List? headIndex,
     this.classNames = const [],
+    this.gbifKeys = const [],
+    this.gbifSpecies = const [],
+    this.regions,
   }) : headIndex = headIndex ?? _noIndex;
 
   static final Int32List _noIndex = Int32List(0);
@@ -170,6 +288,29 @@ class LabelPack {
     labels: labels,
     matrix: matrix,
     header: header,
+    headSizes: headSizes,
+    headIndex: headIndex,
+    classNames: classNames,
+    gbifKeys: gbifKeys,
+    gbifSpecies: gbifSpecies,
+    regions: regions,
+  );
+
+  /// What a scoring worker isolate needs and no more (round 372): the names and numbers the
+  /// fusion reads, without vectors (the worker views the shared copy, [withMatrix]) and
+  /// without the header, the GBIF keys and the country lists. An isolate message copies what
+  /// it carries, once per worker, and those parts are megabytes in a pack with country lists.
+  LabelPack forWorker() => LabelPack(
+    packId: packId,
+    modelId: modelId,
+    dim: dim,
+    rows: rows,
+    sinkRows: sinkRows,
+    logitScale: logitScale,
+    temperature: temperature,
+    labels: labels,
+    matrix: Float32List(0),
+    header: const {},
     headSizes: headSizes,
     headIndex: headIndex,
     classNames: classNames,
@@ -326,30 +467,68 @@ class LabelPack {
     }
   }
 
-  /// Reads only the JSON header of [file] (cheap: no matrix), for listings.
-  static Future<Map<String, dynamic>> readHeader(File file) async {
-    final raf = await file.open();
+  /// Reads only the JSON header of [file] (no matrix), for listings.
+  ///
+  /// Round 372: in a helper isolate. Decoding a header of tens of thousands of names took
+  /// about 0.1 s on a laptop, 0.15 s with the GBIF keys and country lists of a `_v3` pack,
+  /// and every listing reads every pack again: on the screen's thread that was a visible
+  /// stall on a phone. The map comes back without a copy (Isolate.run hands it over).
+  static Future<Map<String, dynamic>> readHeader(File file) {
+    final path = file.path;
+    return Isolate.run(() => _readHeaderSync(File(path)));
+  }
+
+  static Map<String, dynamic> _readHeaderSync(File file) {
+    final raf = file.openSync();
     try {
-      final magic = await raf.read(4);
+      final magic = raf.readSync(4);
       if (magic.length != 4 || String.fromCharCodes(magic) != 'FPK1') {
         throw FormatException('Not a label pack (missing FPK1 magic)');
       }
-      final lenBytes = await raf.read(4);
+      final lenBytes = raf.readSync(4);
       if (lenBytes.length != 4) throw const FormatException('Label pack header is truncated');
       final hlen = ByteData.sublistView(lenBytes).getUint32(0, Endian.little);
-      // Round 327: read whole on the screen's thread (each listing reads it again), so a
-      // hand-made header of hundreds of MB would freeze the app. Real headers are a few MB (about
-      // 2 MB for the 17,130 names of the mammals and birds list).
+      // Round 327: the header is read whole, so a hand-made one of hundreds of MB would use
+      // that much memory at every listing. Real headers are a few MB (about 2 MB for the
+      // 17,130 names of the mammals and birds list).
       if (hlen > kMaxLabelPackHeaderBytes) throw const FormatException('Label pack header is too large');
-      // raf.read returns only what is left, so a cut file must be caught here.
-      final payload = await raf.length() - 8 - hlen;
+      // readSync returns only what is left, so a cut file must be caught here.
+      final payload = raf.lengthSync() - 8 - hlen;
       if (payload < 0) throw const FormatException('Label pack header is truncated');
-      final map = _checkedHeader(await raf.read(hlen), payload);
+      final map = _checkedHeader(raf.readSync(hlen), payload);
       map.remove('labels'); // keep listings light
+      // Round 372: the GBIF keys are one entry per name, read only by the scoring. The
+      // `regions` block stays: the Identify page reads it ([PackRegions.tryParse]).
+      final gbif = map['gbif'];
+      if (gbif is Map) map['gbif'] = _withoutKeys(gbif, const {'species_key', 'species'});
       return map;
     } finally {
-      await raf.close();
+      raf.closeSync();
     }
+  }
+
+  static Map<String, dynamic> _withoutKeys(Map block, Set<String> keys) => {
+    for (final e in block.entries)
+      if (e.key is String && !keys.contains(e.key)) e.key as String: e.value,
+  };
+
+  /// The header as a loaded pack keeps it (for the summary and source rows): without the
+  /// names and without the per-row and per-country parts of the optional blocks, which live in
+  /// typed fields; the blocks' small source notes stay.
+  static Map<String, dynamic> _slimHeader(Map<String, dynamic> header) {
+    final out = Map<String, dynamic>.from(header)..remove('labels');
+    final gbif = out['gbif'], regions = out['regions'];
+    if (gbif is Map) out['gbif'] = _withoutKeys(gbif, const {'species_key', 'species'});
+    if (regions is Map) out['regions'] = _withoutKeys(regions, const {'countries', 'neighbours'});
+    return out;
+  }
+
+  /// One text per row from a list of the `gbif` block, '' for a row without a value; empty
+  /// when the list is missing or not one entry per row. A key stays text: some are made of
+  /// digits only, and a number written by another tool is read as its digits.
+  static List<String> _perRowText(Object? list, int rows) {
+    if (list is! List || list.length != rows) return const [];
+    return [for (final v in list) v is String ? v : (v is int ? '$v' : '')];
   }
 
   /// Loads the whole pack off the UI isolate.
@@ -435,6 +614,9 @@ class LabelPack {
         matrix[i] = halfToFloat(data.getUint16(i * 2, Endian.little));
       }
     }
+    final gbif = header['gbif'];
+    final keys = _perRowText(gbif is Map ? gbif['species_key'] : null, rows);
+    final species = _perRowText(gbif is Map ? gbif['species'] : null, rows);
     return LabelPack(
       packId: (header['pack_id'] as String?) ?? 'pack',
       modelId: (header['model_id'] as String?) ?? '',
@@ -445,7 +627,11 @@ class LabelPack {
       temperature: (header['temperature'] as num?)?.toDouble() ?? 1.0,
       labels: labels,
       matrix: matrix,
-      header: Map<String, dynamic>.from(header)..remove('labels'),
+      header: _slimHeader(header),
+      // Keys without names (or the reverse) are a damaged block: the pack then has neither.
+      gbifKeys: species.isEmpty ? const [] : keys,
+      gbifSpecies: keys.isEmpty ? const [] : species,
+      regions: PackRegions.tryParse(header['regions'], rows),
     );
   }
 

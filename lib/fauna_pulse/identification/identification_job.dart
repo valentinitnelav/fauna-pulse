@@ -1047,7 +1047,8 @@ class _Scoring {
     // One copy of the matrix in native memory for every worker (an isolate message copies a
     // Dart list, and four copies of a 107 MB matrix pushed a 4 GB phone into killing other
     // apps); the workers read it by its address and are done before it is freed below. The
-    // pack they receive carries the labels and an empty matrix (about 60 MB per worker in all).
+    // pack they receive carries the labels and an empty matrix (about 60 MB per worker in all;
+    // [LabelPack.forWorker] leaves out the header, GBIF keys and country lists of round 372).
     // Without the memory for the copy the fusion runs here instead.
     final n = pack.rows * pack.dim;
     ffi.Pointer<ffi.Float> shared;
@@ -1058,7 +1059,7 @@ class _Scoring {
     }
     try {
       shared.asTypedList(n).setAll(0, pack.matrix);
-      final light = pack.withMatrix(Float32List(0));
+      final light = pack.forWorker();
       final tau = this.tau, dropFactor = this.dropFactor, address = shared.address;
       final parts = List<List<FusedTrack>?>.filled(jobs.length, null);
       var next = 0;

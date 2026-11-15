@@ -485,7 +485,23 @@ Map<String, dynamic> writeOutputs({
     // Round 335: device_id became the device's name (deviceNameOf), so the phone model, which
     // it held before, keeps a column of its own.
     'phone_model',
+    // Round 372: the GBIF name and species key of `bioclip_species` (the columns and keys of
+    // insect-detect-post v1.1.0, so both programs' results and GBIF data join on the key,
+    // synonyms included). At the end, like every column since round 210; fauna-pulse-export
+    // can write them in insect-detect-post's place. Empty when the name list has no keys.
+    'gbif_species',
+    'gbif_species_key',
   ];
+  // The pack row of every species path. A row that stops above species (a class-list class, or
+  // a name the pack builder answers only at genus or family) is never a track ID's species, so
+  // its key is never written.
+  final speciesRow = <String, int>{};
+  if (pack.gbifKeys.isNotEmpty) {
+    for (var r = 0; r < pack.rows; r++) {
+      final l = pack.labels[r];
+      if (!l.isSink && l.ranks[6].isNotEmpty) speciesRow.putIfAbsent(l.keyAt(6), () => r);
+    }
+  }
   csv.writeln(header.join(','));
   var visitsMerged = 0, tracksBeforeMerge = 0, suspectCount = 0;
   final byRank = <String, int>{};
@@ -592,6 +608,7 @@ Map<String, dynamic> writeOutputs({
     final rival = f.ladder.where((s) => s.rival != null).firstOrNull;
     String ownClass(int row) => pack.isClassList ? pack.classNames[row] : '';
     final modelClass = ownClass(f.pooledTop.rows.first);
+    final gbifRow = f.ladder.length == 7 ? speciesRow[f.ladder[6].key] : null;
     final row = <Object?>[
       deviceId,
       sessionId,
@@ -630,6 +647,8 @@ Map<String, dynamic> writeOutputs({
       modelClass,
       pack.isClassList ? f.pooledTop.probs.first.toStringAsFixed(4) : '',
       phoneModel,
+      gbifRow == null ? '' : pack.gbifSpecies[gbifRow],
+      gbifRow == null ? '' : pack.gbifKeys[gbifRow],
     ];
     csv.writeln(row.map(csvCell).join(','));
     for (var i = 0; i < t.crops.length; i++) {
@@ -857,6 +876,9 @@ tracks_<name list>.csv columns
                                       e.g. "Apoidea small" or "Hymenoptera_bees", have no rank) and that
                                       probability; empty for BioCLIP
   phone_model                         the phone model from the session's start (empty for imported videos)
+  gbif_species, gbif_species_key      the name GBIF accepts for bioclip_species and its species key (text,
+                                      also when it is digits only); the same keys as insect-detect-post,
+                                      so results join with GBIF data; empty when the name list has no keys
 
 crops_<name list>.csv columns
   session_id, track_id, crop_no       the track ID and the crop's number within it (capture order)

@@ -1423,6 +1423,7 @@ shows.
 | `rival_rank`, `rival_taxon`, `rival_p` | Trailing: for a `path_conflict` track ID, the highest rank where a taxon outside the ladder's path scored more than the ladder's pick, that taxon (genus + epithet at species) and its Conf.; empty otherwise. Only ranks below the reported one can be affected, because `tau` is at least 0.5. |
 | `model_class`, `model_class_p` | Trailing, fixed-class classifiers only (empty for BioCLIP): the model's own class with the highest combined probability (e.g. insectDCT's `Apoidea small` or `Bombus`; some of its groups have no rank) and that probability. |
 | `phone_model` | Trailing: the phone model from the start record (`device.model`); empty for imported videos. |
+| `gbif_species`, `gbif_species_key` | Trailing: the name GBIF accepts for `bioclip_species` and its species key in the Catalogue of Life checklist GBIF uses. The keys are those of insect-detect-post v1.1.0 (the same mapping table), so results of both programs and GBIF data join on the key, synonyms included. Read the key as text: some keys are digits only (for example `78358`). Empty when the track ID has no `bioclip_species`, or the name list holds no keys (lists before `_v3`, class lists). |
 
 | `flags` value | Meaning |
 |---|---|
@@ -1460,6 +1461,7 @@ fauna-pulse-export writes the same name for insect-detect-post (`device_name_cas
   in the `.bin`.
 - Round 335: `device_id` is the device's name; before round 335 it was the phone model (now
   `phone_model`, added in round 335). Round 336: the field notes' `device_id` comes first.
+- Round 372: `gbif_species`, `gbif_species_key`.
 
 </details>
 
