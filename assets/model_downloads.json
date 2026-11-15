@@ -128,14 +128,14 @@
       "name_lists": [
         {
           "kind": "label_pack",
-          "title": "Flies, bees and wasps, beetles, butterflies and moths of Europe (34,978 names)",
-          "licence": "CC0-1.0 (made from the TreeOfLife-200M species data)",
+          "title": "Flies, bees and wasps, beetles, butterflies and moths of Europe, with country lists (34,978 names)",
+          "licence": "CC0-1.0 (made from the TreeOfLife-200M species data); GBIF keys from the Catalogue of Life, CC BY 4.0",
           "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
           "file": {
-            "name": "bioclip-2_pollinator-orders-europe_v2.fpack",
-            "url": "https://huggingface.co/Valen-Peregrine/bioclip-2-tflite/resolve/6a2961e7f5ed1a2619fc85f196abb02b1883e9d8/bioclip-2_pollinator-orders-europe_v2.fpack",
-            "bytes": 57029546,
-            "sha256": "5329536e2ff00e41da16fdeeb8ca0a4416c680340c31d36ff586bc1579100b76"
+            "name": "bioclip-2_pollinator-orders-europe_v3.fpack",
+            "url": "https://huggingface.co/Valen-Peregrine/bioclip-2-tflite/resolve/c8c69a0a2abca6998efd6d8398435f894c8834a1/bioclip-2_pollinator-orders-europe_v3.fpack",
+            "bytes": 59543986,
+            "sha256": "4de14132e1407413cf4ca3b31a4c87bc82b893d9e2b4a8e2810420d7dadfd478"
           }
         },
         {
@@ -164,6 +164,19 @@
             "url": "https://huggingface.co/Valen-Peregrine/bioclip-2-tflite/resolve/cbf9b265cc9723783bcbb8c44a09c57870386386/bioclip-2_pollinator-orders-europe_v1.fpack"
           },
           "note": "Replaced by version 2 (below). Results made with this list stay as they are."
+        },
+        {
+          "kind": "label_pack",
+          "title": "Flies, bees and wasps, beetles, butterflies and moths of Europe (34,978 names)",
+          "licence": "CC0-1.0 (made from the TreeOfLife-200M species data)",
+          "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
+          "file": {
+            "name": "bioclip-2_pollinator-orders-europe_v2.fpack",
+            "url": "https://huggingface.co/Valen-Peregrine/bioclip-2-tflite/resolve/6a2961e7f5ed1a2619fc85f196abb02b1883e9d8/bioclip-2_pollinator-orders-europe_v2.fpack",
+            "bytes": 57029546,
+            "sha256": "5329536e2ff00e41da16fdeeb8ca0a4416c680340c31d36ff586bc1579100b76"
+          },
+          "note": "Replaced by version 3 (below), which can narrow the names to one country. Results made with this list stay as they are."
         },
         {
           "kind": "label_pack",
@@ -265,7 +278,7 @@
       "name": [
         {
           "model": "bioclip-2",
-          "list": "bioclip-2_pollinator-orders-europe_v2.fpack"
+          "list": "bioclip-2_pollinator-orders-europe_v3.fpack"
         },
         {
           "model": "insectdct-cls-v7-eff2s"
@@ -285,7 +298,7 @@
       "name": [
         {
           "model": "bioclip-2",
-          "list": "bioclip-2_pollinator-orders-europe_v2.fpack"
+          "list": "bioclip-2_pollinator-orders-europe_v3.fpack"
         },
         {
           "model": "insectdct-cls-v7-eff2s"

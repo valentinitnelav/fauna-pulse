@@ -10456,3 +10456,22 @@ of a session with a position says "Germany and its 10 neighbours", 28,276 of 34,
 checked: other phones; a real recording with a GPS position (the test session's position was
 typed into its start record). Open: the catalogue entry once the list is published.
 
+## Round 375 (2026-11-15): the catalogue offers version 3 of the BioCLIP 2 Europe list
+
+Asked: after the owner published `bioclip-2_pollinator-orders-europe_v3.fpack` on Hugging Face
+(fauna-pulse-models commit `735cb13`, pinned to the upload `c8c69a0`), offer it in the app.
+`assets/model_downloads.json`: v3 replaces v2 in `name_lists` (link, size and checksum from
+fauna-pulse-models' `publish/published.json`; `update_catalogue.py --urls --check` reports
+nothing to change); v2 moves to `former_name_lists` with the note "Replaced by version 3
+(below)", so a phone that has it still shows it under BioCLIP 2 with its licence; the uses
+"Pollinators on flowers" and "Insects on a flat surface" suggest v3. Title "…of Europe, with
+country lists (34,978 names)" (the same names as v2); licence names the Catalogue of Life
+(CC BY 4.0) for the GBIF keys, as the model card does. Only v3 is offered (owner, 2026-11-15).
+The BioCLIP 2.5 list stays v2 (no v3 made). A phone with v2 chosen keeps working: the Identify
+page lists the name lists on the phone, not the offered ones, and without country lists the
+**Names of one country** box stays hidden (round 373). On such a phone, a tap on a use tile no
+longer finds all its suggested files there and offers the v3 download instead. Tests that read
+the real catalogue now expect v3 (watch plan, home screen, catalogue). Docs: IDENTIFICATION.md
+(table, which list carries country lists, examples). Not checked here (owner runs them): the
+test suite, a debug build, a download of v3 on a phone.
+

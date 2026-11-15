@@ -83,7 +83,7 @@ or insectDCT).
 ### The name lists
 
 | Name list | For model | Names | Size |
-|---|---|---|---|
+| *Flies, bees and wasps, beetles, butterflies and moths of Europe, with country lists* | BioCLIP 2 | 34,978 | 60 MB |
 | *Flies, bees and wasps, beetles, butterflies and moths of Europe* | BioCLIP 2 | 34,978 | 57 MB |
 | *Mammals and birds of the world* | BioCLIP 2 | 17,130 | 28 MB |
 | *Flies, bees and wasps, beetles, butterflies and moths of Europe* | BioCLIP 2.5 | 34,392 | 74 MB |
@@ -100,6 +100,10 @@ A model can identify only with a name list made for it:
 A name list can also carry **country lists**: which of its species GBIF (the Global Biodiversity
 Information Facility, gbif.org) has records of in which country. With such a list the model can
 choose among the names of one country only ([Names of one country](#names-of-one-country)).
+The Europe list for BioCLIP 2 carries them from version 3 on
+(`bioclip-2_pollinator-orders-europe_v3.fpack`: the same names as version 2). A phone that has
+version 2 keeps using it, without the country choice; **Download & import models** offers
+version 3. The BioCLIP 2.5 lists have no country lists yet.
 
 ### Download & import models
 
@@ -167,7 +171,7 @@ delete the copies in Downloads afterwards.
 - **How a list finds its model (round 271).** A class list belongs to the model with the same
   file name. A label pack belongs to every model file whose name starts the same way, by the
   naming rule of round 276 (`tool/model_downloads/README.md`):
-  `bioclip-2_pollinator-orders-europe_v2.fpack` goes with `bioclip-2_224_fp16.tflite` and
+  `bioclip-2_pollinator-orders-europe_v3.fpack` goes with `bioclip-2_224_fp16.tflite` and
   `bioclip-2_224_fp32.tflite`. BioCLIP 2.5 packs start with `bioclip-2.5_`.
 - A pack also names its model in its header (`model_id`). So a renamed pack still finds a model
   whose name starts with that id (upper and lower case, "-" and "." alike: `bioclip-2.5` also
@@ -422,7 +426,7 @@ one rank, such as the order Hymenoptera or the genus *Bombus*.
    session folder under `identification/`, so you can also copy it over USB.
 
 The header's *Name list* row shows the name list by its file name, as on **Identify organisms**
-(for example "bioclip-2_pollinator-orders-europe_v2.fpack (34,978 names)").
+(for example "bioclip-2_pollinator-orders-europe_v3.fpack (34,978 names)").
 
 One identification belongs to one **track ID** and combines all photos of that track ID. After
 the run, the **Photos** tab of the session summary shows it under every photo of that track ID.
