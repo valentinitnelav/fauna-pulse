@@ -6,6 +6,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +15,7 @@ import 'package:fauna_pulse/fauna_pulse/identification/crop_worker.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/identification_job.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/identification_store.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/label_pack.dart';
+import 'package:fauna_pulse/fauna_pulse/identification/name_list_region.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/device_thermal.dart';
 import 'package:fauna_pulse/fauna_pulse/postprocess/video_run_samples.dart';
 
@@ -130,20 +132,22 @@ void main() {
     expect((await job.run(session, settings: settings(), packFile: packFile)).error, isNull);
     expect((await job.run(session, settings: settings(), packFile: keyedPack)).error, isNull);
     final plain = tracksTable(session, 'tiny_pack'), keyed = tracksTable(session, 'tiny_pack_regions');
-    expect(keyed.first.sublist(keyed.first.length - 2), ['gbif_species', 'gbif_species_key']);
-    expect(plain.first, keyed.first, reason: 'the same columns for every name list');
-    expect([for (final row in keyed.skip(1)) row.sublist(row.length - 2)], [
+    final head = keyed.first;
+    final species = head.indexOf('gbif_species'), key = head.indexOf('gbif_species_key');
+    expect([species, key], [head.indexOf('phone_model') + 1, head.indexOf('phone_model') + 2], reason: 'after the older columns');
+    expect(plain.first, head, reason: 'the same columns for every name list');
+    expect([for (final row in keyed.skip(1)) [row[species], row[key]]], [
       ['Eristalis tenax', '3B7X4'],
       ['Apis mellifera', 'FN46'],
     ]);
-    expect([for (final row in plain.skip(1)) row.sublist(row.length - 2)], [
+    expect([for (final row in plain.skip(1)) [row[species], row[key]]], [
       ['', ''],
       ['', ''],
     ]);
-    final packId = plain.first.indexOf('pack_id');
+    final differ = {head.indexOf('pack_id'), species, key};
     for (var i = 1; i < plain.length; i++) {
-      for (var c = 0; c < plain[i].length - 2; c++) {
-        if (c != packId) expect(keyed[i][c], plain[i][c], reason: 'row $i, ${plain.first[c]}');
+      for (var c = 0; c < plain[i].length; c++) {
+        if (!differ.contains(c)) expect(keyed[i][c], plain[i][c], reason: 'row $i, ${head[c]}');
       }
     }
     // The worker isolates get the pack without its blocks and write the same file.
@@ -308,17 +312,18 @@ void main() {
     expect(crop0['p_ladder'], hasLength((tracks[0]['ladder'] as List).length));
     expect((crop0['p_ladder'] as List).first, greaterThan(0.9)); // kingdom mass of a clear crop
     expect((tracks[0]['ladder'] as List).first['p_mean'], greaterThan(0.9));
-    // Round 217: p_max exported, no per-crop weight (top1_p is the weight).
+    // Round 217: p_max exported. Round 373: the per-crop weight has its own field again (it
+    // equals top1_p while no country list narrows the names) next to the crop's "none" share.
     expect((tracks[0]['ladder'] as List).first['p_max'], greaterThan(0.9));
-    expect(crop0.containsKey('weight'), isFalse);
     expect(crop0['top1_p'], greaterThan(0.9));
+    expect(crop0['weight'], crop0['top1_p']);
+    expect(crop0['none_p'], lessThan(0.01));
     expect(paths.predictionsJsonl('tiny_pack').readAsLinesSync().first, isNot(contains('"weight"')));
     final cropsCsv = paths.cropsCsv('tiny_pack');
     expect(cropsCsv.existsSync(), isTrue);
     final cropLines = cropsCsv.readAsStringSync().trim().split('\n');
     expect(cropLines.first, startsWith('session_id,track_id,crop_no,photo,box_left'));
-    expect(cropLines.first, endsWith(',p_species,top1_class')); // round 266: empty for BioCLIP
-    expect(cropLines.first, isNot(contains(',weight,')));
+    expect(cropLines.first, endsWith(',p_species,top1_class,weight,none_p')); // top1_class: empty for BioCLIP
     expect(cropLines.first, contains(',pad_frac,top1_species,'));
     // Round 220: the top species' higher ranks, per crop.
     expect(cropLines.first, contains(',top1_p,top1_kingdom,top1_phylum,top1_class,top1_order,top1_family,agrees,'));
@@ -348,8 +353,8 @@ void main() {
     expect(csvLines[1], contains('TestPhone,s1,1,2,'));
     // Round 335: no Device ID, so the phone model names the device; it also has its own last
     // column.
-    expect(header, endsWith(',model_class_p,phone_model,gbif_species,gbif_species_key'));
-    expect(csvLines[1], endsWith(',TestPhone,,'));
+    expect(header, endsWith(',model_class_p,phone_model,gbif_species,gbif_species_key,name_list_countries'));
+    expect(csvLines[1], endsWith(',TestPhone,,,all'));
     expect(csvLines[1], contains('Syrphidae')); // family at target rank 'family'
     expect(paths.readme.existsSync(), isTrue);
     expect(paths.predictionsJsonl('tiny_pack').readAsLinesSync().length, 3);
@@ -381,7 +386,7 @@ void main() {
     final paths = IdentificationPaths(session);
     final csv = paths.tracksCsv('tiny_pack').readAsLinesSync();
     expect(csv[1], startsWith('plot 3 - A,plot1,1,')); // "/" cannot be in insect-detect-post's folder names
-    expect(csv[1], endsWith(',TestPhone,,'));
+    expect(csv[1], endsWith(',TestPhone,,,all'));
     final json = jsonDecode(paths.tracksJson('tiny_pack').readAsStringSync()) as Map<String, dynamic>;
     expect(json['device_id'], 'plot 3 - A');
     expect(json['phone_model'], 'TestPhone');
@@ -423,9 +428,9 @@ void main() {
     expect((tracks[1]['crops'] as List).first['top1'], 'Syrphidae');
     expect((tracks[1]['crops'] as List).first['top1_class'], 'Syrphidae');
     final csv = paths.tracksCsv('tiny_classes').readAsLinesSync();
-    expect(csv.first, endsWith(',model_class,model_class_p,phone_model,gbif_species,gbif_species_key'));
+    expect(csv.first, endsWith(',model_class,model_class_p,phone_model,gbif_species,gbif_species_key,name_list_countries'));
     expect(csv[1], contains(',Eristalis tenax,0.9'));
-    expect(paths.cropsCsv('tiny_classes').readAsLinesSync()[1], endsWith(',Eristalis tenax'));
+    expect(paths.cropsCsv('tiny_classes').readAsLinesSync()[1], contains(',Eristalis tenax,'));
   });
 
   // Round 229: visits found afterwards in imported videos. Scoring takes the
@@ -879,6 +884,176 @@ void main() {
     expect(tight['tracks_total'], 3);
   });
 
+  // Round 373, the acceptance test of the country lists: one session scored with the whole
+  // list, a country with a neighbour and a country alone has the same "none of these" share
+  // (per crop and per track ID), the same weights and left-out crops, the same "no organism"
+  // flags and the same joined track IDs. Only the names and their percentages follow the list.
+  test('round 373: the country choice changes the names, never the none share, the weights or the merge', () async {
+    // Five names on five axes: 0 Eristalis tenax, 1 Episyrphus balteatus, 2 Apis mellifera,
+    // 3 Bombus terrestris, 4 the sink row. AA lists every species, BB only the honey bee,
+    // CC the two hoverflies; BB is CC's neighbour.
+    String bits(int byte) => base64.encode([byte]);
+    final hdr = utf8.encode(
+      jsonEncode({
+        'pack_id': 'countries-test',
+        'model_id': 'fake',
+        'dim': 5,
+        'rows': 5,
+        'dtype': 'f32',
+        'sink_rows': 1,
+        'logit_scale': 8.0,
+        'labels': [
+          ['Animalia', 'Arthropoda', 'Insecta', 'Diptera', 'Syrphidae', 'Eristalis', 'tenax', ''],
+          ['Animalia', 'Arthropoda', 'Insecta', 'Diptera', 'Syrphidae', 'Episyrphus', 'balteatus', ''],
+          ['Animalia', 'Arthropoda', 'Insecta', 'Hymenoptera', 'Apidae', 'Apis', 'mellifera', ''],
+          ['Animalia', 'Arthropoda', 'Insecta', 'Hymenoptera', 'Apidae', 'Bombus', 'terrestris', ''],
+          ['none', '', '', '', '', '', 'flower', 'a photo of a flower.'],
+        ],
+        'regions': {
+          'countries': {
+            'AA': {'rows': bits(0x0F), 'names': 4, 'names_in_country': 4},
+            'BB': {'rows': bits(0x04), 'names': 1, 'names_in_country': 1},
+            'CC': {'rows': bits(0x03), 'names': 2, 'names_in_country': 2},
+          },
+          'neighbours': {
+            'CC': ['BB'],
+          },
+        },
+      }),
+    );
+    final axes = Float32List(25);
+    for (var r = 0; r < 5; r++) {
+      axes[r * 5 + r] = 1;
+    }
+    final countriesPack = File('${tmp.path}/fake_countries.fpack')
+      ..writeAsBytesSync(
+        (BytesBuilder()
+              ..add('FPK1'.codeUnits)
+              ..add((ByteData(4)..setUint32(0, hdr.length, Endian.little)).buffer.asUint8List())
+              ..add(hdr)
+              ..add(axes.buffer.asUint8List()))
+            .takeBytes(),
+      );
+    Float32List unit(List<double> v) {
+      var n = 0.0;
+      for (final x in v) {
+        n += x * x;
+      }
+      return Float32List.fromList([for (final x in v) x / math.sqrt(n)]);
+    }
+
+    // Red crops (track IDs 1 and 3): the hoverfly with some honey bee and some flower. The blue
+    // crop (track ID 2): the honey bee with some flower.
+    final red = unit([1, 0, 0.3, 0, 0.5]), blue = unit([0, 0, 1, 0, 0.4]);
+    final job = jobWith((rgb) async => [for (final buf in rgb) buf[0] > buf[2] ? red : blue]);
+    final session = makeMergeSession('countries');
+    // No appearance check and a long gap: only the names decide which track IDs are joined, so
+    // a merge that read the narrowed names would join all three under the honey bee's list.
+    IdentifyRunSettings choice(String scope, String country) => IdentifyRunSettings(
+      modelName: 'fake_model.tflite',
+      modelId: 'fake',
+      packName: 'fake_countries.fpack',
+      inputSize: 32,
+      dim: 5,
+      accelerator: 'CPU',
+      minCropPx: 16,
+      mergeVisits: true,
+      mergeGapS: 10,
+      mergeMinCos: -1,
+      nameListScope: scope,
+      nameListCountry: country,
+    );
+    expect((await job.run(session, settings: choice(kScopeAll, ''), packFile: countriesPack)).error, isNull);
+    final paths = IdentificationPaths(session);
+
+    /// What must not depend on the country choice, read back from the result files.
+    Map<String, dynamic> fixedPart() {
+      final tracks = (jsonDecode(paths.tracksJson('fake_countries').readAsStringSync())['tracks'] as List).cast<Map<String, dynamic>>();
+      final cropRows = [for (final l in paths.cropsCsv('fake_countries').readAsLinesSync()) l.split(',')];
+      int col(String name) => cropRows.first.indexOf(name);
+      return {
+        'tracks': [
+          for (final t in tracks)
+            {
+              'track_ids': t['track_ids'],
+              'none_p': t['none_p'],
+              'no_organism': (t['flags'] as List).contains('no_organism'),
+              'crops': [
+                for (final c in t['crops'] as List) [c['src'], c['weight'], c['none_p'], c['counted']],
+              ],
+            },
+        ],
+        'crops_table': [
+          for (final r in cropRows.skip(1)) [r[col('photo')], r[col('weight')], r[col('none_p')], r[col('counted')]],
+        ],
+      };
+    }
+
+    List<String> headlines() => [
+      for (final t in (jsonDecode(paths.tracksJson('fake_countries').readAsStringSync())['tracks'] as List)) t['headline'] as String,
+    ];
+    Map<String, dynamic> rescore(String scope, String country) => IdentificationJob.scoreSessionSync(
+      session,
+      modelName: 'fake_model.tflite',
+      modelId: 'fake',
+      packFile: countriesPack,
+      settings: choice(scope, country).toJson(),
+    );
+
+    final whole = fixedPart();
+    final wholeTracks = whole['tracks'] as List;
+    expect([for (final t in wholeTracks) t['track_ids']], [[1, 3], [2]], reason: 'the two hoverfly track IDs are joined');
+    expect(headlines(), ['Eristalis tenax', 'Apis mellifera']);
+    expect(wholeTracks.first['none_p'], greaterThan(0.02), reason: 'a none share worth comparing');
+    expect(tracksTable(session, 'fake_countries')[1].last, 'all');
+
+    // Every species on offer: the whole list's answers.
+    var summary = rescore(kScopeNeighbours, 'AA');
+    expect(fixedPart(), whole);
+    expect(headlines(), ['Eristalis tenax', 'Apis mellifera']);
+    expect(summary['name_list'], containsPair('countries', ['AA']));
+    expect(tracksTable(session, 'fake_countries')[1].last, 'AA');
+
+    // The honey bee's country alone: every track ID is named a honey bee, with the same none
+    // share. Masking before the softmax would call the hoverfly track ID "no organism" here
+    // (the flower would outweigh the little honey bee score).
+    summary = rescore(kScopeCountry, 'BB');
+    expect(fixedPart(), whole);
+    expect(headlines(), ['Apis mellifera', 'Apis mellifera']);
+    expect(summary['no_organism'], 0);
+    expect(summary['name_list'], {'countries': ['BB'], 'names': 1, 'scope': kScopeCountry, 'country': 'BB', 'country_from_session': false, 'country_coverage': 1.0});
+    expect((summary['settings'] as Map)['name_list_country'], 'BB');
+    final table = tracksTable(session, 'fake_countries');
+    expect(table.first.last, 'name_list_countries');
+    expect([for (final r in table.skip(1)) r.last], ['BB', 'BB']);
+
+    // A country with its neighbour: the hoverflies and the honey bee.
+    summary = rescore(kScopeNeighbours, 'CC');
+    expect(fixedPart(), whole);
+    expect(headlines(), ['Eristalis tenax', 'Apis mellifera']);
+    expect(summary['name_list'], containsPair('countries', ['CC', 'BB']));
+    expect(tracksTable(session, 'fake_countries')[1].last, 'CC+BB');
+
+    // No country (no position, none chosen): the whole list, with the reason.
+    summary = rescore(kScopeNeighbours, '');
+    expect(fixedPart(), whole);
+    expect(summary['name_list'], containsPair('whole_list_reason', kWholeNoCountry));
+    expect(tracksTable(session, 'fake_countries')[1].last, 'all');
+
+    // The worker isolates get the list too and write the same files.
+    rescore(kScopeCountry, 'BB');
+    final sameIsolate = [paths.tracksCsv('fake_countries').readAsStringSync(), paths.cropsCsv('fake_countries').readAsStringSync()];
+    await IdentificationJob.scoreSession(
+      session,
+      modelName: 'fake_model.tflite',
+      modelId: 'fake',
+      packFile: countriesPack,
+      settings: choice(kScopeCountry, 'BB').toJson(),
+      workers: 3,
+    );
+    expect([paths.tracksCsv('fake_countries').readAsStringSync(), paths.cropsCsv('fake_countries').readAsStringSync()], sameIsolate);
+  });
+
   // Round 212: suspect = short AND weakly supported. Raising the detector
   // confidence threshold above track 2's 0.7 makes that single-frame track
   // suspect; tracks 1 and 3 (0.85 / 0.9) stay clean although equally short.
@@ -898,7 +1073,7 @@ void main() {
     expect(t1['flags'], contains('short'));
     expect(t1['flags'], isNot(contains('suspect')));
     final csv = paths.tracksCsv('tiny_pack').readAsStringSync();
-    expect(csv.split('\n').first, endsWith(',merged_track_ids,n_detections,suspect,rival_rank,rival_taxon,rival_p,model_class,model_class_p,phone_model,gbif_species,gbif_species_key'));
+    expect(csv.split('\n').first, endsWith(',merged_track_ids,n_detections,suspect,rival_rank,rival_taxon,rival_p,model_class,model_class_p,phone_model,gbif_species,gbif_species_key,name_list_countries'));
     // The compact summary list carries the verdict for the Photos tab.
     final lite = (s['tracks'] as List).cast<Map<String, dynamic>>();
     expect(lite.firstWhere((t) => t['track_id'] == 2)['suspect'], isTrue);

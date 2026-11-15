@@ -39,6 +39,23 @@
 //     class_probabilities in fauna-pulse-models, the same formula, checked by a shared fixture).
 //     The crops' raw scores are averaged like BioCLIP's vectors (per head the
 //     "Average Logit"); everything after that is unchanged.
+//   * round 373, country lists (a pack's `regions` block, label_pack.dart): the names can
+//     be narrowed to the species GBIF lists in a country and its neighbours. Only what is
+//     SHOWN is narrowed (the ladder, the identified rank, each crop's candidates, the best
+//     view). The share of the "none of these" rows, the crops' certainty weights, the drop
+//     rule and the merge check keep reading the scores over every name of the pack, so
+//     they are the same for every country choice. Rule, per crop and for the pooled
+//     scores l: none_p = the sink rows' mass of the softmax over ALL rows; a species row
+//     outside the list gets 0; a species row i in the list gets
+//     (1 - none_p) * exp(l_i - logsumexp(l over the listed species rows)). Why not simply
+//     mask before the softmax: none_p would then be N / (N + K) (N = the sink rows' mass,
+//     K = the listed species' mass, both over the whole pack), which rises as the list
+//     gets shorter. Measured in fauna-pulse-models on 784 crops: flower crops without an
+//     insect flagged "no organism" were 0 % with the whole pack, 0.5 % with Germany's
+//     list and 8.7 % with Malta's (310 names); with the rule above 0 % for every list.
+//     Idea of a regional list: BioCLIP's documentation ("Geo-Restricted Taxon List
+//     Predictions", Imageomics). Whether a country list names insects better than the
+//     whole list is not measured yet (docs/IDENTIFICATION.md, "Validation status").
 
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -149,8 +166,23 @@ class FusedTrack {
   /// visit-merge similarity check (visit_merge.dart).
   final Float32List fusedEmbedding;
 
-  /// Per-crop top-k rows; `perCrop[i].probs.first` is crop i's weight.
+  /// Per-crop top-k rows, among the names on offer (round 373: a country list narrows them).
   final List<TopK> perCrop;
+
+  /// Each crop's certainty weight in the pooling: its top-1 probability over every name of
+  /// the pack, also when a country list narrows what is shown (then it differs from
+  /// `perCrop[i].probs.first`). Same length as [perCrop].
+  final List<double> weights;
+
+  /// Each crop's own mass on the "none of these" rows, over every name of the pack.
+  final List<double> perCropNone;
+
+  /// Round 373, for the merge check only (visit_merge.dart): the identified rank and the
+  /// ladder keys (index = rank) of the answer over every name of the pack. They equal
+  /// [identifiedRank] and the [ladder]'s keys unless a country list narrows the names; the
+  /// merge reads these so that the country choice never changes which track IDs are joined.
+  final String? mergeRank;
+  final List<String> mergeKeys;
 
   /// Round 266: the most probable rows of the pooled distribution (for a
   /// class list, the model's own class of the track ID: LabelPack.classNames).
@@ -176,6 +208,10 @@ class FusedTrack {
     required this.bestViewProb,
     required this.fusedEmbedding,
     required this.perCrop,
+    required this.weights,
+    required this.perCropNone,
+    required this.mergeRank,
+    required this.mergeKeys,
     required this.perCropMass,
     required this.counted,
     required this.pooledTop,
@@ -196,14 +232,113 @@ class FusedTrack {
   }
 }
 
+/// The consistent top-down path through one distribution's masses (index = rank).
+class _Path {
+  final keys = <String>[];
+  final mass = <double>[];
+  final rivalKey = <String?>[];
+  final rivalMass = <double>[];
+  var conflict = false;
+
+  /// Deepest rank whose mass reaches [tau] (every rank above it does too), or null when even
+  /// the kingdom is unsure or the sink rows win.
+  String? identifiedRank(double tau) {
+    if (keys.isEmpty || keys.first == kSinkKingdom) return null;
+    String? rank;
+    for (var k = 0; k < keys.length && mass[k] >= tau; k++) {
+      rank = kRankNames[k];
+    }
+    return rank;
+  }
+}
+
 class Scorer {
   final LabelPack pack;
 
   /// Effective softmax scale: logit_scale / temperature (plan 11.4).
   final double scale;
 
-  Scorer(this.pack, {double? temperature})
-    : scale = pack.logitScale / (temperature ?? pack.temperature);
+  /// Round 373: the species rows on offer when a country list narrows the names (file
+  /// header); null = every row.
+  final Int32List? _kept;
+  late final Int32List _sinkRows = Int32List.fromList([
+    for (var r = 0; r < pack.rows; r++)
+      if (pack.labels[r].isSink) r,
+  ]);
+
+  /// [allowedRows]: one bit per pack row ([PackRegions.rowBits]) to narrow the names to a
+  /// country list; null = the whole pack. Sink rows are always on offer.
+  Scorer(this.pack, {double? temperature, Uint8List? allowedRows})
+    : scale = pack.logitScale / (temperature ?? pack.temperature),
+      _kept = _keptRows(pack, allowedRows);
+
+  static Int32List? _keptRows(LabelPack pack, Uint8List? bits) {
+    if (bits == null || pack.isClassList || bits.length * 8 < pack.rows) return null;
+    final rows = [
+      for (var r = 0; r < pack.rows; r++)
+        if (!pack.labels[r].isSink && PackRegions.hasRow(bits, r)) r,
+    ];
+    // A list without a single name of the pack never narrows: there would be nothing to answer.
+    return rows.isEmpty ? null : Int32List.fromList(rows);
+  }
+
+  /// Whether a country list narrows the names this scorer shows.
+  bool get narrowed => _kept != null;
+
+  /// Mass of [p] on the "none of these" rows.
+  double noneOf(Float32List p) {
+    var s = 0.0;
+    for (final r in _sinkRows) {
+      s += p[r];
+    }
+    return s;
+  }
+
+  /// [whole] (the probabilities of [logits] over every row) narrowed to the names on offer
+  /// (round 373, rule in the file header); [whole] itself when nothing narrows. The sink rows
+  /// keep their values.
+  Float32List narrow(Float64List logits, Float32List whole) {
+    final kept = _kept;
+    if (kept == null) return whole;
+    final out = Float32List(whole.length);
+    var none = 0.0;
+    for (final r in _sinkRows) {
+      out[r] = whole[r];
+      none += whole[r];
+    }
+    // exp(l_i - logsumexp over the listed rows) = whole_i / (the listed rows' whole-pack mass),
+    // so the probabilities at hand are rescaled: no second pass of exponentials (measured on a
+    // session of 9,193 crops with a 28,000-name list: that pass made the scoring 22 % slower).
+    var listed = 0.0;
+    for (final r in kept) {
+      listed += whole[r];
+    }
+    if (listed > 1e-30) {
+      final f = math.max(0.0, 1 - none) / listed;
+      for (final r in kept) {
+        out[r] = whole[r] * f;
+      }
+      return out;
+    }
+    // A list whose names all score so far below the pack's best name that their probabilities
+    // are zero in 32 bits: from the scores, in log space, so the result is not 0 / 0.
+    var maxL = -double.infinity;
+    for (final r in kept) {
+      if (logits[r] > maxL) maxL = logits[r];
+    }
+    final ex = Float64List(kept.length);
+    var sum = 0.0;
+    for (var i = 0; i < kept.length; i++) {
+      final v = math.exp(logits[kept[i]] - maxL);
+      ex[i] = v;
+      sum += v;
+    }
+    final f = math.max(0.0, 1 - none) / sum;
+    for (var i = 0; i < kept.length; i++) {
+      out[kept[i]] = ex[i] * f;
+    }
+    return out;
+  }
 
   // Round 215: an integer id per row and rank for the row's taxonomy key,
   // built once per pack, so the mass of a distribution under a ladder taxon
@@ -212,11 +347,13 @@ class Scorer {
   List<Int32List>? _rankIds;
   List<Map<String, int>>? _keyToId;
   List<List<String>>? _idToKey; // round 348: id -> key per rank, for rollUp
+  List<List<int>>? _parentOf; // round 373: id -> the id of its taxon one rank up, for _wholePath
 
   void _buildRankIds() {
     final ids = List.generate(7, (_) => Int32List(pack.rows));
     final maps = List.generate(7, (_) => <String, int>{});
     final names = List.generate(7, (_) => <String>[]);
+    final parents = List.generate(7, (_) => <int>[]);
     for (var r = 0; r < pack.rows; r++) {
       final row = pack.labels[r];
       for (var k = 0; k < 7; k++) {
@@ -229,6 +366,7 @@ class Scorer {
         final key = row.keyAt(k);
         ids[k][r] = maps[k].putIfAbsent(key, () {
           names[k].add(key);
+          parents[k].add(k == 0 ? -1 : ids[k - 1][r]);
           return names[k].length - 1;
         });
       }
@@ -236,6 +374,7 @@ class Scorer {
     _rankIds = ids;
     _keyToId = maps;
     _idToKey = names;
+    _parentOf = parents;
   }
 
   /// Probability mass of [p] under each ladder key in [keys] (index = rank;
@@ -416,12 +555,18 @@ class Scorer {
     // pooled-vector pass: its scores go through a log-softmax per head first, which is not
     // linear.
     final perCropLogits = [for (final c in crops) c.logits ?? logits(c.vector)];
-    final perCropProbs = [for (final l in perCropLogits) softmax(l)];
+    // Over every name of the pack: the weights, the drop rule and the "none of these" shares
+    // read these, whatever country list is set (round 373, file header).
+    final perCropWhole = [for (final l in perCropLogits) softmax(l)];
+    // What is shown: narrowed to the country list when one is set.
+    final perCropProbs = _kept == null
+        ? perCropWhole
+        : [for (var i = 0; i < n; i++) narrow(perCropLogits[i], perCropWhole[i])];
     final perCropTop = [for (final p in perCropProbs) this.topK(p, topK)];
 
     // Certainty weight = the crop's top-1 probability (always > 0); crops far
     // less certain than the surest one are left out.
-    final weights = [for (final t in perCropTop) t.probs.first];
+    final weights = [for (final p in perCropWhole) _maxOf(p)];
     var maxW = 0.0;
     for (final w in weights) {
       if (w > maxW) maxW = w;
@@ -450,7 +595,9 @@ class Scorer {
         }
       }
     }
-    final pbar = pack.isClassList ? probs(pooled) : softmax(pooledLogits);
+    // Over every name of the pack: the "none of these" share and the merge check read this.
+    final wholeBar = pack.isClassList ? probs(pooled) : softmax(pooledLogits);
+    final pbar = narrow(pooledLogits, wholeBar);
     final masses = rollUp(pbar);
 
     // Unit-length copy for the merge similarity check only.
@@ -464,48 +611,8 @@ class Scorer {
       fused[d] = norm > 0 ? pooled[d] / norm : pooled[d];
     }
 
-    // Consistent top-down path.
-    final keys = <String>[];
-    final taxa = <String>[];
-    final massAt = <double>[];
-    final agreeAt = <List<bool>>[];
-    final rivalKeyAt = <String?>[];
-    final rivalMassAt = <double>[];
-    var parentKey = '';
-    var pathConflict = false;
-    for (var k = 0; k < 7; k++) {
-      String? bestKey;
-      var best = -1.0;
-      String? argmaxKey;
-      var argmax = -1.0;
-      for (final e in masses[k].entries) {
-        if (e.value > argmax) {
-          argmax = e.value;
-          argmaxKey = e.key;
-        }
-        final isChild = k == 0 || e.key.startsWith('$parentKey|');
-        if (isChild && e.value > best) {
-          best = e.value;
-          bestKey = e.key;
-        }
-      }
-      if (bestKey == null) break;
-      final conflict = argmaxKey != bestKey;
-      if (conflict) pathConflict = true;
-      rivalKeyAt.add(conflict ? argmaxKey : null);
-      rivalMassAt.add(conflict ? argmax : 0);
-      final name = bestKey.split('|').last;
-      final agree = <bool>[];
-      for (final t in perCropTop) {
-        final top1 = pack.labels[t.rows.first];
-        agree.add(top1.ranks[k].isNotEmpty && top1.keyAt(k) == bestKey);
-      }
-      keys.add(bestKey);
-      taxa.add(k == 6 ? _speciesDisplay(bestKey) : name);
-      massAt.add(best);
-      agreeAt.add(agree);
-      parentKey = bestKey;
-    }
+    final path = _pathOf(masses);
+    final keys = path.keys;
 
     // Each crop's own mass under the ladder taxa (evidence for the tables and
     // the per-rank alternatives p_mean / p_max / p_agree).
@@ -518,41 +625,32 @@ class Scorer {
         final m = perCropMass[i][k];
         sum += m;
         if (m > mx) mx = m;
-        if (agreeAt[k][i]) {
+        final top1 = pack.labels[perCropTop[i].rows.first];
+        if (top1.ranks[k].isNotEmpty && top1.keyAt(k) == keys[k]) {
           agreeSum += m;
           agreeN++;
         }
       }
+      final rival = path.rivalKey[k];
       ladder.add(
         LadderStep(
           rank: kRankNames[k],
-          taxon: taxa[k],
+          taxon: k == 6 ? _speciesDisplay(keys[k]) : keys[k].split('|').last,
           key: keys[k],
-          mass: massAt[k],
+          mass: path.mass[k],
           support: agreeN / n,
           meanMass: sum / n,
           maxMass: mx,
           agreeMass: agreeN == 0 ? 0 : agreeSum / agreeN,
-          rival: rivalKeyAt[k] == null
-              ? null
-              : (k == 6 ? _speciesDisplay(rivalKeyAt[k]!) : rivalKeyAt[k]!.split('|').last),
-          rivalMass: rivalMassAt[k],
-          rivalLineage: rivalKeyAt[k] == null ? const [] : rivalKeyAt[k]!.split('|').take(k).toList(),
+          rival: rival == null ? null : (k == 6 ? _speciesDisplay(rival) : rival.split('|').last),
+          rivalMass: path.rivalMass[k],
+          rivalLineage: rival == null ? const [] : rival.split('|').take(k).toList(),
         ),
       );
     }
 
-    final noneMass = masses[0][kSinkKingdom] ?? 0.0;
-    String? identified;
-    if (ladder.isNotEmpty && ladder.first.key != kSinkKingdom) {
-      for (final s in ladder) {
-        if (s.mass >= tau) {
-          identified = s.rank;
-        } else {
-          break;
-        }
-      }
-    }
+    final identified = path.identifiedRank(tau);
+    final (mergeRank, mergeKeys) = identical(pbar, wholeBar) ? (identified, keys) : _wholePath(wholeBar, tau);
 
     // Best single view: the crop the model is surest about on its own
     // (highest top-1 non-sink probability), no quality gate (round 217).
@@ -578,17 +676,110 @@ class Scorer {
       nCrops: n,
       ladder: ladder,
       identifiedRank: identified,
-      noneMass: noneMass,
-      pathConflict: pathConflict,
+      noneMass: noneOf(wholeBar),
+      pathConflict: path.conflict,
       bestViewIndex: bestIdx,
       bestViewTaxon: bestTaxon,
       bestViewProb: math.max(0, bestProb),
       fusedEmbedding: fused,
       perCrop: perCropTop,
+      weights: weights,
+      perCropNone: [for (final p in perCropWhole) noneOf(p)],
+      mergeRank: mergeRank,
+      mergeKeys: mergeKeys,
       perCropMass: perCropMass,
       counted: counted,
       pooledTop: this.topK(pbar, 3),
     );
+  }
+
+  static double _maxOf(Float32List p) {
+    var m = 0.0;
+    for (var r = 0; r < p.length; r++) {
+      if (p[r] > m) m = p[r];
+    }
+    return m;
+  }
+
+  /// The identified rank and the ladder keys of [p], as [rollUp], [_pathOf] and
+  /// [_Path.identifiedRank] give them, without the maps of names per rank (round 373). With a
+  /// country list every track ID needs this second path over the whole pack for the merge
+  /// check, and building the maps of tens of thousands of names twice made the pooling half
+  /// as slow again. Same order of the candidates (first row with mass first), same first-wins
+  /// rule on equal masses.
+  (String?, List<String>) _wholePath(Float32List p, double tau) {
+    if (_rankIds == null) _buildRankIds();
+    final ids = _rankIds!, names = _idToKey!, parents = _parentOf!;
+    final acc = [for (var k = 0; k < 7; k++) Float64List(names[k].length)];
+    final order = List.generate(7, (_) => <int>[]);
+    for (var r = 0; r < pack.rows; r++) {
+      final v = p[r];
+      if (v <= 0) continue;
+      for (var k = 0; k < 7; k++) {
+        final id = ids[k][r];
+        if (id < 0) break;
+        if (acc[k][id] == 0) order[k].add(id);
+        acc[k][id] += v;
+      }
+    }
+    final keys = <String>[];
+    String? rank;
+    var reaching = true;
+    var parent = -1;
+    for (var k = 0; k < 7; k++) {
+      var bestId = -1;
+      var best = -1.0;
+      for (final id in order[k]) {
+        if ((k == 0 || parents[k][id] == parent) && acc[k][id] > best) {
+          best = acc[k][id];
+          bestId = id;
+        }
+      }
+      if (bestId < 0) break;
+      keys.add(names[k][bestId]);
+      if (k == 0 && names[0][bestId] == kSinkKingdom) reaching = false;
+      if (reaching && best >= tau) {
+        rank = kRankNames[k];
+      } else {
+        reaching = false;
+      }
+      parent = bestId;
+    }
+    return (rank, keys);
+  }
+
+  /// The consistent top-down path through [masses] ([rollUp]): at every rank the child of the
+  /// taxon chosen one rank up with the most mass. The taxon with the most mass of the rank
+  /// overall is its rival when it lies outside that parent (path_conflict, round 221).
+  _Path _pathOf(List<Map<String, double>> masses) {
+    final path = _Path();
+    var parentKey = '';
+    for (var k = 0; k < 7; k++) {
+      String? bestKey;
+      var best = -1.0;
+      String? argmaxKey;
+      var argmax = -1.0;
+      for (final e in masses[k].entries) {
+        if (e.value > argmax) {
+          argmax = e.value;
+          argmaxKey = e.key;
+        }
+        final isChild = k == 0 || e.key.startsWith('$parentKey|');
+        if (isChild && e.value > best) {
+          best = e.value;
+          bestKey = e.key;
+        }
+      }
+      if (bestKey == null) break;
+      final conflict = argmaxKey != bestKey;
+      if (conflict) path.conflict = true;
+      path.keys.add(bestKey);
+      path.mass.add(best);
+      path.rivalKey.add(conflict ? argmaxKey : null);
+      path.rivalMass.add(conflict ? argmax : 0);
+      parentKey = bestKey;
+    }
+    return path;
   }
 
   static String _speciesDisplay(String key) {

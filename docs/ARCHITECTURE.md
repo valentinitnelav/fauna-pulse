@@ -125,7 +125,9 @@ photo paths). Changing one copy alone causes subtle field bugs
   whose `docs/AGENT_OVERVIEW.md` lists every shared rule. The main pairs: the
   `.fpack` writer `bioclip_export/fpack.py` and `identification/label_pack.dart`
   (plus the fixtures in `test/fauna_pulse/fixtures/`);
-  `fpack.class_probabilities` and `identification/track_fusion.dart`; the naming
+  `fpack.class_probabilities` and `identification/track_fusion.dart`; the pooling
+  of a track ID's crops and the country rule in `track_fusion.dart` and the PC copy
+  `bioclip_export/reproduce_track_conf.py`; the naming
   rule (`tool/model_downloads/README.md`) and the file names the export scripts
   write. File size needs no pair: the app takes model files and name lists up
   to 2 GiB, with no separate limit for detectors (`kMaxModelFileBytes` in

@@ -65,6 +65,14 @@ void main() {
           'pack_id': 'bioclip2_flower_visitors_32fam_v1',
           'pack_rows': 38600,
           'pack_sink_rows': 6,
+          // Round 373: the names were narrowed to a country and its neighbours.
+          'name_list': {
+            'countries': ['DE', 'AT', 'BE', 'CH', 'CZ', 'DK', 'FR', 'LU', 'NL', 'PL', 'SE'],
+            'names': 28276,
+            'scope': 'neighbours',
+            'country': 'DE',
+            'country_from_session': true,
+          },
           'tracks_total': 41,
           'by_identified_rank': {'genus': 40, 'family': 1},
           'no_organism': 0,
@@ -97,6 +105,8 @@ void main() {
     // on Identify organisms), not "Label pack" with every row.
     expect(find.text('Name list'), findsOneWidget);
     expect(find.text('bioclip2_flower_visitors_32fam_v1 (38,594 names)'), findsOneWidget);
+    expect(find.text('Names from'), findsOneWidget);
+    expect(find.text('Germany and its 10 neighbours (28,276 names)'), findsOneWidget);
     expect(find.text('Date run'), findsOneWidget);
     expect(find.text('2026-09-21 10:00'), findsOneWidget);
     expect(find.text('Bombus'), findsOneWidget);

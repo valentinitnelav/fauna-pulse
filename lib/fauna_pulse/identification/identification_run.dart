@@ -401,6 +401,8 @@ class IdentificationRun extends ChangeNotifier {
             flagMinDetConf: prefs.flagMinDetConf,
             flagMinOrderP: prefs.flagMinOrderP,
             dropFactor: prefs.dropFactor,
+            nameListScope: prefs.nameListScope,
+            nameListCountry: prefs.nameListCountry,
             extra: {
               'use_gpu': prefs.useGpu,
               'cpu_threads': prefs.cpuThreads,

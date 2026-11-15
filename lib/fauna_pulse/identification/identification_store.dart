@@ -31,6 +31,7 @@ import '../logging/app_error_hooks.dart' show logSwallowed;
 import '../models/former_model_names.dart' show kFormerModelNames;
 import '../postprocess/csv_cell.dart';
 import 'label_pack.dart';
+import 'name_list_region.dart';
 import 'track_fusion.dart';
 
 /// Base name without extension, safe for use inside other file names.
@@ -388,8 +389,11 @@ Map<String, dynamic> writeOutputs({
   required Map<String, dynamic> settings,
   required String appVersion,
   Map<String, dynamic>? capture,
+  NameListChoice? nameList,
 }) {
   paths.dir.createSync(recursive: true);
+  // Round 373: the countries whose names were on offer, or "all".
+  final listLabel = nameList?.label ?? 'all';
   final targetRank = (settings['target_rank'] as String?) ?? 'family';
   final noneThreshold = (settings['none_threshold'] as num?)?.toDouble() ?? 0.5;
   // Round 212 "suspect visit" thresholds (flags only; nothing is dropped).
@@ -491,6 +495,10 @@ Map<String, dynamic> writeOutputs({
     // can write them in insect-detect-post's place. Empty when the name list has no keys.
     'gbif_species',
     'gbif_species_key',
+    // Round 373: the countries whose names were on offer (the country itself first, joined
+    // with "+"), or "all". Answers made with different lists are not comparable: a shorter
+    // list shares the same 100 % among fewer names.
+    'name_list_countries',
   ];
   // The pack row of every species path. A row that stops above species (a class-list class, or
   // a name the pack builder answers only at genus or family) is never a track ID's species, so
@@ -532,6 +540,10 @@ Map<String, dynamic> writeOutputs({
         for (final r in kRankNames) 'ladder_$r',
         for (final r in kRankNames) 'p_$r',
         'top1_class', // round 266: the classifier's own class (empty for BioCLIP)
+        // Round 373: the crop's weight in the pooling and its "none of these" share, both over
+        // every name of the pack (top1_p is the weight only while no country list narrows).
+        'weight',
+        'none_p',
       ].join(','),
     );
 
@@ -649,6 +661,7 @@ Map<String, dynamic> writeOutputs({
       phoneModel,
       gbifRow == null ? '' : pack.gbifSpecies[gbifRow],
       gbifRow == null ? '' : pack.gbifKeys[gbifRow],
+      listLabel,
     ];
     csv.writeln(row.map(csvCell).join(','));
     for (var i = 0; i < t.crops.length; i++) {
@@ -674,6 +687,8 @@ Map<String, dynamic> writeOutputs({
           for (var k = 0; k < 7; k++) k < f.ladder.length ? f.ladder[k].taxon : '',
           for (var k = 0; k < 7; k++) k < masses.length ? masses[k].toStringAsFixed(4) : '',
           ownClass(f.perCrop[i].rows.first),
+          f.weights[i].toStringAsFixed(4),
+          f.perCropNone[i].toStringAsFixed(4),
         ].map(csvCell).join(','),
       );
     }
@@ -727,6 +742,9 @@ Map<String, dynamic> writeOutputs({
             // table's "Taxonomic tree"; kingdom `none` for a sink row).
             'top1_tree': pack.labels[f.perCrop[i].rows.first].ranks.take(5).toList(),
             'top1_p': double.parse(f.perCrop[i].probs.first.toStringAsFixed(4)),
+            // Round 373: the pooling weight and the "none of these" share over every name.
+            'weight': double.parse(f.weights[i].toStringAsFixed(4)),
+            'none_p': double.parse(f.perCropNone[i].toStringAsFixed(4)),
             if (pack.isClassList) 'top1_class': ownClass(f.perCrop[i].rows.first),
           },
       ],
@@ -747,6 +765,9 @@ Map<String, dynamic> writeOutputs({
     // and Download & import models do (pack_rows alone showed a higher count).
     'pack_sink_rows': pack.sinkRows,
     'pack_class_list': pack.isClassList,
+    // Round 373: the names that were on offer (NameListChoice.toJson); "settings" holds what
+    // was asked for, this what was used.
+    'name_list': (nameList ?? NameListChoice(countries: const [], rowBits: null, names: pack.rows - pack.sinkRows, scope: kScopeAll)).toJson(),
     'settings': settings,
     // Round 216: photo schedule of the recording (null when unknown).
     'capture': capture ?? const {},
@@ -879,6 +900,9 @@ tracks_<name list>.csv columns
   gbif_species, gbif_species_key      the name GBIF accepts for bioclip_species and its species key (text,
                                       also when it is digits only); the same keys as insect-detect-post,
                                       so results join with GBIF data; empty when the name list has no keys
+  name_list_countries                 the countries whose names were on offer (the country itself first,
+                                      joined with "+"), or "all" for the whole name list; answers made with
+                                      different lists are not comparable
 
 crops_<name list>.csv columns
   session_id, track_id, crop_no       the track ID and the crop's number within it (capture order)
@@ -887,13 +911,18 @@ crops_<name list>.csv columns
                                       longer side of the detector box (px, before the margin),
                                       Laplacian sharpness, detector confidence,
                                       padding outside the photo (descriptive only)
-  top1_species, top1_p                the species this crop alone suggests and its probability (= its weight)
+  top1_species, top1_p                the species this crop alone suggests, among the names on offer, and
+                                      its probability
   top1_kingdom .. top1_family         that species' higher ranks (kingdom "none" for a
                                       "none of these" entry)
   agrees                              1 when top1_species falls under the track ID's reported taxon
   counted                             1 when the crop entered the combined answer
   ladder_<rank>, p_<rank>             the track ID's ladder taxa and THIS crop's own Conf. under each
   top1_class                          fixed-class classifiers only: the model's own class behind top1_species
+  weight, none_p                      the crop's weight in the combined answer (its highest probability over
+                                      every name of the list) and its share on the "none of these" entries;
+                                      both are the same for every country choice (weight = top1_p unless a
+                                      country list narrows the names)
 
 phone_during_identification.csv columns (one row per sample; the .jsonl holds the same as records)
   run, time_s, epoch_ms               the run (1, 2, ... per start of Identify or Update results),

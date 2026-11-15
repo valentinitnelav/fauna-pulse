@@ -159,6 +159,7 @@ flutter test integration_test/qnn_benchmark_test.dart -d <device> --no-uninstall
   --dart-define=RUN_BENCH=true   # optional: --dart-define=RUN_SOAK=true
 flutter test integration_test/video_decode_check_test.dart -d <device> --no-uninstall  # video pass (r225; header: clips to push)
 flutter test integration_test/cpu_threads_check_test.dart -d <device> --no-uninstall   # CPU thread timing (r226)
+flutter test integration_test/country_lists_check_test.dart -d <device> --no-uninstall --dart-define=SESSION=<folder> --dart-define=PACK=<file>.fpack --dart-define=MODEL=<file>.tflite # a name list with country lists: header reading time, three country choices scored (same none shares, weights, joins), the Identify page (r373; header: what it needs, PAGE_ONLY)
 flutter test integration_test/thermal_zones_check_test.dart -d <device> --no-uninstall  # which heat sensors the app itself can read on this phone: thermal zones, battery, framework figures (r361)
 flutter test integration_test/catalogue_download_check_test.dart -d <device> --no-uninstall --dart-define=MAX_MB=100 # every file of the download list up to MAX_MB: download, kind, loads (r314; best in the side-by-side .check copy below, Wi-Fi)
 flutter test integration_test/video_import_check_test.dart -d <device> --no-uninstall # first-frame picture, start times, import (r227; uses the video_check clips)

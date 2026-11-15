@@ -391,4 +391,144 @@ void main() {
       expect((read['source'] as Map)['names_file_sha256'], 'ab' * 32);
     });
   });
+
+  // Round 373: a country list narrows the names that are shown; the "none of these" share, the
+  // crops' weights, the drop rule and the merge check keep the numbers over every name.
+  group('country list (round 373)', () {
+    // tinyPack rows: 0 Eristalis tenax, 1 Episyrphus balteatus, 2 Apis mellifera,
+    // 3 Bombus terrestris, 4 the sink row "flower".
+    final bees = Uint8List.fromList([0x0C]); // rows 2 and 3
+    final apisOnly = Uint8List.fromList([0x04]);
+    final everySpecies = Uint8List.fromList([0x0F]);
+
+    test('the rule: the none share stays, the listed species share the rest, the others get 0', () {
+      final whole = Scorer(tinyPack(logitScale: 8));
+      final s = Scorer(tinyPack(logitScale: 8), allowedRows: bees);
+      expect(whole.narrowed, isFalse);
+      expect(s.narrowed, isTrue);
+      final e = unit([1, 0.2, 0.5, 0.3, 0.6]); // mostly the hoverfly, some bee, some flower
+      final l = s.logits(e);
+      final p = whole.softmax(l), q = s.narrow(l, p);
+      expect(q[4], p[4], reason: 'the sink row keeps its value');
+      expect(q[0], 0);
+      expect(q[1], 0);
+      expect(q[2] + q[3], closeTo(1 - p[4], 1e-6));
+      expect(q[2] / q[3], closeTo(p[2] / p[3], 1e-4), reason: 'the listed species keep their ratio');
+      expect(q.fold<double>(0, (a, b) => a + b), closeTo(1, 1e-6));
+      // Masking before the softmax instead would raise the none share as the list shrinks.
+      final masked = p[4] / (p[4] + p[2] + p[3]);
+      expect(masked, greaterThan(p[4] * 2));
+      // Without a list, narrow returns the same object.
+      expect(identical(whole.narrow(l, p), p), isTrue);
+    });
+
+    test('a list whose names all score far below the best name still shares the rest', () {
+      final pack = tinyPack(logitScale: 2000);
+      final s = Scorer(pack, allowedRows: bees);
+      final l = s.logits(unit([1, 0, 0.02, 0.01, 0])); // the bees' whole-pack probabilities are 0
+      final p = s.softmax(l), q = s.narrow(l, p);
+      expect(p[2], 0);
+      expect(p[3], 0);
+      expect(q[2].isNaN || q[3].isNaN, isFalse);
+      expect(q[2] + q[3], closeTo(1, 1e-6));
+      expect(q[2], greaterThan(q[3]));
+    });
+
+    test('a list without a name of the pack, or a class list, never narrows', () {
+      expect(Scorer(tinyPack(), allowedRows: Uint8List.fromList([0x00])).narrowed, isFalse);
+      expect(Scorer(tinyPack(), allowedRows: Uint8List.fromList([0x10])).narrowed, isFalse, reason: 'only the sink row');
+      expect(Scorer(tinyPack(), allowedRows: Uint8List(0)).narrowed, isFalse, reason: 'too few bits');
+      final classes = LabelPack.parseBytes(File('test/fauna_pulse/fixtures/tiny_classes.fpack').readAsBytesSync());
+      expect(Scorer(classes, allowedRows: Uint8List.fromList([0x01])).narrowed, isFalse);
+    });
+
+    List<CropEmbedding> hoverflyTrack() => [
+      crop([1, 0.1, 0.4, 0.2, 0.5], jpeg: 'a.jpg'),
+      crop([0.9, 0.3, 0.5, 0.1, 0.2], jpeg: 'b.jpg'),
+      crop([1, 0.9, 1, 0.9, 0.95], jpeg: 'c.jpg'), // nearly the same score for every name: a low weight
+    ];
+
+    test('fuse: the none shares, weights, drop rule and merge embedding are the same for every list', () {
+      final pack = tinyPack(logitScale: 8);
+      final whole = Scorer(pack).fuse(hoverflyTrack(), dropFactor: 1.5);
+      for (final bits in [bees, apisOnly, everySpecies]) {
+        final f = Scorer(pack, allowedRows: bits).fuse(hoverflyTrack(), dropFactor: 1.5);
+        expect(f.noneMass, whole.noneMass, reason: '$bits');
+        expect(f.perCropNone, whole.perCropNone);
+        expect(f.weights, whole.weights);
+        expect(f.counted, whole.counted);
+        expect(f.fusedEmbedding, whole.fusedEmbedding);
+        expect(f.mergeRank, whole.identifiedRank);
+        expect(f.mergeKeys, [for (final s in whole.ladder) s.key]);
+        expect(f.headline == 'no organism', whole.headline == 'no organism');
+      }
+      expect(whole.counted, contains(false), reason: 'the drop rule is at work in this track');
+      expect(whole.mergeRank, whole.identifiedRank);
+      expect(whole.weights, [for (final t in whole.perCrop) t.probs.first], reason: 'whole list: the weight is the top-1');
+    });
+
+    test('the merge path of a narrowed track ID is the whole-list ladder, on many random track IDs', () {
+      // Also on the fixture with rows that stop above species and a sink row (a real pack's shape).
+      final packs = [
+        tinyPack(logitScale: 3),
+        tinyPack(logitScale: 12),
+        LabelPack.parseBytes(File('test/fauna_pulse/fixtures/tiny_pack_regions.fpack').readAsBytesSync()),
+      ];
+      final rnd = math.Random(21);
+      var identified = 0, sinkWins = 0;
+      for (final pack in packs) {
+        final whole = Scorer(pack);
+        final narrowed = Scorer(pack, allowedRows: Uint8List.fromList([0x06])); // rows 1 and 2
+        expect(narrowed.narrowed, isTrue);
+        for (var t = 0; t < 300; t++) {
+          final crops = [
+            for (var c = 0; c < 1 + t % 3; c++)
+              CropEmbedding(jpeg: 'x', trackId: t, vector: unit([for (var d = 0; d < pack.dim; d++) rnd.nextDouble() * 2 - 1])),
+          ];
+          for (final tau in [0.5, 0.6, 0.9]) {
+            final w = whole.fuse(crops, tau: tau), n = narrowed.fuse(crops, tau: tau);
+            expect(n.mergeKeys, [for (final s in w.ladder) s.key], reason: 'track $t');
+            expect(n.mergeRank, w.identifiedRank, reason: 'track $t, tau $tau');
+            expect(n.noneMass, w.noneMass);
+            if (w.identifiedRank != null) identified++;
+            if (w.ladder.first.key == 'none') sinkWins++;
+          }
+        }
+      }
+      expect(identified, greaterThan(300), reason: 'the cases cover identified track IDs');
+      expect(sinkWins, greaterThan(30), reason: 'and track IDs whose best kingdom is the sink');
+    });
+
+    test('fuse: the ladder, each crop\'s candidates and the best view follow the list', () {
+      final pack = tinyPack(logitScale: 8);
+      final whole = Scorer(pack).fuse(hoverflyTrack());
+      expect(whole.stepAt('order')!.taxon, 'Diptera');
+      final f = Scorer(pack, allowedRows: bees).fuse(hoverflyTrack());
+      expect(f.stepAt('order')!.taxon, 'Hymenoptera');
+      expect(f.stepAt('species')!.taxon, 'Apis mellifera');
+      expect(f.bestViewTaxon, 'Apis mellifera');
+      // The animal ranks share what the none rows leave, as with the whole list.
+      expect(f.ladder.first.taxon, 'Animalia');
+      expect(f.ladder.first.mass, closeTo(1 - f.noneMass, 1e-6));
+      expect(f.ladder.first.mass, closeTo(whole.ladder.first.mass, 1e-6));
+      for (var i = 0; i < f.perCrop.length; i++) {
+        for (final row in f.perCrop[i].rows) {
+          if (f.perCrop[i].probs[f.perCrop[i].rows.indexOf(row)] > 0) expect(row, isIn([2, 3, 4]), reason: 'crop $i');
+        }
+        // A crop's own masses under the ladder taxa come from the narrowed numbers too.
+        expect(f.perCropMass[i].first, closeTo(1 - f.perCropNone[i], 1e-6));
+      }
+      // A shorter list shares the same 100 % among fewer names: the percentages rise.
+      final one = Scorer(pack, allowedRows: apisOnly).fuse(hoverflyTrack());
+      expect(one.stepAt('species')!.mass, closeTo(1 - one.noneMass, 1e-6));
+      expect(one.stepAt('species')!.mass, greaterThan(f.stepAt('species')!.mass));
+      // Every species on offer gives the whole-list answer.
+      final all = Scorer(pack, allowedRows: everySpecies).fuse(hoverflyTrack());
+      expect([for (final s in all.ladder) s.key], [for (final s in whole.ladder) s.key]);
+      for (var k = 0; k < all.ladder.length; k++) {
+        expect(all.ladder[k].mass, closeTo(whole.ladder[k].mass, 1e-6));
+      }
+      expect(all.identifiedRank, whole.identifiedRank);
+    });
+  });
 }

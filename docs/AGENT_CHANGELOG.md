@@ -10407,3 +10407,29 @@ test timed out, it needs 17 s of its 30 s limit alone, with or without this roun
 Not checked on a phone. Open: the country choice in the scoring, the country from the session
 position, then the catalogue.
 
+## Round 373 (2026-11-15): a country list narrows the names of a name list; the country is chosen by hand
+
+Asked: for name lists that carry country lists, let Identify choose among the names GBIF lists
+in one country, with or without its neighbours, without changing the "none of these" share, the
+crops' weights or the merge. The rule (only what is shown is narrowed) was decided in
+fauna-pulse-models on 2026-10-28; its reason and measurement are in `track_fusion.dart`. Found
+while checking that hand-off against today's code: the merge check also compares the names of
+two track IDs, which a country list changes, so it now reads the whole-list answer; and
+`top1_p` was both the shown number and the weight, so the crops table got `weight` and `none_p`.
+Decisions (owner): a warning below 5,000 names or 80 % coverage, and the default choice falls
+back to the whole list below 5,000 names (judgement, not fitted). Left out: the control on the
+videos' Identification card (no name list at hand there) and a searchable country list. Speed:
+the first version built the name tree twice per track ID (1.5 times slower with a long list); a
+lean second pass removed that, and a country list is now a little faster than the whole list.
+Checked: unit and widget tests (the rule, the list choice, an acceptance test where only the
+names decide the merge, 2,700 random merge paths, 360 px); a real session of 2,301 track IDs
+with local copies of the lists: version 2 reproduces a phone's own tables of round 360 exactly,
+version 3's whole list equals version 2, and Germany with neighbours and Malta alone keep every
+none share, weight, flag and join (also with merging on) while the shown name changes for 95
+and 1,514 track IDs; on a Redmi Note 9S the three tables are byte for byte the laptop's (whole
+list 259 s, Germany with neighbours 235 s, memory peak 790 MB, header read 0.4 to 0.6 s in a
+debug build) and the page shows the choice (`country_lists_check_test.dart`); the whole suite.
+Not checked: whether a country list names insects better (no expert names were used). Open: the
+country from the session position (needs a borders file made in fauna-pulse-models), the
+catalogue, and the PC copy of the rule (`reproduce_track_conf.py`).
+

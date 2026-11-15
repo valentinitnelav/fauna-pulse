@@ -97,6 +97,10 @@ A model can identify only with a name list made for it:
   without one.
 - The app refuses a list made for another model.
 
+A name list can also carry **country lists**: which of its species GBIF (the Global Biodiversity
+Information Facility, gbif.org) has records of in which country. With such a list the model can
+choose among the names of one country only ([Names of one country](#names-of-one-country)).
+
 ### Download & import models
 
 Open it from **Home**: **AI models** in the bottom bar, or **Menu** → **Download & import
@@ -264,6 +268,48 @@ have no track IDs. Run **Find animals in photos** first. When the photos are at 
 apart, it also finds the track IDs, by itself after each run, and the crops are then combined
 per track ID. Photos further apart have no track IDs, so their boxes are identified one by one.
 
+### Names of one country
+
+A name list for a large region holds many species that do not live where the camera stood. When
+the chosen name list carries country lists, **Names of one country** appears under **Model and
+name list**, and the model chooses only among the species recorded in one country:
+
+| Control | Default | Choices |
+|---|---|---|
+| **Names from** | The country and its neighbours | **The country and its neighbours**, **The country only**, **The whole name list** |
+| **Country** | Where the session was recorded | or one country chosen by hand (listed with its number of names) |
+
+Finding the country from the session's position is not in the app yet. Until then, choose the
+country by hand; without one the whole name list is used.
+
+A line under the two boxes says how many names a run will choose from, and why the whole list
+is used when it is:
+
+- the session's country is not known;
+- the name list has no names for the country;
+- with both boxes at their defaults, the country and its neighbours have under 5,000 names.
+
+A country or "The country only" chosen by hand is used as it is. An amber line then warns when:
+
+- the list on offer has under 5,000 names: GBIF holds few records from there, so species that
+  live there are probably missing, and the model then has to pick a wrong name;
+- the name list holds under 80 % of the country's own GBIF list: it was made for another region.
+
+Good to know:
+
+- The lists follow where people observe and upload records. They are dense in Europe and North
+  America and thin in much of the tropics, Africa and Asia. Species do not stop at borders
+  either. When unsure, use the neighbours or the whole name list.
+- A neighbour shares a land border with the country, or lies at most 100 km away over the sea.
+- Results made with different choices cannot be compared directly: a shorter list shares the
+  same 100 % among fewer names, so its percentages are higher. The results say which names were
+  used: the **Names from** row on the results screen and `name_list_countries` in
+  `tracks_<pack>.csv`.
+- "No organism", the weight of each crop and the joining of track IDs do not depend on the
+  choice ([How the answer is computed](#how-the-answer-is-computed)).
+- Whether a country list names insects better than the whole list is not tested yet
+  ([Validation status](#how-the-answer-is-computed)).
+
 ### Buttons
 
 | Button | What it does |
@@ -272,7 +318,7 @@ per track ID. Photos further apart have no track IDs, so their boxes are identif
 | **Cancel (keeps what is done)** | Stops the run and keeps everything done so far. |
 | **Continue / re-run** | Shown in place of **Start** once crops are stored. Goes on where the run stopped, then scores everything again. On a session that did not change, this takes seconds. |
 | **Stop and leave** | When you leave the screen during a run (Back), the app asks *Identification is still running*. **Stop and leave** stops after the current photo and keeps what is done; **Cancel** stays on the screen. |
-| **Update results** | Repeats only the last step (seconds): the stored model output is compared with a different name list, for example one for a single country, without running the model again. Shown when stored model output exists and the track IDs did not change. |
+| **Update results** | Repeats only the last step (seconds): the stored model output is compared with a different name list, or with the names of another country, without running the model again. Shown when stored model output exists and the track IDs did not change. |
 | **Test speed** | In the Run section. Measures the seconds per crop on this phone with the current settings, so you can compare GPU on or off and thread counts in about a minute each (a few minutes on an older phone's CPU). |
 | **View results** | Opens the results ([next section](#read-the-results)). |
 | **Share results (CSV file)** | Under **Last run**. Shares the per-track-ID table. |
@@ -695,6 +741,22 @@ some keys are digits only.
    (`p_max_<rank>`), the agreeing-crops mean (`p_agree_<rank>`) and the agreement share
    (`agree_<rank>`), plus every crop's own values and its `counted` flag in `crops_<pack>.csv`.
 
+**With a country list** (round 373), steps 3 and 4 keep two sets of numbers:
+
+- *Over every name of the list:* each crop's weight, the crops that are left out, the share of
+  the "none of these" entries (per crop and per track ID, so also "no organism"), the vector of
+  the merge check and the names the merge check compares. None of these changes with the country.
+- *Over the names on offer:* what is shown, that is each crop's best names, the ladder, the
+  identified rank and the best single view. A species outside the country list gets 0. The
+  species in it share what the "none of these" entries leave, in the proportions of their scores.
+
+Why not simply remove the other names before the probabilities are computed: the "none of
+these" share would then rise as the list gets shorter, although the picture is the same. On 784
+crops of smartphone time-lapse photos, flower crops without an insect were flagged "no organism"
+in 0 % of the cases with the whole Europe list, 0.5 % with Germany's list and 8.7 % with Malta's
+310 names; with the rule above it is 0 % for every list. The idea of a regional list is from
+BioCLIP's documentation ("Geo-Restricted Taxon List Predictions").
+
 </details>
 
 <details>
@@ -755,6 +817,15 @@ overall result. A full report is in preparation.
 - **"No organism": not tuned yet.** The "none of these" entries rarely reach their threshold, so
   a picture without an animal usually gets the name Insecta or an insect order (see the worked
   examples above).
+- **Country lists: not tested yet.** Whether choosing among one country's names gives better
+  names than the whole list has not been measured against the experts' names. What was counted on
+  a session made from the photos above (2,301 track IDs: 1,276 insects and 1,025 squares without
+  an insect): with the names of Germany and its neighbours (28,276 of 34,978) the shown name
+  changed for 95 track IDs (76 of them reached a deeper rank, 19 a less deep one), and with the
+  310 names of Malta alone for 1,514 (791 deeper). So a short list changes most answers and
+  pushes them to deeper ranks, which is why the app warns about it. The share of "none of
+  these", the weights, the "no organism" flags and the joined track IDs were the same for every
+  choice, as designed.
 - **The calibration temperature 1.0:** no calibration yet. Dussert et al. fit one temperature on
   a labelled test set and keep it; the pack format carries the field.
 

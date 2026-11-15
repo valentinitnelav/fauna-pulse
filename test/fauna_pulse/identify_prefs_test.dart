@@ -1,4 +1,5 @@
-// IdentifyPrefs persistence (round 262: the "Square crops" switch).
+// IdentifyPrefs persistence (round 262: the "Square crops" switch; round 373: the name list's
+// country settings).
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,5 +19,35 @@ void main() {
     expect(back.squareCrops, isFalse);
     expect(back.margin, closeTo(0.1, 1e-9));
     expect(back.toJson()['square_crops'], isFalse);
+  });
+
+  test('round 373: the country settings default to the session\'s country with its neighbours, survive save and load', () async {
+    SharedPreferences.setMockInitialValues({});
+    final p = await IdentifyPrefs.load();
+    expect(p.nameListScope, 'neighbours');
+    expect(p.nameListCountry, '', reason: 'empty = the country of the session');
+    expect(p.toJson(), containsPair('name_list_scope', 'neighbours'));
+    expect(p.toJson(), containsPair('name_list_country', ''));
+    p
+      ..nameListScope = 'country'
+      ..nameListCountry = 'MT';
+    await p.save();
+    final back = await IdentifyPrefs.load();
+    expect(back.nameListScope, 'country');
+    expect(back.nameListCountry, 'MT');
+    expect(back.toJson(), p.toJson());
+  });
+
+  test('round 373: a saved value this version does not know, or of another type, gives the default', () async {
+    for (final saved in <Map<String, Object>>[
+      {'identify_name_list_scope': 'continent', 'identify_name_list_country': 'Germany'},
+      {'identify_name_list_scope': 3, 'identify_name_list_country': true},
+      {'identify_name_list_scope': '', 'identify_name_list_country': 'de'},
+    ]) {
+      SharedPreferences.setMockInitialValues(saved);
+      final p = await IdentifyPrefs.load();
+      expect(p.nameListScope, 'neighbours', reason: '$saved');
+      expect(p.nameListCountry, '', reason: '$saved');
+    }
   });
 }

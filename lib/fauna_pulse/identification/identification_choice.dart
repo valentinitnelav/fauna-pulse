@@ -66,6 +66,7 @@ class IdentificationChoice {
     models = await IdentificationAssets.listModels();
     packs = await IdentificationAssets.listPacks();
     headers = await readHeaders(packs);
+    _regions.clear();
     model = models.where((f) => f.path == model?.path).firstOrNull ?? models.firstOrNull;
     _fitPack();
   }
@@ -75,6 +76,16 @@ class IdentificationChoice {
   List<File> get modelPacks => listsFor(model, packs, headers);
 
   Map<String, dynamic>? get packHeader => pack == null ? null : headers[pack!.path];
+
+  /// Round 373: the chosen name list's country lists (null: it has none), decoded once per
+  /// file and kept, because a page rebuilds often and the lists are a megabyte of text.
+  PackRegions? get packRegions {
+    final p = pack, h = packHeader;
+    if (p == null || h == null || isClassListHeader(h)) return null;
+    return _regions.putIfAbsent(p.path, () => PackRegions.tryParse(h['regions'], (h['rows'] as num?)?.toInt() ?? 0));
+  }
+
+  final _regions = <String, PackRegions?>{};
 
   /// A fixed-class classifier's list (round 266), not a label pack.
   bool get isClassList => isClassListHeader(packHeader);

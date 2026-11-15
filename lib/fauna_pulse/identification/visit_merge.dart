@@ -6,7 +6,8 @@
 // [gapMs] after the previous one ended is joined to it when
 //   1. the identifications are compatible (same taxon at the shallower of
 //      the two identified ranks, e.g. "Apidae" then "Bombus"), neither is
-//      "no organism";
+//      "no organism"; read from the answers over every name of the pack, also
+//      when a country list narrows what is shown (round 373);
 //   2. the two visits' fused embeddings are similar: cosine >= [minCos]
 //      (the strong signal: "looks like the same animal"; the fused embedding
 //      is the certainty-weighted mean embedding that track_fusion.dart forms
@@ -62,12 +63,13 @@ bool canMergeVisits(
   final gap = b.startMs! - a.endMs!;
   if (gap < 0 || gap > gapMs) return false;
   final fa = a.fused, fb = b.fused;
-  if (fa.identifiedRank == null || fb.identifiedRank == null) return false;
+  // Round 373: the answers over every name of the pack (mergeRank, mergeKeys), not the ones a
+  // country list narrowed, so the country choice never changes which track IDs are joined.
+  if (fa.mergeRank == null || fb.mergeRank == null) return false;
   if (fa.noneMass > noneThreshold || fb.noneMass > noneThreshold) return false;
-  final ia = kRankNames.indexOf(fa.identifiedRank!), ib = kRankNames.indexOf(fb.identifiedRank!);
-  final rank = kRankNames[ia < ib ? ia : ib];
-  final sa = fa.stepAt(rank), sb = fb.stepAt(rank);
-  if (sa == null || sb == null || sa.key != sb.key) return false;
+  final ia = kRankNames.indexOf(fa.mergeRank!), ib = kRankNames.indexOf(fb.mergeRank!);
+  final k = ia < ib ? ia : ib;
+  if (k >= fa.mergeKeys.length || k >= fb.mergeKeys.length || fa.mergeKeys[k] != fb.mergeKeys[k]) return false;
   if (cosine(fa.fusedEmbedding, fb.fusedEmbedding) < minCos) return false;
   final pa = meanRelativeBoxSide(a.crops), pb = meanRelativeBoxSide(b.crops);
   if (pa <= 0 || pb <= 0) return false;

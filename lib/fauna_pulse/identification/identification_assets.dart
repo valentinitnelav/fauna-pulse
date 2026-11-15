@@ -20,6 +20,7 @@ import '../models/model_choice_keys.dart';
 import 'crop_worker.dart' show kDefaultCropMargin;
 import 'identification_store.dart' show modelIdOf, modelKey, stemOf;
 import 'label_pack.dart' show isClassListHeader;
+import 'name_list_region.dart';
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
 
 final RegExp _safeName = RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$');
@@ -137,6 +138,10 @@ class IdentifyPrefs {
   double flagMinOrderP;
   // Round 219: leave out crops far less certain than the surest one.
   double dropFactor;
+  // Round 373 (name_list_region.dart): which names of a name list with country lists a run
+  // chooses from, and for which country ('' = the country of the session's position).
+  String nameListScope;
+  String nameListCountry;
 
   IdentifyPrefs({
     this.modelName,
@@ -161,6 +166,8 @@ class IdentifyPrefs {
     this.flagMinDetConf = 0.2,
     this.flagMinOrderP = 0.5,
     this.dropFactor = 10,
+    this.nameListScope = kScopeNeighbours,
+    this.nameListCountry = '',
   });
 
   static const _kModel = kIdentifyModelPref;
@@ -185,6 +192,14 @@ class IdentifyPrefs {
   static const _kFlagConf = 'identify_flag_min_det_conf';
   static const _kFlagOrderP = 'identify_flag_min_order_p';
   static const _kDrop = 'identify_drop_factor';
+  static const _kListScope = 'identify_name_list_scope';
+  static const _kListCountry = 'identify_name_list_country';
+
+  /// A saved "Names from" value this app version knows, else the default.
+  static String _scope(Object? saved) => saved is String && kNameListScopes.contains(saved) ? saved : kScopeNeighbours;
+
+  /// A saved country code (two capital letters), else '' (the session's country).
+  static String _country(Object? saved) => saved is String && RegExp(r'^[A-Z]{2}$').hasMatch(saved) ? saved : '';
 
   /// Per-model measured speed (ms per crop) from the last run on this phone,
   /// for the pre-flight time estimate.
@@ -216,6 +231,8 @@ class IdentifyPrefs {
       flagMinDetConf: p.getDouble(_kFlagConf) ?? 0.2,
       flagMinOrderP: p.getDouble(_kFlagOrderP) ?? 0.5,
       dropFactor: p.getDouble(_kDrop) ?? 10,
+      nameListScope: _scope(p.get(_kListScope)),
+      nameListCountry: _country(p.get(_kListCountry)),
     );
   }
 
@@ -251,6 +268,8 @@ class IdentifyPrefs {
     await p.setDouble(_kFlagConf, flagMinDetConf);
     await p.setDouble(_kFlagOrderP, flagMinOrderP);
     await p.setDouble(_kDrop, dropFactor);
+    await p.setString(_kListScope, nameListScope);
+    await p.setString(_kListCountry, nameListCountry);
   }
 
   /// Echoed into the identify_start record and the summary rows.
@@ -277,6 +296,8 @@ class IdentifyPrefs {
     'flag_min_det_conf': flagMinDetConf,
     'flag_min_order_p': flagMinOrderP,
     'drop_factor': dropFactor,
+    'name_list_scope': nameListScope,
+    'name_list_country': nameListCountry,
   };
 }
 

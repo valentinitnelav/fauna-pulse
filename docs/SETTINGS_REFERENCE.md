@@ -1038,6 +1038,32 @@ were saved only at Start).
 
 </details>
 
+## Names of one country (Identify organisms screen)
+
+Shown under **Model and name list** when the chosen name list carries country lists (which of
+its species GBIF has records of in which country). The model then chooses only among the names
+of one country. Stored on the phone as `identify_name_list_scope` and
+`identify_name_list_country`, echoed into every run's settings; the results say which names were
+used (**Names from** on the results screen, `name_list_countries` and `name_list` in the files).
+
+| Setting | Default | Meaning |
+|---|---|---|
+| **Names from** | The country and its neighbours | **The country and its neighbours**: the species recorded in the country or in a country next to it (a shared land border, or at most 100 km of sea between them). The default, because species do not stop at borders and some countries have few records. **The country only**: its own list. **The whole name list**: every name, countries ignored. |
+| **Country** | Where the session was recorded | Or one country chosen by hand; each is listed with its number of names. Greyed with **The whole name list**. Finding the country from the session's position is not in the app yet: until then the whole list is used unless a country is chosen by hand. |
+
+The whole list is also used, with the reason on the screen, when the name list has no names for
+the country, and when both settings are at their defaults and the country with its neighbours
+has under 5,000 names. A choice made by hand is used as it is. An amber line warns when the
+list on offer has under 5,000 names (GBIF holds few records from there, so species that live
+there are probably missing and the model then has to pick a wrong name), or when the name list
+holds under 80 % of the country's own GBIF list (it was made for another region). Both numbers
+are the developers' judgement, not fitted values.
+
+The share of the "none of these" entries, the crops' weights and the joining of track IDs are
+computed over the whole name list, so they do not change with these settings; the names and
+their percentages do. Method and limits: [IDENTIFICATION.md](IDENTIFICATION.md), *Names of one
+country*.
+
 ## Identification (Identify organisms screen → Advanced settings)
 
 These settings belong to the identification job, not to a recording. They are stored on the

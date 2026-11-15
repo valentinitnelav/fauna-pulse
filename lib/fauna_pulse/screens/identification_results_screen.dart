@@ -46,14 +46,17 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../identification/country_names.dart';
 import '../identification/crop_worker.dart' show kDefaultCropMargin, planCrop;
 import '../identification/label_pack.dart' show kRankNames, kSinkKingdom;
+import '../identification/name_list_region.dart';
 import '../identification/taxa_table.dart';
 import '../logging/app_error_hooks.dart';
 import '../postprocess/video_tracker.dart' show VideoTracker;
 import '../widgets/setting_help.dart';
 import '../widgets/home_button.dart';
 import 'identification_choice_fields.dart' show thousands;
+import 'name_list_region_fields.dart' show countriesInWords;
 
 const _cellStyle = TextStyle(color: Colors.white, fontSize: 13);
 const _dimCellStyle = TextStyle(color: Colors.white54, fontSize: 13);
@@ -711,9 +714,26 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
     // without it in their settings show the inner id.
     final packFile = s['settings'] is Map ? (s['settings'] as Map)['pack'] : null;
     final listName = packFile is String && packFile.isNotEmpty ? packFile : '${s['pack_id']}';
+    // Round 373: the countries whose names were on offer, when a country list was used or
+    // asked for (results made with another choice are not comparable).
+    final nameList = s['name_list'] is Map ? (s['name_list'] as Map) : const {};
+    final countries = [for (final c in (nameList['countries'] as List?) ?? const []) '$c'];
+    final wholeReason = switch (nameList['whole_list_reason']) {
+      kWholeNoCountry => 'the session\'s country is not known',
+      kWholeNotInList => 'the list has no names for ${countryName('${nameList['country']}')}',
+      kWholeShortList => 'few GBIF records from ${countryName('${nameList['country']}')} and its neighbours',
+      _ => null,
+    };
     return [
       _kv('Model', '${s['model_id']}'),
       _kv(classList ? 'Class list' : 'Name list', '$listName$count'),
+      if (countries.isNotEmpty)
+        _kv(
+          'Names from',
+          '${countriesInWords(countries, scope: '${nameList['scope']}')} (${thousands((nameList['names'] as num?) ?? 0)} names)',
+        )
+      else if (wholeReason != null)
+        _kv('Names from', 'the whole name list ($wholeReason)'),
       _kv('Date run', when),
       _kv(
         'Track IDs',

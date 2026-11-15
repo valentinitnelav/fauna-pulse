@@ -44,6 +44,7 @@ import '../widgets/dialog_title.dart';
 import 'identification_choice_fields.dart';
 import 'identification_results_screen.dart';
 import 'identify_settings_fields.dart';
+import 'name_list_region_fields.dart';
 import 'models_screen.dart';
 import 'video_analysis_screen.dart';
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
@@ -712,6 +713,16 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         }
       },
     ),
+    // Round 373: a name list with country lists can be narrowed to one country's names.
+    if (_choice.packRegions case final regions?) ...[
+      const SizedBox(height: 16),
+      NameListRegionFields(
+        prefs: prefs,
+        regions: regions,
+        packNames: ((_packHeader?['rows'] as num?) ?? 0).toInt() - ((_packHeader?['sink_rows'] as num?) ?? 0).toInt(),
+        onEdit: _edit,
+      ),
+    ],
   ];
 
   /// Round 256: kept video frames that are not saved yet (the Video screen
@@ -890,8 +901,8 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
               _buttonNote(
                 'Update results',
                 'recomputes the results in seconds from the stored model answers, without running the '
-                    'model again: use it after changing the name list or any threshold, merge or suspect '
-                    'setting.',
+                    'model again: use it after changing the name list, the country of its names or any '
+                    'threshold, merge or suspect setting.',
               ),
             if (_summaries.isNotEmpty) _buttonNote('View results', 'opens the newest results of this session.'),
           ],

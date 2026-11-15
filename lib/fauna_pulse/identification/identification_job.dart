@@ -33,6 +33,7 @@ import '../models/field_notes.dart' show deviceNameOf, phoneModelOf;
 import '../postprocess/post_detector.dart' show PostDetector;
 import '../postprocess/video_tracker.dart' show KeepFramesSettings, VideoTracker;
 import 'crop_planner.dart';
+import 'name_list_region.dart';
 import 'crop_worker.dart';
 import 'identification_store.dart';
 import 'identify_phone_log.dart';
@@ -102,6 +103,10 @@ class IdentifyRunSettings {
   /// Round 219: crops whose certainty is below the surest crop's divided by
   /// this are left out of the pooled answer (<= 1: every crop counts).
   final double dropFactor;
+
+  /// Round 373: the names a run chooses from (name_list_region.dart; '' = the session's country).
+  final String nameListScope;
+  final String nameListCountry;
   final int batchSize;
   final Map<String, dynamic> extra;
 
@@ -129,6 +134,8 @@ class IdentifyRunSettings {
     this.flagMinDetConf = 0.2,
     this.flagMinOrderP = 0.5,
     this.dropFactor = 10,
+    this.nameListScope = kScopeNeighbours,
+    this.nameListCountry = '',
     this.batchSize = 8,
     this.extra = const {},
   });
@@ -157,6 +164,8 @@ class IdentifyRunSettings {
     'flag_min_det_conf': flagMinDetConf,
     'flag_min_order_p': flagMinOrderP,
     'drop_factor': dropFactor,
+    'name_list_scope': nameListScope,
+    'name_list_country': nameListCountry,
     ...extra,
   };
 }
@@ -734,6 +743,20 @@ class IdentificationJob {
     return s.finish(fused, modelId: modelId, appVersion: appVersion);
   }
 
+  /// The names a scoring chooses from (round 373), from its [settings] and the session.
+  /// Results made with another country choice are not comparable, so the files say which
+  /// one was used (`name_list` in the summary, `name_list_countries` in the tracks table).
+  static NameListChoice nameListOf(LabelPack pack, Map<String, dynamic> settings, {String? sessionCountry}) {
+    final scope = settings['name_list_scope'], country = settings['name_list_country'];
+    return resolveNameList(
+      pack.isClassList ? null : pack.regions,
+      packNames: pack.rows - pack.sinkRows,
+      scope: scope is String && kNameListScopes.contains(scope) ? scope : kScopeNeighbours,
+      country: country is String ? country : '',
+      sessionCountry: sessionCountry,
+    );
+  }
+
   /// Isolates for the fusion when the "Cores for combining results" setting is 0 (automatic):
   /// [scoringWorkersFor] with this phone's processors and memory. One for small sessions, where
   /// a worker's start costs more than it saves.
@@ -843,6 +866,7 @@ class _Scoring {
   final int? visitsRunId;
   final KeepFramesSettings? keep;
   final Scorer scorer;
+  final NameListChoice nameList;
   final double tau;
   final double dropFactor;
 
@@ -865,6 +889,7 @@ class _Scoring {
     required this.visitsRunId,
     required this.keep,
     required this.scorer,
+    required this.nameList,
     required this.tau,
     required this.dropFactor,
   });
@@ -976,6 +1001,7 @@ class _Scoring {
     for (final r in records) {
       (groups[r.trackId == null ? 'crop:${r.key}' : 'track:${r.trackId}'] ??= []).add(r);
     }
+    final nameList = IdentificationJob.nameListOf(pack, settings);
     return _Scoring(
       sessionDir: sessionDir,
       packFile: packFile,
@@ -994,7 +1020,8 @@ class _Scoring {
       photoDurationS: photoDurationS,
       visitsRunId: visitsRunId,
       keep: keep,
-      scorer: Scorer(pack),
+      scorer: Scorer(pack, allowedRows: nameList.rowBits),
+      nameList: nameList,
       tau: (settings['tau'] as num?)?.toDouble() ?? 0.6,
       dropFactor: (settings['drop_factor'] as num?)?.toDouble() ?? 10,
     );
@@ -1060,14 +1087,14 @@ class _Scoring {
     try {
       shared.asTypedList(n).setAll(0, pack.matrix);
       final light = pack.forWorker();
-      final tau = this.tau, dropFactor = this.dropFactor, address = shared.address;
+      final tau = this.tau, dropFactor = this.dropFactor, address = shared.address, allowed = nameList.rowBits;
       final parts = List<List<FusedTrack>?>.filled(jobs.length, null);
       var next = 0;
       Future<void> runner() async {
         while (next < jobs.length) {
           final i = next++;
           final (c, v) = jobs[i];
-          parts[i] = await _fuseChunk(light, address, c, v, tau, dropFactor, progress, total);
+          parts[i] = await _fuseChunk(light, address, allowed, c, v, tau, dropFactor, progress, total);
         }
       }
 
@@ -1080,10 +1107,11 @@ class _Scoring {
 
   /// One worker (a plain function, see [IdentificationJob._scoreIn] for why not a closure here).
   /// [matrixAddress] is the scoring isolate's native copy of the pack's matrix, valid until the
-  /// worker returns.
+  /// worker returns; [allowedRows] the rows of the country list (round 373), null = all.
   static Future<List<FusedTrack>> _fuseChunk(
     LabelPack light,
     int matrixAddress,
+    Uint8List? allowedRows,
     List<List<EmbeddingRecord>> groups,
     Float32List vectors,
     double tau,
@@ -1094,7 +1122,7 @@ class _Scoring {
     final dim = light.dim;
     final pack = light.withMatrix(ffi.Pointer<ffi.Float>.fromAddress(matrixAddress).asTypedList(light.rows * dim));
     return fuseTracks(
-      Scorer(pack),
+      Scorer(pack, allowedRows: allowedRows),
       groups,
       [for (var j = 0; j < vectors.length ~/ dim; j++) Float32List.sublistView(vectors, j * dim, (j + 1) * dim)],
       tau: tau,
@@ -1159,6 +1187,7 @@ class _Scoring {
       phoneModel: phoneModel,
       tracks: scored,
       settings: settings,
+      nameList: nameList,
       appVersion: appVersion,
       capture: {
         'photo_step_s': keep?.stepSeconds ?? photoStepS,

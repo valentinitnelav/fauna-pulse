@@ -58,7 +58,8 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
   `faunalapse_import.dart`; `csv_cell.dart`.
 - `identification/`: `label_pack.dart` (`.fpack` reader), `crop_planner.dart`,
   `identification_job.dart`, `identification_run.dart`, `identification_store.dart`,
-  `track_fusion.dart`, `identify_phone_log.dart`.
+  `track_fusion.dart`, `name_list_region.dart` (which names of a list a run uses),
+  `identify_phone_log.dart`.
 - `screens/` (one file per screen; `camera_session_screen.dart` is the live UI, its logic sits in
   `session/`). The camera and summary screens and the settings sheet are too big for one file:
   their methods sit in `part` files under `screens/camera_session/`, `screens/session_summary/`
@@ -282,6 +283,13 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   out, never an error. Scoring workers get `LabelPack.forWorker()` (an isolate message copies
   what it carries, once per worker). A published name list is never changed: a fix is a new
   version.
+- **A country list narrows only what is shown** (each crop's candidates, the ladder, the
+  identified rank, the best view). The "none of these" share, the crops' weights, the drop rule
+  and the merge check (`FusedTrack.mergeRank`, `mergeKeys`) read the scores over every name of
+  the list, so they are the same for every country choice (rule and reason: `track_fusion.dart`
+  header; acceptance test in `identification_job_test.dart`). Which names a run uses is decided
+  in one place, `resolveNameList` (`name_list_region.dart`), for the scoring and the Identify
+  page; the results record it (`name_list`, `name_list_countries`).
 - GPU: checked once per model file and phone build against the CPU, refused when memory is short
   (`Embedder.kt`). fp16 everywhere (int8 changed answers). BioCLIP 2 needs the 4-D attention
   export; BioCLIP 2.5 is CPU-only on today's phones.

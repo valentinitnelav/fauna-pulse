@@ -1424,6 +1424,7 @@ shows.
 | `model_class`, `model_class_p` | Trailing, fixed-class classifiers only (empty for BioCLIP): the model's own class with the highest combined probability (e.g. insectDCT's `Apoidea small` or `Bombus`; some of its groups have no rank) and that probability. |
 | `phone_model` | Trailing: the phone model from the start record (`device.model`); empty for imported videos. |
 | `gbif_species`, `gbif_species_key` | Trailing: the name GBIF accepts for `bioclip_species` and its species key in the Catalogue of Life checklist GBIF uses. The keys are those of insect-detect-post v1.1.0 (the same mapping table), so results of both programs and GBIF data join on the key, synonyms included. Read the key as text: some keys are digits only (for example `78358`). Empty when the track ID has no `bioclip_species`, or the name list holds no keys (lists before `_v3`, class lists). |
+| `name_list_countries` | Trailing: the countries whose names were on offer, as two-letter codes joined with `+`, the country itself first (`DE+AT+BE+…`), or `all` for the whole name list. Answers made with different lists are not comparable: a shorter list shares the same 100 % among fewer names, so its Conf. values are higher. `none_p`, the flag `no_organism` and `merged_track_ids` do not depend on it. |
 
 | `flags` value | Meaning |
 |---|---|
@@ -1461,7 +1462,7 @@ fauna-pulse-export writes the same name for insect-detect-post (`device_name_cas
   in the `.bin`.
 - Round 335: `device_id` is the device's name; before round 335 it was the phone model (now
   `phone_model`, added in round 335). Round 336: the field notes' `device_id` comes first.
-- Round 372: `gbif_species`, `gbif_species_key`.
+- Round 372: `gbif_species`, `gbif_species_key`. Round 373: `name_list_countries`.
 
 </details>
 
@@ -1476,13 +1477,14 @@ One row per crop (photo × track), for tracing a track ID's answer to single pho
 | `photo` | The photo name. |
 | `box_left` … `box_bottom` | Detector box as fractions of the photo side. |
 | `crop_px`, `sharpness`, `det_conf`, `pad_frac` | As named; `pad_frac` is descriptive only. |
-| `top1_species`, `top1_p` | The species this crop alone predicts and its probability; also the crop's weight in the track ID's answer. |
+| `top1_species`, `top1_p` | The species this crop alone predicts, among the names on offer, and its probability. |
 | `top1_kingdom` … `top1_family` | That species' higher ranks; kingdom `none` for a "none of these" entry. |
 | `agrees` | 1 when that species falls under the track ID's reported taxon. |
 | `counted` | 1 when the crop entered the pooled answer, 0 when it was left out as far less sure than the surest crop. |
 | `ladder_<rank>` | The track ID's ladder taxa, repeated per row. |
 | `p_<rank>` | This crop's own Conf. under each of them. |
 | `top1_class` | Trailing: a fixed-class classifier's own class behind `top1_species`; empty for BioCLIP. For a class above species, e.g. the genus *Bombus*, `top1_species` holds its deepest named rank. |
+| `weight`, `none_p` | Trailing: the crop's weight in the track ID's answer (its highest probability over every name of the list) and its share on the "none of these" entries. Both are computed over the whole name list, so they are the same for every country choice; `weight` equals `top1_p` unless a country list narrows the names. |
 
 <details>
 <summary>Checking the numbers: identities between the two CSV files</summary>
@@ -1496,11 +1498,13 @@ Identities for checking in R, over a track ID's rows:
 
 The track's own `p_<rank>` is NOT a function of these columns (it comes from the averaged
 embeddings). Recompute it with `bioclip_export/reproduce_track_conf.py` of
-[fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models).
+[fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models) (it scores the
+whole name list; for a run with a country list, compare with `name_list_countries` = `all`).
 
 Column history: `crops_<pack>.csv` exists since round 215; `pad_frac` is descriptive only since
 round 217; `counted` since round 219; `top1_kingdom` … `top1_family` since round 220;
-`top1_class` since round 266.
+`top1_class` since round 266; `weight` and `none_p` since round 373 (until then `top1_p` was
+always the weight).
 
 </details>
 
@@ -1515,7 +1519,8 @@ box coordinates. Identification results stay in their own files on purpose, not 
 - the full `ladder` (`rank`, `taxon`, `p`, `p_mean`, `p_max`, `p_agree`, `support`), and on every
   path_conflict row also `rival`, `rival_p` and `rival_lineage` (the rival's ancestors from
   kingdom down to one rank above it);
-- every crop with its own top-1, `counted`, `agrees` (whether that top-1 falls under the reported
+- every crop with its own top-1, `weight` and `none_p` (as in the crops CSV), `counted`, `agrees`
+  (whether that top-1 falls under the reported
   taxon; the ladder's `support` at the identified rank is the share of `agrees == true`),
   `p_ladder` (the crop's own Conf. under each ladder taxon, index = rank), `top1_tree` (kingdom …
   family of the crop's top species; the crops table shows its family, order and class) and
@@ -1530,7 +1535,7 @@ box coordinates. Identification results stay in their own files on purpose, not 
 
 `agrees` since round 214, `p_ladder` since round 215, `top1_tree` since round 220, `rival`,
 `rival_p`, `rival_lineage` since round 221, `det_conf` since round 223, `model_class` and
-`top1_class` since round 266.
+`top1_class` since round 266, the crops' `weight` and `none_p` since round 373.
 
 </details>
 
@@ -1543,6 +1548,15 @@ Counts for the app:
   `unidentified`;
 - `taxa_order`, `taxa_family` (track IDs per taxon among the track IDs identified at least to
   that rank);
+- `name_list` (since round 373): the names that were on offer. `countries` (two-letter codes,
+  the country itself first; empty = the whole list), `names` (how many), `scope` (the *Names
+  from* setting: `neighbours`, `country` or `all`), `country` with `country_from_session`
+  (false = chosen by hand) and `country_coverage` (the share of that country's own GBIF list
+  that the name list holds), and `whole_list_reason` when a country list was asked for but the
+  whole list was used: `no_country` (the session's country is not known), `not_in_list` (the
+  name list has no names for it) or `short_list` (with both settings at their defaults, the
+  country and its neighbours have under 5,000 names). The run's `settings` hold what was asked
+  for (`name_list_scope`, `name_list_country`: empty = the session's country);
 - a compact `tracks[]` list (`track_id`, `track_ids`, `suspect`, `headline`, `identified_rank`,
   `p`, `n_crops`; plus `src` = the photo name when the entry is a per-photo crop of a no-AI
   session) and the run's provenance. The app's session summary reads this list to label photos,
