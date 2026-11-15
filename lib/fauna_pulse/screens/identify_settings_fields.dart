@@ -149,8 +149,8 @@ class IdentifySettingsFields extends StatelessWidget {
           helperText:
               'A crop whose Species conf. is below the surest crop\'s divided by this factor is left out '
               'of the combined answer (it still appears in the crops table, marked "left out"). '
-              '1 = every crop counts. The default of 10 is a FaunaPulse estimate, not yet tested '
-              'on representative data.',
+              '1 = every crop counts. On expert-named pollinator photos this rule and a plain '
+              'average of all crops named the insects equally well, so the value matters little.',
         ),
         NumericSettingField(
           label: 'Confidence needed to call a rank identified',

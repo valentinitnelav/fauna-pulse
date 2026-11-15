@@ -10367,3 +10367,19 @@ within 3 px of the old ones), before and after pictures with Play's and a launch
 home screen tests and a debug build. Not checked on a phone. Open: the owner uploads the new icon
 and the feature graphic (not tracked; only its icon was replaced) in Play Console.
 
+## Round 371 (2026-11-15): identification docs say what was checked on pollinator photos
+
+Asked: Revisit issue #25 (how to combine the crops of a track ID) and compare with what was already implemented, then bring the public texts in line.
+Finding: the advice (plain Average Logit, no certainty
+weights, no drop rule) had already been compared with the app's rule on the maintainer's
+expert-named time-lapse dataset (Zenodo 10.5281/zenodo.15096610, 1,281 track IDs): no difference
+beyond the test's uncertainty, so the rule stays and no behaviour changed. The texts still said "not
+tested on pollinators", and one sentence claimed the unweighted rule "flattens to nothing", which
+that comparison contradicts. Decisions: say what was checked with few figures (dataset size, size of
+the uncertainty, share of dropped crops), because a full report is in preparation; name what is
+still not tuned (the 0.6 threshold, "no organism", the temperature); correct the Kittler sentence
+(averaging before the softmax is a tempered product rule, as pointed out in issue #25). Left as they
+were: the lines on which model names pollinators best and on square crops. Checked: `flutter
+analyze` on the two changed Dart files; no test names the changed help text. Open: a pass mark per
+insect group and the organism check, then FaunaPulse's own sessions with the detector's boxes.
+

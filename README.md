@@ -10,7 +10,7 @@
 <h1 align="center">FaunaPulse</h1>
 
 <p align="center">
-  <strong>Turn your Android phone into an AI wildlife camera, or into a mini AI workstation for your photos & videos.</strong>
+  <strong>Turn your Android phone into an AI wildlife camera, or into a mini AI workstation for your wildlife photos & videos.</strong>
 </p>
 
 <p align="center">

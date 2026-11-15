@@ -1,6 +1,8 @@
 # Identify organisms
 
-**Validation in progress:** the method and its defaults are not yet tested on large pollinator data (see
+**Validation in progress:** the way the photos of a track ID are combined has been checked on
+expert-named pollinator photos. The confidence threshold and the "no organism" check are not tuned
+yet, so a name can go deeper than the photos allow (see
 [Validation status](#how-the-answer-is-computed)).
 
 This page explains how FaunaPulse names the animals it found in a session. It is for citizen
@@ -523,8 +525,8 @@ list: [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md), *Identification*.
 | **Crop margin** | 0 | The box itself, so the model sees as little flower or background as possible. |
 | **Smallest box to identify** | 48 px | A smaller box is enlarged more than 4 times to the model's 224 px and is mostly blur. |
 | **Crops per track ID (0 = all)** | 10 | Keeps the ten largest boxes of a track ID. It rarely removes anything and only limits the run time of long bursts. |
-| **Ignore crops far less sure than the best (factor)** | 10 | A crop the model is far less sure about than the best crop adds no usable information. |
-| **Confidence needed to call a rank identified** | 0.6 | 0.7 to 0.8 are common in ecological studies; none is tested on pollinators. |
+| **Ignore crops far less sure than the best (factor)** | 10 | A crop the model is far less sure about than the best crop adds little. On expert-named pollinator photos this rule and a plain average of all crops named the insects equally well. |
+| **Confidence needed to call a rank identified** | 0.6 | 0.7 to 0.8 are common in ecological studies. Not tuned yet: on expert-named pollinator photos, one threshold for all insect groups often named a deeper rank than the experts did (see Validation status below). |
 | **"No organism" threshold** | 0.5 | Above this share for the "none of these" entries, a track ID is "no organism". |
 | **Pause above battery temperature** | 43 °C | The same limit as **Pause the analysis above** on **Detection, track ID and identification settings** (opened from **Find animals in videos**); the run goes on 3 °C lower. |
 | **Merge consecutive track IDs** | off | Joins a track ID to the previous one when the tracker lost the animal for a moment (the three checks are in a folded block below). |
@@ -713,8 +715,8 @@ Consequences:
 - Photos that agree reinforce each other, so a track ID's Conf. can exceed every single photo's
   value.
 - Photos that disagree pull the average apart and lower every Conf.
-- A photo the model is far less sure about than its best photo carries no usable information
-  and is left out (the crops table marks it "left out of the combined answer").
+- A photo the model is far less sure about than its best photo adds little and is left out (the
+  crops table marks it "left out of the combined answer").
 
 Every number can be recomputed off the phone with `bioclip_export/reproduce_track_conf.py`
 (fauna-pulse-models) from the stored embeddings and the label pack.
@@ -724,21 +726,40 @@ Every number can be recomputed off the phone with `bioclip_export/reproduce_trac
 <details>
 <summary>Validation status (honest)</summary>
 
-The rule and its defaults have NOT been tested on pollinator data. Origins:
+**What was checked (November 2026).** The rule was run on expert-named smartphone time-lapse
+photos of flower visitors (Zenodo 10.5281/zenodo.15096610; Leipzig and Halle, 2021): 1,281 track
+IDs, mostly bees and hoverflies, with the experts' boxes in place of the detector and at most
+the first 10 photos of each track ID, as the app takes them. The rules were compared on a
+computer from stored vectors; the app's own rule was also run on test phones, with the same
+overall result. A full report is in preparation.
 
-- averaging before the softmax: Dussert et al. 2025 (European mammals, 22 classes, five models,
-  three test sets; they flag hierarchical and very-many-class settings as future work);
-- the certainty weights and the drop factor 10: FaunaPulse choices (the unweighted rule
-  flattens to nothing with 38 000 candidate names);
-- the threshold 0.6 (0.80 until round 216, 0.6 since round 217): the developers' choice (0.7 to
-  0.8 are common in ecological studies, Whytock et al. 2021, Dussert et al. 2025);
-- the calibration temperature 1.0: no calibration. Dussert et al. fit one temperature on a
-  labelled test set and keep it; the pack format carries the field.
+- **Combining the photos: checked.** The app's rule and the plain average (every crop counts the
+  same, none is left out) named the insects equally well: the differences were inside the
+  uncertainty of the test (about 2 percentage points). The average of the per-photo
+  probabilities, a majority vote, weights by sharpness or size and a re-normalised average were
+  not better either. The best single photo was the least reliable about its percentages. So the
+  certainty weights and the drop factor stay as they are, because nothing was gained by a change,
+  not because they are better. The drop rule left out about 2 in 100 crops.
+- **The threshold 0.6: not tuned yet.** It is the developers' choice (0.7 to 0.8 are common in
+  ecological studies, Whytock et al. 2021, Dussert et al. 2025). In the check the percentages
+  were about right where the experts' names allowed a comparison, but one threshold for all
+  insect groups often named a deeper rank than the experts could from the same photos (most
+  often a bumblebee, small bee or hoverfly species). Treat genus and species names with care
+  until a rule with a pass mark per insect group is in the app.
+- **"No organism": not tuned yet.** The "none of these" entries rarely reach their threshold, so
+  a picture without an animal usually gets the name Insecta or an insect order (see the worked
+  examples above).
+- **The calibration temperature 1.0:** no calibration yet. Dussert et al. fit one temperature on
+  a labelled test set and keep it; the pack format carries the field.
 
-The planned check uses expert-labelled smartphone crops (Zenodo 10.5281/zenodo.15096610):
-accuracy per rank, a fitted temperature, and a comparison of pooling rules on track IDs with
-three or more crops. Until then, treat Conf. as a model score with a known direction of bias
-(sharper than the per-crop average) rather than a calibrated probability.
+Limits of the check: one dataset (one region, one summer, photos about 1.6 s apart), boxes drawn
+by people, and few insects that the experts named to species. FaunaPulse's own sessions, with
+the detector's boxes, are the next test. Until then, treat Conf. as a model score rather than a
+calibrated probability.
+
+Origins: averaging before the softmax is from Dussert et al. 2025 (European mammals, 22 classes,
+five models, three test sets; they flag hierarchical and very-many-class settings as future
+work). The certainty weights and the drop factor 10 are FaunaPulse additions.
 
 </details>
 
@@ -1037,8 +1058,11 @@ cores.
   precedent for insect crops.
 - **Pooling of crops per track ID** follows the "Average Logit" rule of Dussert et al. (2025,
   Remote Sensing in Ecology and Conservation 11:88-99), with FaunaPulse's certainty weights, drop
-  rule, ladder and agreement columns. Kittler et al. (1998, IEEE TPAMI 20:226-239) is the
-  theoretical reason for averaging rather than multiplying evidence from correlated views.
+  rule, ladder and agreement columns. In the terms of Kittler et al. (1998, IEEE TPAMI
+  20:226-239), averaging before the softmax is a tempered product rule, and averaging the
+  per-photo probabilities is the sum rule, which that paper found more robust to the errors of
+  single classifiers. The check on pollinator photos (Validation status) found no advantage for
+  the sum rule.
 - **The result differs from insect-detect-post:** there, `pred_prob_weighted` is the mean
   probability of the images that voted for the winning candidate times the share of images that
   voted for it, and `pred_prob_mean` the mean over those voting images (`metadata_processor.py`).

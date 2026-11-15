@@ -269,8 +269,10 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   phone with 5 GB of memory or more, 4 below, about 60 MB each, sharing one native-memory copy of
   the pack matrix; a setting overrides the count) → `tracks_<pack>.{csv,json}`, `crops_<pack>.csv`,
   `summary_<pack>.json`. Method and credits (Dussert et al. 2025; suspect flags after
-  insect-detect-post, Sittinger 2026) are in IDENTIFICATION.md. The defaults are not validated
-  on pollinators.
+  insect-detect-post, Sittinger 2026) are in IDENTIFICATION.md. The pooling rule was checked on
+  expert-named pollinator photos (the plain average is as good, not better, so the rule stays;
+  a threshold fitted for one pooling rule does not hold for another). The 0.6 threshold and the
+  "no organism" check are not tuned.
 - A name list pairs with its model by the first part of the file name (`listBelongsTo`, else the
   header's `model_id`); a classifier pairs with the `.fpack` of the same name. A row counts only
   down to the rank above its first empty slot (`rollUp`).

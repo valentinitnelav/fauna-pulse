@@ -15,7 +15,13 @@
 //     format_grouped_probs). For a similarity-scored model this equals
 //     averaging the crops' logits before the softmax, the rule that benchmark
 //     found best calibrated; the certainty weights and the drop rule are
-//     FaunaPulse additions, not yet tested on pollinator data.
+//     FaunaPulse additions. Checked on expert-named pollinator photos (the
+//     smartphone time-lapse set, Zenodo 10.5281/zenodo.15096610, 1,281 track
+//     ids): they name the insects as well as the plain average, not better
+//     (differences inside the test's uncertainty, about 2 points), so they
+//     stay only because a change gains nothing. A threshold fitted for one
+//     pooling rule does not hold for another: change the rule and tau
+//     together (docs/IDENTIFICATION.md, "Validation status").
 //   * a consistent top-down "ladder" (best child of the chosen parent) with,
 //     per rank, the pooled mass, the plain mean / maximum / agreeing-crops
 //     mean of the crops' own masses, and "support" (share of crops whose own
