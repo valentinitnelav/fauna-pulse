@@ -279,13 +279,18 @@ name list**, and the model chooses only among the species recorded in one countr
 | **Names from** | The country and its neighbours | **The country and its neighbours**, **The country only**, **The whole name list** |
 | **Country** | Where the session was recorded | or one country chosen by hand (listed with its number of names) |
 
-Finding the country from the session's position is not in the app yet. Until then, choose the
-country by hand; without one the whole name list is used.
+**Where the session was recorded** is found from the session's position (from the GPS, typed
+by hand, or taken over from the last session), on the phone and without internet: the app
+carries the country borders of the world. A position at the coast, in coastal water or on a
+small island counts for the nearest country within 25 km. The box shows the country it found;
+choose another one if it is not the one you want. Disputed areas follow the borders as they
+are on the ground (the Natural Earth map), which is not always where GBIF files its records.
 
 A line under the two boxes says how many names a run will choose from, and why the whole list
 is used when it is:
 
-- the session's country is not known;
+- the session's country is not known: it has no position (most imported videos), or the
+  position is far from land;
 - the name list has no names for the country;
 - with both boxes at their defaults, the country and its neighbours have under 5,000 names.
 
@@ -1152,6 +1157,9 @@ cores.
   species and keeps the species of Diptera, Hymenoptera, Coleoptera and Lepidoptera with at
   least 3 records in Europe. The model cards on Hugging Face give the full citations of the
   names, the lists and the method.
+- **The country borders** that turn a session's position into a country are from Natural
+  Earth (map units 1:10m, version 5.1.2, public domain, naturalearthdata.com), simplified to
+  about 2 km, with the same country codes as the name lists' country lists.
 - **The GBIF keys in the results** (`gbif_species`, `gbif_species_key`) come from that same
   mapping table. A name list that has them stores them with its sources (data from GBIF.org
   with the query date, and the Catalogue of Life release).

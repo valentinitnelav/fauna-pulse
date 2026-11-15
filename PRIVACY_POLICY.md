@@ -51,7 +51,7 @@ and cannot control whether you enable Google's system backup.
 | Permission | Why |
 |---|---|
 | Camera | The core function: the live preview and the on-device detector |
-| Location (precise / approximate) | Optional. One single position fix per data recording session, so recorded visits / sampled site can be placed on a map later. FaunaPulse never tracks you continuously, and you can type coordinates by hand or skip location entirely. The position comes from Android's location service: on phones with Google Play services this is Google's location service (Fused Location Provider), and Google's own privacy policy applies to it |
+| Location (precise / approximate) | Optional. One single position fix per data recording session, so recorded visits / sampled site can be placed on a map later. During identification, the app also finds the session's country from it, on the phone and without internet, to choose among the species recorded in that country. FaunaPulse never tracks you continuously, and you can type coordinates by hand or skip location entirely. The position comes from Android's location service: on phones with Google Play services this is Google's location service (Fused Location Provider), and Google's own privacy policy applies to it |
 | Internet | For downloading an AI model or a name list when you ask for one (see below). Nothing uses the network automatically |
 | Notifications | To show the ongoing notification of the recording service, so Android does not stop a long session |
 | Foreground service (camera) | Keeps a session recording reliably while the screen is off or another app is in front |

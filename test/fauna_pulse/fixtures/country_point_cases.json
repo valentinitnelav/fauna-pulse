@@ -1,0 +1,392 @@
+[
+ {
+  "name": "Leipzig",
+  "lat": 51.34,
+  "lon": 12.37,
+  "code": "DE"
+ },
+ {
+  "name": "Berlin",
+  "lat": 52.52,
+  "lon": 13.4,
+  "code": "DE"
+ },
+ {
+  "name": "Munich",
+  "lat": 48.14,
+  "lon": 11.58,
+  "code": "DE"
+ },
+ {
+  "name": "Paris",
+  "lat": 48.86,
+  "lon": 2.35,
+  "code": "FR"
+ },
+ {
+  "name": "Madrid",
+  "lat": 40.42,
+  "lon": -3.7,
+  "code": "ES"
+ },
+ {
+  "name": "Milan",
+  "lat": 45.46,
+  "lon": 9.19,
+  "code": "IT"
+ },
+ {
+  "name": "Vienna",
+  "lat": 48.21,
+  "lon": 16.37,
+  "code": "AT"
+ },
+ {
+  "name": "Bern",
+  "lat": 46.95,
+  "lon": 7.45,
+  "code": "CH"
+ },
+ {
+  "name": "Prague",
+  "lat": 50.08,
+  "lon": 14.43,
+  "code": "CZ"
+ },
+ {
+  "name": "Warsaw",
+  "lat": 52.23,
+  "lon": 21.01,
+  "code": "PL"
+ },
+ {
+  "name": "Bucharest",
+  "lat": 44.43,
+  "lon": 26.1,
+  "code": "RO"
+ },
+ {
+  "name": "Cluj-Napoca",
+  "lat": 46.77,
+  "lon": 23.6,
+  "code": "RO"
+ },
+ {
+  "name": "Budapest",
+  "lat": 47.5,
+  "lon": 19.04,
+  "code": "HU"
+ },
+ {
+  "name": "Sofia",
+  "lat": 42.7,
+  "lon": 23.32,
+  "code": "BG"
+ },
+ {
+  "name": "Larissa",
+  "lat": 39.64,
+  "lon": 22.42,
+  "code": "GR"
+ },
+ {
+  "name": "Evora",
+  "lat": 38.57,
+  "lon": -7.91,
+  "code": "PT"
+ },
+ {
+  "name": "Birmingham",
+  "lat": 52.48,
+  "lon": -1.9,
+  "code": "GB"
+ },
+ {
+  "name": "Athlone",
+  "lat": 53.42,
+  "lon": -7.94,
+  "code": "IE"
+ },
+ {
+  "name": "Lillehammer",
+  "lat": 61.12,
+  "lon": 10.47,
+  "code": "NO"
+ },
+ {
+  "name": "Uppsala",
+  "lat": 59.86,
+  "lon": 17.64,
+  "code": "SE"
+ },
+ {
+  "name": "Tampere",
+  "lat": 61.5,
+  "lon": 23.76,
+  "code": "FI"
+ },
+ {
+  "name": "Viborg",
+  "lat": 56.45,
+  "lon": 9.4,
+  "code": "DK"
+ },
+ {
+  "name": "Utrecht",
+  "lat": 52.09,
+  "lon": 5.12,
+  "code": "NL"
+ },
+ {
+  "name": "Brussels",
+  "lat": 50.85,
+  "lon": 4.35,
+  "code": "BE"
+ },
+ {
+  "name": "Luxembourg",
+  "lat": 49.61,
+  "lon": 6.13,
+  "code": "LU"
+ },
+ {
+  "name": "Kyiv",
+  "lat": 50.45,
+  "lon": 30.52,
+  "code": "UA"
+ },
+ {
+  "name": "Minsk",
+  "lat": 53.9,
+  "lon": 27.57,
+  "code": "BY"
+ },
+ {
+  "name": "Moscow",
+  "lat": 55.75,
+  "lon": 37.62,
+  "code": "RU"
+ },
+ {
+  "name": "Ankara",
+  "lat": 39.93,
+  "lon": 32.86,
+  "code": "TR"
+ },
+ {
+  "name": "Pristina",
+  "lat": 42.66,
+  "lon": 21.17,
+  "code": "XK"
+ },
+ {
+  "name": "Iceland, inland",
+  "lat": 64.9,
+  "lon": -18.6,
+  "code": "IS"
+ },
+ {
+  "name": "Malta, inland",
+  "lat": 35.89,
+  "lon": 14.44,
+  "code": "MT"
+ },
+ {
+  "name": "Cyprus, north of the buffer zone",
+  "lat": 35.25,
+  "lon": 33.6,
+  "code": "CY"
+ },
+ {
+  "name": "Cyprus, south",
+  "lat": 34.9,
+  "lon": 33.0,
+  "code": "CY"
+ },
+ {
+  "name": "Crimea (de facto border)",
+  "lat": 45.2,
+  "lon": 34.2,
+  "code": "RU"
+ },
+ {
+  "name": "Golan (de facto border)",
+  "lat": 33.0,
+  "lon": 35.75,
+  "code": "IL"
+ },
+ {
+  "name": "Lesotho, inside South Africa",
+  "lat": -29.6,
+  "lon": 28.25,
+  "code": "LS"
+ },
+ {
+  "name": "Beersheba",
+  "lat": 31.25,
+  "lon": 34.79,
+  "code": "IL"
+ },
+ {
+  "name": "Marrakesh",
+  "lat": 31.63,
+  "lon": -8.0,
+  "code": "MA"
+ },
+ {
+  "name": "Kansas",
+  "lat": 38.5,
+  "lon": -98.0,
+  "code": "US"
+ },
+ {
+  "name": "Fairbanks",
+  "lat": 64.84,
+  "lon": -147.72,
+  "code": "US"
+ },
+ {
+  "name": "Saskatoon",
+  "lat": 52.13,
+  "lon": -106.67,
+  "code": "CA"
+ },
+ {
+  "name": "Brasilia",
+  "lat": -15.78,
+  "lon": -47.93,
+  "code": "BR"
+ },
+ {
+  "name": "Alice Springs",
+  "lat": -23.7,
+  "lon": 133.88,
+  "code": "AU"
+ },
+ {
+  "name": "Nagano",
+  "lat": 36.2,
+  "lon": 138.25,
+  "code": "JP"
+ },
+ {
+  "name": "Bhopal",
+  "lat": 23.26,
+  "lon": 77.41,
+  "code": "IN"
+ },
+ {
+  "name": "Xi'an",
+  "lat": 34.27,
+  "lon": 108.95,
+  "code": "CN"
+ },
+ {
+  "name": "Johannesburg",
+  "lat": -26.2,
+  "lon": 28.05,
+  "code": "ZA"
+ },
+ {
+  "name": "Kenya, inland",
+  "lat": -0.02,
+  "lon": 37.9,
+  "code": "KE"
+ },
+ {
+  "name": "New Zealand, South Island",
+  "lat": -43.9,
+  "lon": 170.5,
+  "code": "NZ"
+ },
+ {
+  "name": "Heligoland",
+  "lat": 54.18,
+  "lon": 7.89,
+  "code": "DE"
+ },
+ {
+  "name": "North Sea off Sylt",
+  "lat": 54.9,
+  "lon": 8.15,
+  "code": "DE"
+ },
+ {
+  "name": "Baltic Sea off Ruegen",
+  "lat": 54.76,
+  "lon": 13.55,
+  "code": "DE"
+ },
+ {
+  "name": "Black Sea off Constanta",
+  "lat": 44.17,
+  "lon": 28.8,
+  "code": "RO"
+ },
+ {
+  "name": "Sea between the Faroe Islands",
+  "lat": 62.0,
+  "lon": -6.55,
+  "code": "FO"
+ },
+ {
+  "name": "Sea off Gozo",
+  "lat": 36.13,
+  "lon": 14.25,
+  "code": "MT"
+ },
+ {
+  "name": "Mid Atlantic",
+  "lat": 30.0,
+  "lon": -40.0,
+  "code": null
+ },
+ {
+  "name": "Pacific",
+  "lat": 0.0,
+  "lon": -140.0,
+  "code": null
+ },
+ {
+  "name": "Bay of Biscay",
+  "lat": 45.0,
+  "lon": -5.0,
+  "code": null
+ },
+ {
+  "name": "Central Mediterranean",
+  "lat": 35.5,
+  "lon": 18.5,
+  "code": null
+ },
+ {
+  "name": "Near the North Pole",
+  "lat": 89.5,
+  "lon": 0.0,
+  "code": null
+ },
+ {
+  "name": "Near the South Pole",
+  "lat": -89.5,
+  "lon": 0.0,
+  "code": "AQ"
+ },
+ {
+  "name": "Chukotka, west of 180",
+  "lat": 66.5,
+  "lon": 179.0,
+  "code": "RU"
+ },
+ {
+  "name": "Chukotka, east of 180",
+  "lat": 66.5,
+  "lon": -179.0,
+  "code": "RU"
+ },
+ {
+  "name": "Sea west of Taveuni, across 180",
+  "lat": -16.8,
+  "lon": 179.8,
+  "code": "FJ"
+ }
+]

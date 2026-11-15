@@ -1049,10 +1049,10 @@ used (**Names from** on the results screen, `name_list_countries` and `name_list
 | Setting | Default | Meaning |
 |---|---|---|
 | **Names from** | The country and its neighbours | **The country and its neighbours**: the species recorded in the country or in a country next to it (a shared land border, or at most 100 km of sea between them). The default, because species do not stop at borders and some countries have few records. **The country only**: its own list. **The whole name list**: every name, countries ignored. |
-| **Country** | Where the session was recorded | Or one country chosen by hand; each is listed with its number of names. Greyed with **The whole name list**. Finding the country from the session's position is not in the app yet: until then the whole list is used unless a country is chosen by hand. |
+| **Country** | Where the session was recorded | The country of the session's position (found on the phone from bundled country borders; a position within 25 km of a coast counts for the nearest country), shown in the box. Or one country chosen by hand; each is listed with its number of names. Greyed with **The whole name list**. |
 
-The whole list is also used, with the reason on the screen, when the name list has no names for
-the country, and when both settings are at their defaults and the country with its neighbours
+The whole list is used, with the reason on the screen, when the session's country is not known
+(no position, or one far from land), when the name list has no names for the country, and when both settings are at their defaults and the country with its neighbours
 has under 5,000 names. A choice made by hand is used as it is. An amber line warns when the
 list on offer has under 5,000 names (GBIF holds few records from there, so species that live
 there are probably missing and the model then has to pick a wrong name), or when the name list

@@ -10433,3 +10433,26 @@ Not checked: whether a country list names insects better (no expert names were u
 country from the session position (needs a borders file made in fauna-pulse-models), the
 catalogue, and the PC copy of the rule (`reproduce_track_conf.py`).
 
+## Round 374 (2026-11-15): the country of a session's position chooses the names
+
+Asked: take the country for a name list's country lists from the session's position, on the
+phone and without internet. Decisions (owner): borders simplified to about 2 km and bundled in
+the APK (1.8 MB of text, about 0.7 MB compressed), because a downloaded file would be one more
+thing to get before the feature works. The borders must answer the codes of the name lists'
+country lists, so `tool/country_borders/make_country_borders.py` calls the loader that built
+those lists (fauna-pulse-models, Natural Earth map units 1:10m) instead of repeating its unit
+rules, and it also writes 65 test points whose answers are computed before the shapes are
+simplified. Rule: inside a shape; else the nearest shape within 25 km (coastal water, islets);
+else no country, and then the whole list. Every island keeps a shape (tiny ones a small
+triangle). Rejected: an override list for disputed areas and an online lookup (the position
+would leave the phone); the page shows the country that was found and lets the user choose
+another. The country is found on the calling isolate (the scoring isolate cannot read assets)
+and only for a session with a position. Checked: the 65 points, damaged files, sessions with
+and without a position, the scoring and a whole run with a country from the position; the
+whole suite; on a Redmi Note 9S with a local copy of the version 3 list: Leipzig answers
+Germany (0.5 s the first time in a debug build, 9 ms after), a scoring with the country from
+the position writes the same table as Germany chosen by hand (and as the laptop), and the page
+of a session with a position says "Germany and its 10 neighbours", 28,276 of 34,978 names. Not
+checked: other phones; a real recording with a GPS position (the test session's position was
+typed into its start record). Open: the catalogue entry once the list is published.
+

@@ -68,6 +68,8 @@ flutter:
   assets:
     # Round 268: the models users can download (AI models screen).
     - assets/model_downloads.json
+    # Round 374: country shapes for "which country is this session in" (country_lookup.dart).
+    - assets/country_borders.json
     # Round 279: setup drawings ("What do you want to watch?" pages, home step 2).
     - assets/images/
     - assets/models/

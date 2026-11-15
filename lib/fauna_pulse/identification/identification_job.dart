@@ -32,6 +32,7 @@ import '../logging/session_log_index.dart';
 import '../models/field_notes.dart' show deviceNameOf, phoneModelOf;
 import '../postprocess/post_detector.dart' show PostDetector;
 import '../postprocess/video_tracker.dart' show KeepFramesSettings, VideoTracker;
+import 'country_lookup.dart';
 import 'crop_planner.dart';
 import 'name_list_region.dart';
 import 'crop_worker.dart';
@@ -45,6 +46,9 @@ typedef EmbedFn = Future<List<Float32List>> Function(List<Uint8List> rgb);
 
 /// Cuts the crops of one photo (default: the isolate worker).
 typedef CropFn = Future<List<CropResult>> Function(CropBatchArgs args);
+
+/// The two-letter country code of a session's position, or null when it has none.
+typedef CountryOfFn = Future<String?> Function(Directory sessionDir);
 
 class IdentifyProgress {
   /// 'planning' | 'embedding' | 'paused' | 'scoring' | 'done'
@@ -225,12 +229,17 @@ class IdentificationJob {
   /// Time between two saved phone readings (round 363, [IdentifyPhoneLog]).
   final Duration sampleEvery;
 
+  /// The country of a session's position (round 374, [sessionCountryOf]), for the names of a
+  /// name list's country lists.
+  final CountryOfFn countryOf;
+
   IdentificationJob({
     required this.embed,
     CropFn? crop,
     ThermalFn? thermal,
     this.pausePoll = const Duration(seconds: 15),
     this.sampleEvery = kIdentifySampleEvery,
+    this.countryOf = sessionCountryOf,
   }) : crop = crop ?? cropBatch,
        thermal = thermal ?? DeviceThermal.read;
 
@@ -628,6 +637,7 @@ class IdentificationJob {
           packFile: packFile,
           settings: settings.toJson(),
           appVersion: appVersion,
+          countryOf: countryOf,
           onProgress: (done, total) => onProgress?.call(IdentifyProgress(stage: 'scoring', done: done, total: total, avgMs: avgMs)),
         );
       } catch (e) {
@@ -690,10 +700,16 @@ class IdentificationJob {
     required Map<String, dynamic> settings,
     String appVersion = '',
     int? workers,
+    CountryOfFn countryOf = sessionCountryOf,
     void Function(int done, int total)? onProgress,
   }) async {
     final sessionPath = sessionDir.path;
     final packPath = packFile.path;
+    // Round 374: the session's country is found here, on the calling isolate (the borders are
+    // an app asset), and only when the settings ask for it ("Names from" a country, and no
+    // country chosen by hand).
+    final wantsCountry = settings['name_list_scope'] != kScopeAll && (settings['name_list_country'] ?? '') == '';
+    final sessionCountry = wantsCountry ? await countryOf(sessionDir) : null;
     // Progress crosses the isolates as (track IDs fused since the last message, total) records.
     final port = onProgress == null ? null : ReceivePort();
     var done = 0;
@@ -704,7 +720,7 @@ class IdentificationJob {
     });
     final progress = port?.sendPort;
     try {
-      return await Isolate.run(_scoreIn(sessionPath, packPath, modelName, modelId, settings, appVersion, workers, progress));
+      return await Isolate.run(_scoreIn(sessionPath, packPath, modelName, modelId, settings, appVersion, workers, progress, sessionCountry));
     } finally {
       port?.close();
     }
@@ -721,8 +737,9 @@ class IdentificationJob {
     String appVersion,
     int? workers,
     SendPort? progress,
+    String? sessionCountry,
   ) => () async {
-    final s = _Scoring.load(Directory(sessionPath), modelName: modelName, packFile: File(packPath), settings: settings);
+    final s = _Scoring.load(Directory(sessionPath), modelName: modelName, packFile: File(packPath), settings: settings, sessionCountry: sessionCountry);
     // Round 360: the "Cores for combining results" setting; 0 = automatic.
     final chosen = (settings['scoring_workers'] as num?)?.toInt() ?? 0;
     final fused = await s.fuseInWorkers(workers ?? (chosen > 0 ? chosen : scoringWorkers(s.records.length)), progress);
@@ -737,8 +754,9 @@ class IdentificationJob {
     required File packFile,
     required Map<String, dynamic> settings,
     String appVersion = '',
+    String? sessionCountry,
   }) {
-    final s = _Scoring.load(sessionDir, modelName: modelName, packFile: packFile, settings: settings);
+    final s = _Scoring.load(sessionDir, modelName: modelName, packFile: packFile, settings: settings, sessionCountry: sessionCountry);
     final fused = fuseTracks(s.scorer, s.groups, s.vectorsOf(s.groups), tau: s.tau, dropFactor: s.dropFactor);
     return s.finish(fused, modelId: modelId, appVersion: appVersion);
   }
@@ -899,6 +917,7 @@ class _Scoring {
     required String modelName,
     required File packFile,
     required Map<String, dynamic> settings,
+    String? sessionCountry,
   }) {
     final paths = IdentificationPaths(sessionDir);
     final modelStem = stemOf(modelName);
@@ -1001,7 +1020,7 @@ class _Scoring {
     for (final r in records) {
       (groups[r.trackId == null ? 'crop:${r.key}' : 'track:${r.trackId}'] ??= []).add(r);
     }
-    final nameList = IdentificationJob.nameListOf(pack, settings);
+    final nameList = IdentificationJob.nameListOf(pack, settings, sessionCountry: sessionCountry);
     return _Scoring(
       sessionDir: sessionDir,
       packFile: packFile,

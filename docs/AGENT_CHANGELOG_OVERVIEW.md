@@ -59,7 +59,7 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
 - `identification/`: `label_pack.dart` (`.fpack` reader), `crop_planner.dart`,
   `identification_job.dart`, `identification_run.dart`, `identification_store.dart`,
   `track_fusion.dart`, `name_list_region.dart` (which names of a list a run uses),
-  `identify_phone_log.dart`.
+  `country_lookup.dart`, `identify_phone_log.dart`.
 - `screens/` (one file per screen; `camera_session_screen.dart` is the live UI, its logic sits in
   `session/`). The camera and summary screens and the settings sheet are too big for one file:
   their methods sit in `part` files under `screens/camera_session/`, `screens/session_summary/`
@@ -290,6 +290,11 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   header; acceptance test in `identification_job_test.dart`). Which names a run uses is decided
   in one place, `resolveNameList` (`name_list_region.dart`), for the scoring and the Identify
   page; the results record it (`name_list`, `name_list_countries`).
+- **The session's country** comes from its position and `assets/country_borders.json`
+  (`country_lookup.dart`; found on the calling isolate, because the borders are an asset).
+  `tool/country_borders/make_country_borders.py` writes that file and the shared test points
+  with fauna-pulse-models' loader, so its codes are those of the name lists' country lists:
+  when that loader or its Natural Earth file changes, run the tool again.
 - GPU: checked once per model file and phone build against the CPU, refused when memory is short
   (`Embedder.kt`). fp16 everywhere (int8 changed answers). BioCLIP 2 needs the 4-D attention
   export; BioCLIP 2.5 is CPU-only on today's phones.
@@ -396,7 +401,7 @@ sessions): try it as a side-by-side copy, `-P releaseIdSuffix=.rc` (`test/README
   keep-in-sync pairs), `CONTRIBUTING.md`, `IDENTIFICATION.md`, `VIDEO_ANALYSIS.md`,
   `MODEL_CONVERSION.md`, `PERFORMANCE_BENCHMARKING.md`, `HOW_PHOTO_RESOLUTION_WORKS.md`,
   `LEAN_QNN_PACKAGING.md`. Models tried and parked: fauna-pulse-models `docs/PARKED_MODELS.md`.
-- **PC tools:** `tool/model_downloads/`, `tool/video_eval/`, `tool/perf_summary.dart`; the model
+- **PC tools:** `tool/model_downloads/`, `tool/country_borders/`, `tool/video_eval/`, `tool/perf_summary.dart`; the model
   export tools are in fauna-pulse-models (`FAUNAPULSE_MODELS_REPO` lets `model_file_kind_test`
   see its files).
 

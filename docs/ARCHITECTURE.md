@@ -127,7 +127,10 @@ photo paths). Changing one copy alone causes subtle field bugs
   (plus the fixtures in `test/fauna_pulse/fixtures/`);
   `fpack.class_probabilities` and `identification/track_fusion.dart`; the pooling
   of a track ID's crops and the country rule in `track_fusion.dart` and the PC copy
-  `bioclip_export/reproduce_track_conf.py`; the naming
+  `bioclip_export/reproduce_track_conf.py`; the country codes of
+  `assets/country_borders.json` (made by `tool/country_borders/make_country_borders.py` with
+  the loader of `bioclip_export/country_neighbours.py`) and those of the name lists' country
+  lists; the naming
   rule (`tool/model_downloads/README.md`) and the file names the export scripts
   write. File size needs no pair: the app takes model files and name lists up
   to 2 GiB, with no separate limit for detectors (`kMaxModelFileBytes` in

@@ -1040,6 +1040,46 @@ void main() {
     expect(summary['name_list'], containsPair('whole_list_reason', kWholeNoCountry));
     expect(tracksTable(session, 'fake_countries')[1].last, 'all');
 
+    // Round 374: without a country chosen by hand, the session's country is used. "The country
+    // only" for a session in BB gives BB's names; nothing is looked up for the whole list.
+    final asked = <String>[];
+    Future<Map<String, dynamic>> fromSession(String scope, String? sessionCountry) => IdentificationJob.scoreSession(
+      session,
+      modelName: 'fake_model.tflite',
+      modelId: 'fake',
+      packFile: countriesPack,
+      settings: choice(scope, '').toJson(),
+      countryOf: (dir) async {
+        asked.add(dir.path.split('/').last);
+        return sessionCountry;
+      },
+    );
+    summary = await fromSession(kScopeCountry, 'BB');
+    expect(asked, ['countries']);
+    expect(fixedPart(), whole);
+    expect(headlines(), ['Apis mellifera', 'Apis mellifera']);
+    expect(summary['name_list'], {'countries': ['BB'], 'names': 1, 'scope': kScopeCountry, 'country': 'BB', 'country_from_session': true, 'country_coverage': 1.0});
+    // The default choice (the country and its neighbours) never uses a short list: here every
+    // list is short, so the whole list is used and the reason and the country are kept.
+    summary = await fromSession(kScopeNeighbours, 'CC');
+    expect(summary['name_list'], {'countries': [], 'names': 4, 'scope': kScopeNeighbours, 'country': 'CC', 'country_from_session': true, 'whole_list_reason': kWholeShortList, 'country_coverage': 1.0});
+    expect(headlines(), ['Eristalis tenax', 'Apis mellifera']);
+    summary = await fromSession(kScopeNeighbours, null);
+    expect(summary['name_list'], containsPair('whole_list_reason', kWholeNoCountry));
+    asked.clear();
+    await fromSession(kScopeAll, 'BB');
+    expect(asked, isEmpty, reason: 'the whole list needs no country');
+    // A whole run finds the country the same way (the job's countryOf).
+    final sessionRun = makeMergeSession('countries_run');
+    final r = await IdentificationJob(
+      embed: (rgb) async => [for (final buf in rgb) buf[0] > buf[2] ? red : blue],
+      crop: (a) async => cropBatchSync(a),
+      thermal: () async => const ThermalReading(batteryTempC: 30),
+      countryOf: (_) async => 'BB',
+    ).run(sessionRun, settings: choice(kScopeCountry, ''), packFile: countriesPack);
+    expect(r.summary!['name_list'], containsPair('countries', ['BB']));
+    expect(r.summary!['name_list'], containsPair('country_from_session', true));
+
     // The worker isolates get the list too and write the same files.
     rescore(kScopeCountry, 'BB');
     final sameIsolate = [paths.tracksCsv('fake_countries').readAsStringSync(), paths.cropsCsv('fake_countries').readAsStringSync()];

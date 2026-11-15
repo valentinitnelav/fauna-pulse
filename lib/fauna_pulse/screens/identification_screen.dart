@@ -27,6 +27,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import '../identification/crop_worker.dart';
 import '../identification/identification_assets.dart';
+import '../identification/country_lookup.dart';
 import '../identification/identification_choice.dart';
 import '../identification/identification_job.dart';
 import '../identification/identification_run.dart';
@@ -75,6 +76,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   /// The model and name list (round 274: shared with the Find screens'
   /// "Also identify them").
   IdentificationChoice _choice = IdentificationChoice();
+
+  /// The country of the session's position (round 374); null when it is not known.
+  String? _sessionCountry;
   File? get _model => _choice.model;
   File? get _pack => _choice.pack;
   Map<String, dynamic>? get _packHeader => _choice.packHeader;
@@ -234,6 +238,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   }
 
   Future<void> _load() async {
+    // Round 374: the country of the session's position, for "Names of one country" (it reads
+    // the start record and, with a position, the bundled borders; started here so it does not
+    // hold up the rest).
+    final country = sessionCountryOf(widget.sessionDir);
     final prefs = await IdentifyPrefs.load();
     final choice = await IdentificationChoice.load(modelName: prefs.modelName, packName: prefs.packName);
     ThermalReading? thermal;
@@ -249,6 +257,9 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
       _thermal = thermal;
       _summaries = IdentificationPaths(widget.sessionDir).existingSummaries();
     });
+    final sessionCountry = await country;
+    if (!mounted) return;
+    if (sessionCountry != null) setState(() => _sessionCountry = sessionCountry);
     await _plan();
     await _checkVisits();
     await _loadSpeed();
@@ -720,6 +731,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         prefs: prefs,
         regions: regions,
         packNames: ((_packHeader?['rows'] as num?) ?? 0).toInt() - ((_packHeader?['sink_rows'] as num?) ?? 0).toInt(),
+        sessionCountry: _sessionCountry,
         onEdit: _edit,
       ),
     ],

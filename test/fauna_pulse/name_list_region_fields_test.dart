@@ -81,7 +81,10 @@ void main() {
     expect(find.text('Names of one country'), findsOneWidget);
     expect(find.text('The country and its neighbours'), findsOneWidget);
     expect(find.text('Where the session was recorded'), findsOneWidget);
-    expect(find.textContaining('The country of this session is not known, so a run chooses among all 7,994 names.'), findsOneWidget);
+    expect(
+      find.textContaining('The country of this session is not known (it has no position, or one far from land), so a run chooses among all 7,994 names.'),
+      findsOneWidget,
+    );
     expect(find.textContaining('⚠'), findsNothing);
     // The open country list, with a very long country name, fits too.
     await tester.tap(find.byKey(const ValueKey('name list country  false')));

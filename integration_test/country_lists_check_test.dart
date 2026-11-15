@@ -3,12 +3,16 @@
 //
 // Needs on the phone: the name list PACK in the app's identification/packs folder, and a
 // session SESSION (folder under sessions/) with stored crops of the model MODEL. It
+//   0. finds the country of POSITION (default: Leipzig) from the bundled borders, as a
+//      session with that position would (round 374; a small test session is made and removed);
 //   1. times the reading of the list's header (it runs at every listing of the name lists);
-//   2. scores the session with the whole list, COUNTRY with its neighbours and SMALL alone,
-//      and checks that the "none of these" shares, the weights, the left-out crops, the
-//      "no organism" flags and the joined track IDs are the same for all three (the results of
-//      PACK in that session are overwritten, last with COUNTRY and its neighbours);
-//   3. opens Identify organisms on the session, reads what "Names of one country" says a run
+//   2. scores the session with the whole list, SMALL alone, COUNTRY with its neighbours and
+//      once more with the country taken from the test session's position, and checks that
+//      the "none of these" shares, the weights, the left-out crops, the "no organism" flags
+//      and the joined track IDs are the same for all (the results of PACK in that session are
+//      overwritten, last with COUNTRY and its neighbours);
+//   3. opens Identify organisms on the test session (the country of its position and its
+//      neighbours are the default) and on SESSION, reads what "Names of one country" says a run
 //      will use, and chooses COUNTRY in the country list (the saved name list is set to PACK
 //      and the saved country to COUNTRY: restore the saved settings afterwards, see
 //      docs/AGENT_CHANGELOG_OVERVIEW.md, *Build and test*). PAGE_ONLY=true runs only this step.
@@ -17,13 +21,14 @@
 //     --dart-define=SESSION=<folder> --dart-define=PACK=<file>.fpack --dart-define=MODEL=<file>.tflite
 //   adb -s <device-id> install -r build/app/outputs/flutter-apk/app-debug.apk   (stop if not "Success")
 //   adb -s <device-id> shell am start -n com.faunapulse.app/com.ultralytics.yolo.MainActivity
-//   adb -s <device-id> logcat -s flutter:I     (lines HEADER, SCORE, FIXED, PAGE, then "All tests passed!")
+//   adb -s <device-id> logcat -s flutter:I     (lines COUNTRY, HEADER, SCORE, FIXED, PAGE, then "All tests passed!")
 // Afterwards rebuild and reinstall the normal app.
 
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:fauna_pulse/fauna_pulse/identification/country_lookup.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/country_names.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/identification_assets.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/identification_job.dart';
@@ -42,6 +47,7 @@ const _packName = String.fromEnvironment('PACK');
 const _modelName = String.fromEnvironment('MODEL');
 const _country = String.fromEnvironment('COUNTRY', defaultValue: 'DE');
 const _small = String.fromEnvironment('SMALL', defaultValue: 'MT');
+const _position = String.fromEnvironment('POSITION', defaultValue: '51.34,12.37'); // lat,lon in COUNTRY
 // --dart-define=PAGE_ONLY=true: only step 3 (seconds instead of the minutes of step 2).
 const _pageOnly = bool.fromEnvironment('PAGE_ONLY');
 
@@ -60,6 +66,23 @@ void main() {
     expect(session.existsSync(), isTrue, reason: 'no session $_session');
     expect(pack.existsSync(), isTrue, reason: 'no name list $_packName in identification/packs');
 
+    // 0. The country of a session's position, from the borders the app carries.
+    final here = Directory('${(await getExternalStorageDirectory())!.path}/country_lists_check/session with a position')
+      ..createSync(recursive: true);
+    addTearDown(() => here.parent.deleteSync(recursive: true));
+    final latLon = _position.split(',');
+    File('${here.path}/session.jsonl').writeAsStringSync(
+      '{"type":"start_of_session","time_ms":1000,"config":{},"location":{"lat":${latLon[0]},"lon":${latLon[1]},"source":"manual"}}\n',
+    );
+    final lookups = <String>[];
+    for (var i = 0; i < 2; i++) {
+      final sw = Stopwatch()..start();
+      final code = await tester.runAsync(() => sessionCountryOf(here));
+      lookups.add('$code in ${sw.elapsedMilliseconds} ms');
+    }
+    _log('COUNTRY of $_position: $lookups (the first reads the borders)');
+    expect(await tester.runAsync(() => sessionCountryOf(here)), _country);
+
     // 1. The header, read as every listing reads it.
     final times = <int>[];
     late Map<String, dynamic> header;
@@ -77,9 +100,14 @@ void main() {
     final paths = IdentificationPaths(session);
     final stem = stemOf(_packName);
     List<List<String>> table(File f) => [for (final l in f.readAsLinesSync()) l.split(',')];
-    final fixed = <String, String>{};
+    final fixed = <String, String>{}, tableMd5 = <String, String>{};
     for (final (label, scope, country) in [
-      if (!_pageOnly) ...[('whole', 'all', ''), ('$_small alone', 'country', _small), ('$_country+neighbours', 'neighbours', _country)],
+      if (!_pageOnly) ...[
+        ('whole', 'all', ''),
+        ('$_small alone', 'country', _small),
+        ('country of the position', 'neighbours', ''),
+        ('$_country+neighbours', 'neighbours', _country),
+      ],
     ]) {
       final sw = Stopwatch()..start();
       final summary = (await tester.runAsync(
@@ -89,6 +117,8 @@ void main() {
           modelId: stemOf(_modelName),
           packFile: pack,
           settings: {...prefs.toJson(), 'model': _modelName, 'pack': _packName, 'name_list_scope': scope, 'name_list_country': country},
+          // SESSION itself may have no position: the test session's position stands in.
+          countryOf: (_) => sessionCountryOf(here),
         ),
       ))!;
       final t = table(paths.tracksCsv(stem)), c = table(paths.cropsCsv(stem));
@@ -104,21 +134,40 @@ void main() {
             ),
           )
           .toString();
+      tableMd5[label] = '${md5.convert(paths.tracksCsv(stem).readAsBytesSync())}';
       _log(
         'SCORE $label: ${sw.elapsed.inSeconds} s, names ${(summary['name_list'] as Map)['names']}, tracks ${summary['tracks_total']}, '
         'by rank ${summary['by_identified_rank']}, no organism ${summary['no_organism']}, keys ${t.skip(1).where((r) => r[tc('gbif_species_key')].isNotEmpty).length}, '
-        'last column ${t[1].last}, tracks table md5 ${md5.convert(paths.tracksCsv(stem).readAsBytesSync())}, memory peak ${ProcessInfo.maxRss ~/ (1 << 20)} MB',
+        'last column ${t[1].last}, from the position ${(summary['name_list'] as Map)['country_from_session']}, '
+        'tracks table md5 ${tableMd5[label]}, memory peak ${ProcessInfo.maxRss ~/ (1 << 20)} MB',
       );
     }
     if (!_pageOnly) {
       _log('FIXED ${fixed.values.toSet().length == 1 ? 'the same for every choice' : 'DIFFERS: $fixed'}');
       expect(fixed.values.toSet(), hasLength(1), reason: 'the none shares, weights, flags or joins depend on the country choice');
+      expect(tableMd5['country of the position'], tableMd5['$_country+neighbours'], reason: 'the country found from the position gives the same table as the country chosen by hand');
     }
 
-    // 3. The page.
+    // 3. The page: first a session with a position and nothing chosen by hand.
     final sp = await SharedPreferences.getInstance();
     await sp.setString('identify_model', _modelName);
     await sp.setString('identify_pack', _packName);
+    await sp.remove('identify_name_list_scope');
+    await sp.remove('identify_name_list_country');
+    await tester.pumpWidget(MaterialApp(theme: ThemeData.dark(useMaterial3: true), home: IdentificationScreen(sessionDir: here)));
+    final found = find.text('Where the session was recorded (${countryName(_country)})');
+    for (var i = 0; i < 300 && found.evaluate().isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    expect(found, findsOneWidget);
+    _log('PAGE with a position: ${tester.widget<Text>(find.textContaining('run chooses among')).data}');
+    expect(tester.takeException(), isNull);
+    _log('SHOT country_lists_position');
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(milliseconds: 500));
+
+    // Then SESSION, with the country chosen by hand.
     await tester.pumpWidget(MaterialApp(theme: ThemeData.dark(useMaterial3: true), home: IdentificationScreen(sessionDir: session)));
     final heading = find.text('Names of one country');
     for (var i = 0; i < 300 && heading.evaluate().isEmpty; i++) {

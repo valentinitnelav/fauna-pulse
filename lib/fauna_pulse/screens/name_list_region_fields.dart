@@ -70,6 +70,8 @@ class NameListRegionFields extends StatelessWidget {
               'camera stood. It also knows in which countries each species was recorded, from the records '
               'of GBIF (the Global Biodiversity Information Facility, gbif.org). With that, the model '
               'chooses only among the species recorded in one country and, by default, its neighbours. '
+              'The country is found from the session\'s position, on this phone and without internet (near '
+              'a coast, the nearest country within 25 km counts); you can choose another one. '
               'The neighbours are included because species do not stop at borders and some countries '
               'have few records. The lists follow where people observe and upload: they are dense in '
               'Europe and North America and thin in much of the tropics, Africa and Asia. When unsure, '
@@ -160,8 +162,8 @@ class NameListRegionFields extends StatelessWidget {
     final country = c.country == null ? null : countryName(c.country!);
     return switch (c.wholeListReason) {
       kWholeNoCountry =>
-        'The country of this session is not known, so a run chooses among all $all names. Choose a country '
-            'above to narrow them.',
+        'The country of this session is not known (it has no position, or one far from land), so a run '
+            'chooses among all $all names. Choose a country above to narrow them.',
       kWholeNotInList => 'This name list has no names for $country, so a run chooses among all $all names.',
       kWholeShortList =>
         'GBIF holds few records from $country and its neighbours (a short list misses many species), so a run '
