@@ -147,8 +147,8 @@ class NameListRegionFields extends StatelessWidget {
         if (choice.lowCoverage) _warning(_lowCoverage(choice.lowCoverageCountries)),
         if (choice.taxa.isNotEmpty)
           _warning(
-            'Every animal is named as one of ${taxaInWords(choice.taxa)}, also an animal of another order or '
-            'family: the model has no other names to choose from.',
+            'Every animal will be named as one of ${taxaInWords(choice.taxa)}.'
+            'This forces the model to pick a name from these groups, even for an animal of another group.',
           ),
       ],
     );

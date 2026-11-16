@@ -295,7 +295,7 @@ void main() {
       expect(find.text('Apidae, Diptera'), findsOneWidget);
       expect(find.text('A run chooses among the 5,100 names of Apidae and Diptera listed for Germany and its neighbour (of 7,994 in the list).'), findsOneWidget);
       expect(
-        find.text('⚠ Every animal is named as one of Apidae and Diptera, also an animal of another order or family: the model has no other names to choose from.'),
+        find.text('⚠ Every animal will be named as one of Apidae and Diptera. This forces the model to pick a name from these groups, even for an animal of another group.'),
         findsOneWidget,
       );
 
