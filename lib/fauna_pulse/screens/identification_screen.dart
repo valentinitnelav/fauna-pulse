@@ -238,7 +238,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
   }
 
   Future<void> _load() async {
-    // Round 374: the country of the session's position, for "Names of one country" (it reads
+    // Round 374: the country of the session's position, for "Names to choose from" (it reads
     // the start record and, with a position, the bundled borders; started here so it does not
     // hold up the rest).
     final country = sessionCountryOf(widget.sessionDir);

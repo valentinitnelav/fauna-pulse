@@ -142,6 +142,9 @@ class IdentifyPrefs {
   // chooses from, and for which country ('' = the country of the session's position).
   String nameListScope;
   String nameListCountry;
+  // Round 376: the countries of "Countries I choose" (two-letter codes); kept, unused, while
+  // "Names from" says something else.
+  List<String> nameListChosenCountries;
 
   IdentifyPrefs({
     this.modelName,
@@ -168,6 +171,7 @@ class IdentifyPrefs {
     this.dropFactor = 10,
     this.nameListScope = kScopeNeighbours,
     this.nameListCountry = '',
+    this.nameListChosenCountries = const [],
   });
 
   static const _kModel = kIdentifyModelPref;
@@ -194,12 +198,17 @@ class IdentifyPrefs {
   static const _kDrop = 'identify_drop_factor';
   static const _kListScope = 'identify_name_list_scope';
   static const _kListCountry = 'identify_name_list_country';
+  static const _kListCountries = 'identify_name_list_chosen_countries';
 
   /// A saved "Names from" value this app version knows, else the default.
   static String _scope(Object? saved) => saved is String && kNameListScopes.contains(saved) ? saved : kScopeNeighbours;
 
   /// A saved country code (two capital letters), else '' (the session's country).
   static String _country(Object? saved) => saved is String && RegExp(r'^[A-Z]{2}$').hasMatch(saved) ? saved : '';
+
+  /// The saved country codes among [saved], each once, sorted; anything else is left out.
+  static List<String> _countries(Object? saved) =>
+      {if (saved is List) for (final c in saved) _country(c)}.where((c) => c.isNotEmpty).toList()..sort();
 
   /// Per-model measured speed (ms per crop) from the last run on this phone,
   /// for the pre-flight time estimate.
@@ -233,6 +242,7 @@ class IdentifyPrefs {
       dropFactor: p.getDouble(_kDrop) ?? 10,
       nameListScope: _scope(p.get(_kListScope)),
       nameListCountry: _country(p.get(_kListCountry)),
+      nameListChosenCountries: _countries(p.get(_kListCountries)),
     );
   }
 
@@ -270,6 +280,7 @@ class IdentifyPrefs {
     await p.setDouble(_kDrop, dropFactor);
     await p.setString(_kListScope, nameListScope);
     await p.setString(_kListCountry, nameListCountry);
+    await p.setStringList(_kListCountries, nameListChosenCountries);
   }
 
   /// Echoed into the identify_start record and the summary rows.
@@ -298,6 +309,7 @@ class IdentifyPrefs {
     'drop_factor': dropFactor,
     'name_list_scope': nameListScope,
     'name_list_country': nameListCountry,
+    'name_list_chosen_countries': nameListChosenCountries,
   };
 }
 

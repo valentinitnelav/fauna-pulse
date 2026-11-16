@@ -495,9 +495,10 @@ Map<String, dynamic> writeOutputs({
     // can write them in insect-detect-post's place. Empty when the name list has no keys.
     'gbif_species',
     'gbif_species_key',
-    // Round 373: the countries whose names were on offer (the country itself first, joined
-    // with "+"), or "all". Answers made with different lists are not comparable: a shorter
-    // list shares the same 100 % among fewer names.
+    // Round 373: the countries whose names were on offer (the country itself first, countries
+    // chosen by hand in the order of their codes, joined with "+"), or "all". Answers made
+    // with different lists are not comparable: a shorter list shares the same 100 % among
+    // fewer names.
     'name_list_countries',
   ];
   // The pack row of every species path. A row that stops above species (a class-list class, or
@@ -900,9 +901,10 @@ tracks_<name list>.csv columns
   gbif_species, gbif_species_key      the name GBIF accepts for bioclip_species and its species key (text,
                                       also when it is digits only); the same keys as insect-detect-post,
                                       so results join with GBIF data; empty when the name list has no keys
-  name_list_countries                 the countries whose names were on offer (the country itself first,
-                                      joined with "+"), or "all" for the whole name list; answers made with
-                                      different lists are not comparable
+  name_list_countries                 the countries whose names were on offer (the country itself first;
+                                      countries chosen by hand in the order of their codes; joined with
+                                      "+"), or "all" for the whole name list; answers made with different
+                                      lists are not comparable
 
 crops_<name list>.csv columns
   session_id, track_id, crop_no       the track ID and the crop's number within it (capture order)

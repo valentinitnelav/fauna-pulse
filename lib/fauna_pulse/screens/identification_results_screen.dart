@@ -718,9 +718,10 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
     // asked for (results made with another choice are not comparable).
     final nameList = s['name_list'] is Map ? (s['name_list'] as Map) : const {};
     final countries = [for (final c in (nameList['countries'] as List?) ?? const []) '$c'];
+    final byHand = nameList['scope'] == kScopeCountries;
     final wholeReason = switch (nameList['whole_list_reason']) {
-      kWholeNoCountry => 'the session\'s country is not known',
-      kWholeNotInList => 'the list has no names for ${countryName('${nameList['country']}')}',
+      kWholeNoCountry => byHand ? 'no country was chosen' : 'the session\'s country is not known',
+      kWholeNotInList => 'the list has no names for ${byHand ? 'the chosen countries' : countryName('${nameList['country']}')}',
       kWholeShortList => 'few GBIF records from ${countryName('${nameList['country']}')} and its neighbours',
       _ => null,
     };

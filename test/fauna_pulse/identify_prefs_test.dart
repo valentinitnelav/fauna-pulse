@@ -1,5 +1,5 @@
-// IdentifyPrefs persistence (round 262: the "Square crops" switch; round 373: the name list's
-// country settings).
+// IdentifyPrefs persistence (round 262: the "Square crops" switch; rounds 373 and 376: the name
+// list's country settings).
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -28,6 +28,8 @@ void main() {
     expect(p.nameListCountry, '', reason: 'empty = the country of the session');
     expect(p.toJson(), containsPair('name_list_scope', 'neighbours'));
     expect(p.toJson(), containsPair('name_list_country', ''));
+    expect(p.nameListChosenCountries, isEmpty);
+    expect(p.toJson(), containsPair('name_list_chosen_countries', []));
     p
       ..nameListScope = 'country'
       ..nameListCountry = 'MT';
@@ -36,6 +38,25 @@ void main() {
     expect(back.nameListScope, 'country');
     expect(back.nameListCountry, 'MT');
     expect(back.toJson(), p.toJson());
+  });
+
+  test('round 376: the countries chosen by hand survive save and load, next to the single country', () async {
+    SharedPreferences.setMockInitialValues({});
+    final p = await IdentifyPrefs.load()
+      ..nameListScope = 'countries'
+      ..nameListCountry = 'MT'
+      ..nameListChosenCountries = ['DE', 'FR'];
+    await p.save();
+    final back = await IdentifyPrefs.load();
+    expect(back.nameListScope, 'countries');
+    expect(back.nameListChosenCountries, ['DE', 'FR']);
+    expect(back.nameListCountry, 'MT', reason: 'kept for when "Names from" changes back');
+    expect(back.toJson(), p.toJson());
+    // Saved values that are not country codes are left out; a value of another kind gives none.
+    SharedPreferences.setMockInitialValues({'identify_name_list_chosen_countries': <String>['FR', 'de', 'Germany', 'DE', 'FR']});
+    expect((await IdentifyPrefs.load()).nameListChosenCountries, ['DE', 'FR']);
+    SharedPreferences.setMockInitialValues({'identify_name_list_chosen_countries': 'DE'});
+    expect((await IdentifyPrefs.load()).nameListChosenCountries, isEmpty);
   });
 
   test('round 373: a saved value this version does not know, or of another type, gives the default', () async {

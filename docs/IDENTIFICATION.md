@@ -99,7 +99,8 @@ A model can identify only with a name list made for it:
 
 A name list can also carry **country lists**: which of its species GBIF (the Global Biodiversity
 Information Facility, gbif.org) has records of in which country. With such a list the model can
-choose among the names of one country only ([Names of one country](#names-of-one-country)).
+choose among the names of one country or of several
+([Names to choose from](#names-to-choose-from)).
 The Europe list for BioCLIP 2 carries them from version 3 on
 (`bioclip-2_pollinator-orders-europe_v3.fpack`: the same names as version 2). A phone that has
 version 2 keeps using it, without the country choice; **Download & import models** offers
@@ -272,16 +273,22 @@ have no track IDs. Run **Find animals in photos** first. When the photos are at 
 apart, it also finds the track IDs, by itself after each run, and the crops are then combined
 per track ID. Photos further apart have no track IDs, so their boxes are identified one by one.
 
-### Names of one country
+### Names to choose from
 
 A name list for a large region holds many species that do not live where the camera stood. When
-the chosen name list carries country lists, **Names of one country** appears under **Model and
-name list**, and the model chooses only among the species recorded in one country:
+the chosen name list carries country lists, **Names to choose from** appears under **Model and
+name list**, and the model chooses only among the species recorded in one country, or in the
+countries you tick:
 
 | Control | Default | Choices |
 |---|---|---|
-| **Names from** | The country and its neighbours | **The country and its neighbours**, **The country only**, **The whole name list** |
+| **Names from** | The country and its neighbours | **The country and its neighbours**, **The country only**, **Countries I choose**, **The whole name list** |
 | **Country** | Where the session was recorded | or one country chosen by hand (listed with its number of names) |
+| **Countries** (with **Countries I choose**) | none | any countries of the name list, ticked in a window with a search box |
+
+**Countries I choose** puts the names of the ticked countries together, for example for a
+region that lies in several countries. No neighbours are added, and the session's position is
+not read. While no country is ticked, the whole list is used.
 
 **Where the session was recorded** is found from the session's position (from the GPS, typed
 by hand, or taken over from the last session), on the phone and without internet: the app
@@ -290,7 +297,7 @@ small island counts for the nearest country within 25 km. The box shows the coun
 choose another one if it is not the one you want. Disputed areas follow the borders as they
 are on the ground (the Natural Earth map), which is not always where GBIF files its records.
 
-A line under the two boxes says how many names a run will choose from, and why the whole list
+A line under the boxes says how many names a run will choose from, and why the whole list
 is used when it is:
 
 - the session's country is not known: it has no position (most imported videos), or the
@@ -298,11 +305,13 @@ is used when it is:
 - the name list has no names for the country;
 - with both boxes at their defaults, the country and its neighbours have under 5,000 names.
 
-A country or "The country only" chosen by hand is used as it is. An amber line then warns when:
+A country, "The country only" or countries chosen by hand are used as they are. An amber line
+then warns when:
 
 - the list on offer has under 5,000 names: GBIF holds few records from there, so species that
   live there are probably missing, and the model then has to pick a wrong name;
-- the name list holds under 80 % of the country's own GBIF list: it was made for another region.
+- the name list holds under 80 % of the country's own GBIF list: it was made for another region
+  (with **Countries I choose**, each such country is named).
 
 Good to know:
 
@@ -313,7 +322,7 @@ Good to know:
 - Results made with different choices cannot be compared directly: a shorter list shares the
   same 100 % among fewer names, so its percentages are higher. The results say which names were
   used: the **Names from** row on the results screen and `name_list_countries` in
-  `tracks_<pack>.csv`.
+  `tracks_<pack>.csv`. To repeat a run, set the same countries.
 - "No organism", the weight of each crop and the joining of track IDs do not depend on the
   choice ([How the answer is computed](#how-the-answer-is-computed)).
 - Whether a country list names insects better than the whole list is not tested yet

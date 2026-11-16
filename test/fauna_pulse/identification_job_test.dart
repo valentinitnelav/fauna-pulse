@@ -885,7 +885,8 @@ void main() {
   });
 
   // Round 373, the acceptance test of the country lists: one session scored with the whole
-  // list, a country with a neighbour and a country alone has the same "none of these" share
+  // list, a country with a neighbour, a country alone and countries chosen by hand (round
+  // 376) has the same "none of these" share
   // (per crop and per track ID), the same weights and left-out crops, the same "no organism"
   // flags and the same joined track IDs. Only the names and their percentages follow the list.
   test('round 373: the country choice changes the names, never the none share, the weights or the merge', () async {
@@ -949,7 +950,7 @@ void main() {
     final session = makeMergeSession('countries');
     // No appearance check and a long gap: only the names decide which track IDs are joined, so
     // a merge that read the narrowed names would join all three under the honey bee's list.
-    IdentifyRunSettings choice(String scope, String country) => IdentifyRunSettings(
+    IdentifyRunSettings choice(String scope, String country, {List<String> byHand = const []}) => IdentifyRunSettings(
       modelName: 'fake_model.tflite',
       modelId: 'fake',
       packName: 'fake_countries.fpack',
@@ -962,6 +963,7 @@ void main() {
       mergeMinCos: -1,
       nameListScope: scope,
       nameListCountry: country,
+      nameListChosenCountries: byHand,
     );
     expect((await job.run(session, settings: choice(kScopeAll, ''), packFile: countriesPack)).error, isNull);
     final paths = IdentificationPaths(session);
@@ -992,12 +994,12 @@ void main() {
     List<String> headlines() => [
       for (final t in (jsonDecode(paths.tracksJson('fake_countries').readAsStringSync())['tracks'] as List)) t['headline'] as String,
     ];
-    Map<String, dynamic> rescore(String scope, String country) => IdentificationJob.scoreSessionSync(
+    Map<String, dynamic> rescore(String scope, String country, {List<String> byHand = const []}) => IdentificationJob.scoreSessionSync(
       session,
       modelName: 'fake_model.tflite',
       modelId: 'fake',
       packFile: countriesPack,
-      settings: choice(scope, country).toJson(),
+      settings: choice(scope, country, byHand: byHand).toJson(),
     );
 
     final whole = fixedPart();
@@ -1034,6 +1036,23 @@ void main() {
     expect(summary['name_list'], containsPair('countries', ['CC', 'BB']));
     expect(tracksTable(session, 'fake_countries')[1].last, 'CC+BB');
 
+    // Round 376, countries chosen by hand: their names put together, in the order of the
+    // codes; the single country ('AA') is not read. The same rule: only the names change.
+    summary = rescore(kScopeCountries, 'AA', byHand: ['CC', 'BB']);
+    expect(fixedPart(), whole);
+    expect(headlines(), ['Eristalis tenax', 'Apis mellifera']);
+    expect(summary['name_list'], {'countries': ['BB', 'CC'], 'names': 3, 'scope': kScopeCountries});
+    expect((summary['settings'] as Map)['name_list_chosen_countries'], ['CC', 'BB'], reason: 'the settings keep what was asked');
+    expect(tracksTable(session, 'fake_countries')[1].last, 'BB+CC');
+    summary = rescore(kScopeCountries, 'AA', byHand: ['BB']);
+    expect(fixedPart(), whole);
+    expect(headlines(), ['Apis mellifera', 'Apis mellifera']);
+    // Nothing chosen: the whole list, with the reason.
+    summary = rescore(kScopeCountries, 'AA');
+    expect(fixedPart(), whole);
+    expect(summary['name_list'], {'countries': [], 'names': 4, 'scope': kScopeCountries, 'whole_list_reason': kWholeNoCountry});
+    expect(tracksTable(session, 'fake_countries')[1].last, 'all');
+
     // No country (no position, none chosen): the whole list, with the reason.
     summary = rescore(kScopeNeighbours, '');
     expect(fixedPart(), whole);
@@ -1068,7 +1087,8 @@ void main() {
     expect(summary['name_list'], containsPair('whole_list_reason', kWholeNoCountry));
     asked.clear();
     await fromSession(kScopeAll, 'BB');
-    expect(asked, isEmpty, reason: 'the whole list needs no country');
+    await fromSession(kScopeCountries, 'BB');
+    expect(asked, isEmpty, reason: 'the whole list and countries chosen by hand need no session country');
     // A whole run finds the country the same way (the job's countryOf).
     final sessionRun = makeMergeSession('countries_run');
     final r = await IdentificationJob(

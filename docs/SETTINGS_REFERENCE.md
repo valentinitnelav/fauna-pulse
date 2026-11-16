@@ -1038,31 +1038,33 @@ were saved only at Start).
 
 </details>
 
-## Names of one country (Identify organisms screen)
+## Names to choose from (Identify organisms screen)
 
 Shown under **Model and name list** when the chosen name list carries country lists (which of
 its species GBIF has records of in which country). The model then chooses only among the names
-of one country. Stored on the phone as `identify_name_list_scope` and
-`identify_name_list_country`, echoed into every run's settings; the results say which names were
-used (**Names from** on the results screen, `name_list_countries` and `name_list` in the files).
+of one country or of the countries you tick. Stored on the phone as `identify_name_list_scope`,
+`identify_name_list_country` and `identify_name_list_chosen_countries`, echoed into every run's
+settings; the results say which names were used (**Names from** on the results screen,
+`name_list_countries` and `name_list` in the files).
 
 | Setting | Default | Meaning |
 |---|---|---|
-| **Names from** | The country and its neighbours | **The country and its neighbours**: the species recorded in the country or in a country next to it (a shared land border, or at most 100 km of sea between them). The default, because species do not stop at borders and some countries have few records. **The country only**: its own list. **The whole name list**: every name, countries ignored. |
+| **Names from** | The country and its neighbours | **The country and its neighbours**: the species recorded in the country or in a country next to it (a shared land border, or at most 100 km of sea between them). The default, because species do not stop at borders and some countries have few records. **The country only**: its own list. **Countries I choose**: the names of the countries ticked under **Countries**, put together. **The whole name list**: every name, countries ignored. |
 | **Country** | Where the session was recorded | The country of the session's position (found on the phone from bundled country borders; a position within 25 km of a coast counts for the nearest country), shown in the box. Or one country chosen by hand; each is listed with its number of names. Greyed with **The whole name list**. |
+| **Countries** | none | Shown in place of **Country** with **Countries I choose**: a window with a search box, where any countries of the name list are ticked. No neighbours are added and the session's position is not read. While none is ticked, the whole list is used. The ticked countries are kept when **Names from** changes. |
 
 The whole list is used, with the reason on the screen, when the session's country is not known
 (no position, or one far from land), when the name list has no names for the country, and when both settings are at their defaults and the country with its neighbours
-has under 5,000 names. A choice made by hand is used as it is. An amber line warns when the
-list on offer has under 5,000 names (GBIF holds few records from there, so species that live
-there are probably missing and the model then has to pick a wrong name), or when the name list
-holds under 80 % of the country's own GBIF list (it was made for another region). Both numbers
-are the developers' judgement, not fitted values.
+has under 5,000 names. A choice made by hand (one country or several) is used as it is. An
+amber line warns when the list on offer has under 5,000 names (GBIF holds few records from
+there, so species that live there are probably missing and the model then has to pick a wrong
+name), or when the name list holds under 80 % of a chosen country's own GBIF list (it was made
+for another region). Both numbers are the developers' judgement, not fitted values.
 
 The share of the "none of these" entries, the crops' weights and the joining of track IDs are
 computed over the whole name list, so they do not change with these settings; the names and
-their percentages do. Method and limits: [IDENTIFICATION.md](IDENTIFICATION.md), *Names of one
-country*.
+their percentages do. Method and limits: [IDENTIFICATION.md](IDENTIFICATION.md), *Names to
+choose from*.
 
 ## Identification (Identify organisms screen → Advanced settings)
 

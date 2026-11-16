@@ -157,7 +157,7 @@ void main() {
     final calls = _Calls();
     await _pump(tester, _use('pollinators'), const ModelFilesOnPhone(), calls);
     await _tap(tester, find.text('Choose other models'));
-    expect(find.text('Flies, bees and wasps, beetles, butterflies and moths of Europe (34,978 names)'), findsOneWidget);
+    expect(find.text('Flies, bees and wasps, beetles, butterflies and moths of Europe, with country lists (34,978 names)'), findsOneWidget);
     expect(find.text('with bioclip-2_pollinator-orders-europe_v3.fpack'), findsNWidgets(2), reason: 'box and fold');
     expect(tester.takeException(), isNull, reason: 'the open fold fits 360 px');
     await _tap(tester, find.text('flatbug-s_640_fp16.tflite'));

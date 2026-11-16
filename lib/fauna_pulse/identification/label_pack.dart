@@ -138,6 +138,9 @@ class PackCountry {
   final int namesInCountry;
 
   const PackCountry(this.bits, this.names, this.namesInCountry);
+
+  /// The share of the country's own GBIF list that the pack holds; null when that is unknown.
+  double? get coverage => namesInCountry > 0 ? names / namesInCountry : null;
 }
 
 /// Round 372: the optional `regions` block, which names GBIF lists in which country.

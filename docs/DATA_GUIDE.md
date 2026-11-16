@@ -1424,7 +1424,7 @@ shows.
 | `model_class`, `model_class_p` | Trailing, fixed-class classifiers only (empty for BioCLIP): the model's own class with the highest combined probability (e.g. insectDCT's `Apoidea small` or `Bombus`; some of its groups have no rank) and that probability. |
 | `phone_model` | Trailing: the phone model from the start record (`device.model`); empty for imported videos. |
 | `gbif_species`, `gbif_species_key` | Trailing: the name GBIF accepts for `bioclip_species` and its species key in the Catalogue of Life checklist GBIF uses. The keys are those of insect-detect-post v1.1.0 (the same mapping table), so results of both programs and GBIF data join on the key, synonyms included. Read the key as text: some keys are digits only (for example `78358`). Empty when the track ID has no `bioclip_species`, or the name list holds no keys (lists before `_v3`, class lists). |
-| `name_list_countries` | Trailing: the countries whose names were on offer, as two-letter codes joined with `+`, the country itself first (`DE+AT+BE+…`), or `all` for the whole name list. Answers made with different lists are not comparable: a shorter list shares the same 100 % among fewer names, so its Conf. values are higher. `none_p`, the flag `no_organism` and `merged_track_ids` do not depend on it. |
+| `name_list_countries` | Trailing: the countries whose names were on offer, as two-letter codes joined with `+`, the country itself first (`DE+AT+BE+…`; countries chosen by hand in the order of their codes), or `all` for the whole name list. Answers made with different lists are not comparable: a shorter list shares the same 100 % among fewer names, so its Conf. values are higher. `none_p`, the flag `no_organism` and `merged_track_ids` do not depend on it. |
 
 | `flags` value | Meaning |
 |---|---|
@@ -1549,14 +1549,17 @@ Counts for the app:
 - `taxa_order`, `taxa_family` (track IDs per taxon among the track IDs identified at least to
   that rank);
 - `name_list` (since round 373): the names that were on offer. `countries` (two-letter codes,
-  the country itself first; empty = the whole list), `names` (how many), `scope` (the *Names
-  from* setting: `neighbours`, `country` or `all`), `country` with `country_from_session`
-  (false = chosen by hand) and `country_coverage` (the share of that country's own GBIF list
-  that the name list holds), and `whole_list_reason` when a country list was asked for but the
-  whole list was used: `no_country` (the session's country is not known), `not_in_list` (the
-  name list has no names for it) or `short_list` (with both settings at their defaults, the
-  country and its neighbours have under 5,000 names). The run's `settings` hold what was asked
-  for (`name_list_scope`, `name_list_country`: empty = the session's country);
+  the country itself first; countries chosen by hand in the order of their codes; empty = the
+  whole list), `names` (how many), `scope` (the *Names from* setting: `neighbours`, `country`,
+  `countries` = chosen by hand, or `all`), for one country `country` with
+  `country_from_session` (false = chosen by hand) and `country_coverage` (the share of that
+  country's own GBIF list that the name list holds), and `whole_list_reason` when a country
+  list was asked for but the whole list was used: `no_country` (the session's country is not
+  known, or no country was chosen), `not_in_list` (the name list has no names for it) or
+  `short_list` (with both settings at their defaults, the country and its neighbours have under
+  5,000 names). The run's `settings` hold what was asked for (`name_list_scope`,
+  `name_list_country`: empty = the session's country; `name_list_chosen_countries`: the
+  countries ticked for `countries`, read only with that scope);
 - a compact `tracks[]` list (`track_id`, `track_ids`, `suspect`, `headline`, `identified_rank`,
   `p`, `n_crops`; plus `src` = the photo name when the entry is a per-photo crop of a no-AI
   session) and the run's provenance. The app's session summary reads this list to label photos,

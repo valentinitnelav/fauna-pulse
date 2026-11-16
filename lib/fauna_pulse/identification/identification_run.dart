@@ -403,6 +403,7 @@ class IdentificationRun extends ChangeNotifier {
             dropFactor: prefs.dropFactor,
             nameListScope: prefs.nameListScope,
             nameListCountry: prefs.nameListCountry,
+            nameListChosenCountries: prefs.nameListChosenCountries,
             extra: {
               'use_gpu': prefs.useGpu,
               'cpu_threads': prefs.cpuThreads,

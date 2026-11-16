@@ -6,16 +6,18 @@
 //   0. finds the country of POSITION (default: Leipzig) from the bundled borders, as a
 //      session with that position would (round 374; a small test session is made and removed);
 //   1. times the reading of the list's header (it runs at every listing of the name lists);
-//   2. scores the session with the whole list, SMALL alone, COUNTRY with its neighbours and
-//      once more with the country taken from the test session's position, and checks that
-//      the "none of these" shares, the weights, the left-out crops, the "no organism" flags
-//      and the joined track IDs are the same for all (the results of PACK in that session are
-//      overwritten, last with COUNTRY and its neighbours);
+//   2. scores the session with the whole list, SMALL alone, COUNTRY and SMALL chosen by hand
+//      (round 376), COUNTRY with its neighbours and once more with the country taken from the
+//      test session's position, and checks that the "none of these" shares, the weights, the
+//      left-out crops, the "no organism" flags and the joined track IDs are the same for all
+//      (the results of PACK in that session are overwritten, last with COUNTRY and its
+//      neighbours);
 //   3. opens Identify organisms on the test session (the country of its position and its
-//      neighbours are the default) and on SESSION, reads what "Names of one country" says a run
-//      will use, and chooses COUNTRY in the country list (the saved name list is set to PACK
-//      and the saved country to COUNTRY: restore the saved settings afterwards, see
-//      docs/AGENT_CHANGELOG_OVERVIEW.md, *Build and test*). PAGE_ONLY=true runs only this step.
+//      neighbours are the default) and on SESSION, reads what "Names to choose from" says a
+//      run will use, chooses COUNTRY in the country list, then "Countries I choose" and SMALL
+//      in its window (the saved name list is set to PACK and the saved country choices are
+//      changed: restore the saved settings afterwards, see docs/AGENT_CHANGELOG_OVERVIEW.md,
+//      *Build and test*). PAGE_ONLY=true runs only this step.
 // Run it as an installed build (no uninstall risk):
 //   flutter build apk --debug --target-platform android-arm64 -t integration_test/country_lists_check_test.dart \
 //     --dart-define=SESSION=<folder> --dart-define=PACK=<file>.fpack --dart-define=MODEL=<file>.tflite
@@ -105,6 +107,7 @@ void main() {
       if (!_pageOnly) ...[
         ('whole', 'all', ''),
         ('$_small alone', 'country', _small),
+        ('$_country and $_small by hand', 'countries', ''),
         ('country of the position', 'neighbours', ''),
         ('$_country+neighbours', 'neighbours', _country),
       ],
@@ -116,7 +119,14 @@ void main() {
           modelName: _modelName,
           modelId: stemOf(_modelName),
           packFile: pack,
-          settings: {...prefs.toJson(), 'model': _modelName, 'pack': _packName, 'name_list_scope': scope, 'name_list_country': country},
+          settings: {
+            ...prefs.toJson(),
+            'model': _modelName,
+            'pack': _packName,
+            'name_list_scope': scope,
+            'name_list_country': country,
+            'name_list_chosen_countries': [_small, _country],
+          },
           // SESSION itself may have no position: the test session's position stands in.
           countryOf: (_) => sessionCountryOf(here),
         ),
@@ -154,6 +164,7 @@ void main() {
     await sp.setString('identify_pack', _packName);
     await sp.remove('identify_name_list_scope');
     await sp.remove('identify_name_list_country');
+    await sp.remove('identify_name_list_chosen_countries');
     await tester.pumpWidget(MaterialApp(theme: ThemeData.dark(useMaterial3: true), home: IdentificationScreen(sessionDir: here)));
     final found = find.text('Where the session was recorded (${countryName(_country)})');
     for (var i = 0; i < 300 && found.evaluate().isEmpty; i++) {
@@ -169,7 +180,7 @@ void main() {
 
     // Then SESSION, with the country chosen by hand.
     await tester.pumpWidget(MaterialApp(theme: ThemeData.dark(useMaterial3: true), home: IdentificationScreen(sessionDir: session)));
-    final heading = find.text('Names of one country');
+    final heading = find.text('Names to choose from');
     for (var i = 0; i < 300 && heading.evaluate().isEmpty; i++) {
       await tester.pump(const Duration(milliseconds: 200));
     }
@@ -203,6 +214,38 @@ void main() {
     expect((await IdentifyPrefs.load()).nameListCountry, code, reason: 'the choice is saved at once');
     expect(tester.takeException(), isNull);
     _log('SHOT country_lists_page');
+    await tester.pump(const Duration(seconds: 8));
+
+    // Round 376: countries chosen by hand, in the window with the search box.
+    final scopeBox = find.byKey(const ValueKey('name list scope'));
+    await tester.dragUntilVisible(scopeBox, list, const Offset(0, 150));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(scopeBox);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Countries I choose').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('name list countries')));
+    await tester.pumpAndSettle();
+    final small = regions.countries.keys.contains(_small) ? _small : regions.countries.keys.last;
+    await tester.enterText(find.byType(TextField), countryName(small));
+    await tester.pumpAndSettle();
+    _log('SHOT country_lists_window');
+    await tester.pump(const Duration(seconds: 6));
+    await tester.tap(find.textContaining(RegExp('^${RegExp.escape(countryName(small))} \\(')).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Use these'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(used, 80, scrollable: list);
+    await tester.pump(const Duration(milliseconds: 500));
+    _log('PAGE after ticking $small: ${tester.widget<Text>(used).data}');
+    for (final w in tester.widgetList<Text>(find.textContaining('⚠'))) {
+      _log('PAGE ${w.data}');
+    }
+    final saved = await IdentifyPrefs.load();
+    expect(saved.nameListChosenCountries, [small], reason: 'the ticked countries are saved at once');
+    expect(saved.nameListCountry, code, reason: 'the single country keeps its value');
+    expect(tester.takeException(), isNull);
+    _log('SHOT country_lists_by_hand');
     await tester.pump(const Duration(seconds: 8));
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(milliseconds: 500));

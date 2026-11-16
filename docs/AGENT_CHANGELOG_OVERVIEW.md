@@ -68,7 +68,8 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
   the main file are the table of contents). `widgets/` (shared UI, reuse before writing new: `setting_help.dart` ⓘ help and
   folds, `numeric_setting_field.dart`, `dialog_title.dart`, `home_button.dart`,
   `model_kind_panel.dart`, `tracker_tuning_fields.dart`, `video_timeline_bar.dart`,
-  `selection_app_bar.dart`), `services/` (recording and analysis keep-alive), `perf/`.
+  `selection_app_bar.dart`, `multi_pick_dialog.dart` = a window to tick entries of a long list,
+  with a search box), `services/` (recording and analysis keep-alive), `perf/`.
 
 Settings outside `SessionConfig` are shared preferences: Find in photos `analysis_*` (its
 tracker = the camera's), Find in videos `video_analysis_*` (own tracker values, never touching the
@@ -288,9 +289,10 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   identified rank, the best view). The "none of these" share, the crops' weights, the drop rule
   and the merge check (`FusedTrack.mergeRank`, `mergeKeys`) read the scores over every name of
   the list, so they are the same for every country choice (rule and reason: `track_fusion.dart`
-  header; acceptance test in `identification_job_test.dart`). Which names a run uses is decided
-  in one place, `resolveNameList` (`name_list_region.dart`), for the scoring and the Identify
-  page; the results record it (`name_list`, `name_list_countries`).
+  header; acceptance test in `identification_job_test.dart`). Which names a run uses (one
+  country, with its neighbours, or countries chosen by hand) is decided in one place,
+  `nameListForSettings` (`name_list_region.dart`), for the scoring and the Identify page; the
+  results record it (`name_list`, `name_list_countries`).
 - **The session's country** comes from its position and `assets/country_borders.json`
   (`country_lookup.dart`; found on the calling isolate, because the borders are an asset).
   `tool/country_borders/make_country_borders.py` writes that file and the shared test points

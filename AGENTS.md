@@ -40,16 +40,23 @@ has no commit yet (`git log --grep '^Round <n>:'`), the work may still belong to
   now: when a round changes a rule or where something lives, replace or delete the affected text
   in place (no round numbers, old values or measurements). When the reason for a rule is not
   obvious, give it in one short clause. Keep it under 35,000 characters (`wc -m`).
-- `docs/AGENT_CHANGELOG.md` is the very long history. Never read it whole. Ask the owner before
-  reading old round entries, and only when past rationale is really needed (search with `grep`,
-  read single entries). Each round appends one entry at the end, without reading the file:
+- `docs/AGENT_CHANGELOG.md` is the list of rounds. It grew very long, so since round 376 an
+  entry is only a few lines and the round's commit message holds the details (*Git related*).
+  Never read the file whole. Ask the owner before reading old round entries, and only when past
+  rationale is really needed (search with `grep`, read single entries). Each round appends one
+  entry at the end, without reading the file:
   - a header line "## Round xy (yyyy-mm-dd): some short title", for example
     "## Round 76 (2026-07-08): added user-triggered engine benchmark";
-  - the round's commit says what changed and the diff shows how, so the entry adds only what
-    those do not: what was asked, why (decisions, evidence, rejected options), what was checked,
-    and what is open, in about 500 to 1,200 characters. No file lists, no commit message (neither
-    a repeat nor a suggestion) and no personal or private information (see *General rules*);
+  - one to three sentences, at most about 300 characters: what was asked, and what is still open
+    or owed. Nothing that the commit message, the diff or the overview says: no list of changes,
+    no reasons, no checks, no file lists, and no personal or private information (see *General
+    rules*);
   - an empty line after it, to separate the next entry.
+
+  A round's details: `git show` of its commit (`git log --grep '^Round <n>:'`); rounds before 376
+  have them in their changelog entry.
+- Say each thing once. The commit message is the record of a round, the overview says what is
+  true now, the changelog lists the rounds: none of them repeats another.
 
 ## Related repositories
 
@@ -148,10 +155,14 @@ unless asked (thi is to avoid burning trough tokens)
 - Commits use the identity in the repository's git config (the GitHub noreply address): never
   pass `--author` or write a private address. Commit messages contain no author or attribution
   lines (no "Co-Authored-By", no tool or person names).
-- When files changed, suggest a short, clear commit message that says what the overall edits
-  were about. Its first line starts with "Round <counter>" (e.g. "Round 76: added
+- When files changed, write the round's commit message (use it when asked to commit, suggest it
+  otherwise). Its first line starts with "Round <counter>" (e.g. "Round 76: added
   user-triggered engine benchmark"), the same counter as the round appended to
-  `AGENT_CHANGELOG.md`; after it, a short summary of the changes and why they were needed.
+  `AGENT_CHANGELOG.md`. Its body is the record of the round, because the changelog entry is
+  short: what changed and why (decisions, evidence, rejected options), what was checked and how
+  (tests, analyzer, which phone model) and what was not, and what is open. Plain sentences or
+  short lists, lines of at most about 100 characters, no file lists (the diff shows them), and
+  nothing private (*General rules*: commit messages are public too).
 
 ## Credit, copying and the licence
 

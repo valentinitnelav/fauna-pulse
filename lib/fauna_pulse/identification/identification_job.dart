@@ -111,6 +111,7 @@ class IdentifyRunSettings {
   /// Round 373: the names a run chooses from (name_list_region.dart; '' = the session's country).
   final String nameListScope;
   final String nameListCountry;
+  final List<String> nameListChosenCountries;
   final int batchSize;
   final Map<String, dynamic> extra;
 
@@ -140,6 +141,7 @@ class IdentifyRunSettings {
     this.dropFactor = 10,
     this.nameListScope = kScopeNeighbours,
     this.nameListCountry = '',
+    this.nameListChosenCountries = const [],
     this.batchSize = 8,
     this.extra = const {},
   });
@@ -170,6 +172,7 @@ class IdentifyRunSettings {
     'drop_factor': dropFactor,
     'name_list_scope': nameListScope,
     'name_list_country': nameListCountry,
+    'name_list_chosen_countries': nameListChosenCountries,
     ...extra,
   };
 }
@@ -708,8 +711,7 @@ class IdentificationJob {
     // Round 374: the session's country is found here, on the calling isolate (the borders are
     // an app asset), and only when the settings ask for it ("Names from" a country, and no
     // country chosen by hand).
-    final wantsCountry = settings['name_list_scope'] != kScopeAll && (settings['name_list_country'] ?? '') == '';
-    final sessionCountry = wantsCountry ? await countryOf(sessionDir) : null;
+    final sessionCountry = nameListNeedsSessionCountry(settings) ? await countryOf(sessionDir) : null;
     // Progress crosses the isolates as (track IDs fused since the last message, total) records.
     final port = onProgress == null ? null : ReceivePort();
     var done = 0;
@@ -764,16 +766,12 @@ class IdentificationJob {
   /// The names a scoring chooses from (round 373), from its [settings] and the session.
   /// Results made with another country choice are not comparable, so the files say which
   /// one was used (`name_list` in the summary, `name_list_countries` in the tracks table).
-  static NameListChoice nameListOf(LabelPack pack, Map<String, dynamic> settings, {String? sessionCountry}) {
-    final scope = settings['name_list_scope'], country = settings['name_list_country'];
-    return resolveNameList(
-      pack.isClassList ? null : pack.regions,
-      packNames: pack.rows - pack.sinkRows,
-      scope: scope is String && kNameListScopes.contains(scope) ? scope : kScopeNeighbours,
-      country: country is String ? country : '',
-      sessionCountry: sessionCountry,
-    );
-  }
+  static NameListChoice nameListOf(LabelPack pack, Map<String, dynamic> settings, {String? sessionCountry}) => nameListForSettings(
+    settings,
+    pack.isClassList ? null : pack.regions,
+    packNames: pack.rows - pack.sinkRows,
+    sessionCountry: sessionCountry,
+  );
 
   /// Isolates for the fusion when the "Cores for combining results" setting is 0 (automatic):
   /// [scoringWorkersFor] with this phone's processors and memory. One for small sessions, where

@@ -10475,3 +10475,9 @@ the real catalogue now expect v3 (watch plan, home screen, catalogue). Docs: IDE
 (table, which list carries country lists, examples). Not checked here (owner runs them): the
 test suite, a debug build, a download of v3 on a phone.
 
+## Round 376 (2026-11-16): countries chosen by hand for the names of a name list
+
+Asked: on Identify organisms, a "Names from" choice where any countries of the name list are
+ticked in a searchable list and their names put together, recorded so that a run can be
+repeated; and short changelog entries from now on (AGENTS.md). Open: nothing.
+

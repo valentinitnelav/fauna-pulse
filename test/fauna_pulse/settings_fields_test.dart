@@ -528,7 +528,9 @@ void main() {
     Future<Map<String, Object?>> snap() async {
       await tester.pump();
       final p = await SharedPreferences.getInstance();
-      return {for (final k in p.getKeys()) k: p.get(k)};
+      // The values as flatten gives them: a saved list (round 376: the countries chosen by
+      // hand) is a new list object after every save, so lists compare by their text.
+      return flatten({for (final k in p.getKeys()) k: p.get(k)});
     }
 
     // Save once so every key exists before the first comparison.

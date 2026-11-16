@@ -1,6 +1,7 @@
-// Round 373: "Names of one country" on Identify organisms (name_list_region_fields.dart) on a
+// Round 373: "Names to choose from" on Identify organisms (name_list_region_fields.dart) on a
 // 360-px phone: each control changes one stored setting, the page says which names a run will
-// use and why, and warns about a short list or a list made for another region.
+// use and why, and warns about a short list or a list made for another region. Round 376:
+// countries chosen by hand in a window with a search box.
 
 import 'dart:convert';
 import 'dart:io';
@@ -78,7 +79,7 @@ void main() {
   testWidgets('no country known: the whole list, said in words; no overflow at 360 px', (tester) async {
     final prefs = IdentifyPrefs();
     await pump(tester, prefs);
-    expect(find.text('Names of one country'), findsOneWidget);
+    expect(find.text('Names to choose from'), findsOneWidget);
     expect(find.text('The country and its neighbours'), findsOneWidget);
     expect(find.text('Where the session was recorded'), findsOneWidget);
     expect(
@@ -143,6 +144,106 @@ void main() {
     expect(find.textContaining('⚠'), findsNothing);
   });
 
+  group('round 376: countries chosen by hand', () {
+    Future<void> openWindow(WidgetTester tester) async {
+      await tester.tap(find.byKey(const ValueKey('name list countries')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('ticked in a window with a search box; one setting is written, on "Use these" only', (tester) async {
+      final prefs = IdentifyPrefs(nameListCountry: 'IS');
+      await pump(tester, prefs, sessionCountry: 'DE');
+      await choose(tester, 'name list scope', 'Countries I choose');
+      expect(prefs.nameListScope, kScopeCountries);
+      expect(prefs.nameListChosenCountries, isEmpty);
+      expect(prefs.nameListCountry, 'IS', reason: 'the single country keeps its value');
+      expect(find.text('None yet: tap to choose'), findsOneWidget);
+      expect(find.text('No country is chosen yet, so a run chooses among all 7,994 names. Tap "Countries" above to choose.'), findsOneWidget);
+      expect(find.byType(DropdownButtonFormField<String>), findsOneWidget, reason: 'the single-country box is replaced');
+
+      // Every country of the list is offered, by name with its number of names.
+      await openWindow(tester);
+      expect(find.widgetWithText(AlertDialog, 'Countries'), findsOneWidget);
+      expect(find.text('0 ticked'), findsOneWidget);
+      expect(find.text('Austria (5,200 names)'), findsOneWidget);
+      expect(find.textContaining('South Georgia and the South Sandwich Islands'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      // The search narrows the entries, whatever the case of the letters.
+      await tester.enterText(find.byType(TextField), 'LAND');
+      await tester.pump();
+      expect(find.text('Iceland (100 names)'), findsOneWidget);
+      expect(find.text('Austria (5,200 names)'), findsNothing);
+      await tester.tap(find.text('Iceland (100 names)'));
+      await tester.pump();
+      expect(find.text('1 ticked'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'xyz');
+      await tester.pump();
+      expect(find.text('Nothing found.'), findsOneWidget);
+      await tester.tap(find.byTooltip('Clear the search'));
+      await tester.pump();
+      await tester.tap(find.text('Austria (5,200 names)'));
+      await tester.pump();
+      expect(find.text('2 ticked'), findsOneWidget);
+      expect(prefs.nameListChosenCountries, isEmpty, reason: 'nothing is saved before "Use these"');
+      await tester.tap(find.text('Use these'));
+      await tester.pumpAndSettle();
+      expect(prefs.nameListChosenCountries, ['AT', 'IS']);
+      expect(prefs.nameListScope, kScopeCountries);
+      expect(find.text('Austria, Iceland'), findsOneWidget);
+      expect(find.text('A run chooses among the 5,300 names of Austria and Iceland (of 7,994 in the list).'), findsOneWidget);
+      expect(find.textContaining('⚠'), findsNothing);
+
+      // Cancel and the X change nothing; the window opens with the saved countries ticked.
+      await openWindow(tester);
+      expect(find.text('2 ticked'), findsOneWidget);
+      await tester.tap(find.text('Untick all'));
+      await tester.pump();
+      expect(find.text('0 ticked'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(prefs.nameListChosenCountries, ['AT', 'IS']);
+      await openWindow(tester);
+      await tester.tap(find.text('Germany (6,000 names)'));
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      expect(prefs.nameListChosenCountries, ['AT', 'IS']);
+    });
+
+    testWidgets('a short list and a list made for another region are warned about, as for one country', (tester) async {
+      await pump(tester, IdentifyPrefs(nameListScope: kScopeCountries, nameListChosenCountries: ['GS', 'IS']));
+      expect(find.text('A run chooses among the 150 names of South Georgia and the South Sandwich Islands and Iceland (of 7,994 in the list).'), findsOneWidget);
+      expect(find.textContaining('⚠ Only 150 names. GBIF holds few records from these countries'), findsOneWidget);
+      expect(find.textContaining('More countries, or "The whole name list", is safer.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await pump(tester, IdentifyPrefs(nameListScope: kScopeCountries, nameListChosenCountries: ['DE', 'US']));
+      expect(find.textContaining('Only '), findsNothing);
+      expect(find.textContaining('⚠ This name list holds only 14 of 100 species that GBIF lists for United States'), findsOneWidget);
+    });
+
+    testWidgets('chosen countries this name list does not know are not used and not shown', (tester) async {
+      await pump(tester, IdentifyPrefs(nameListScope: kScopeCountries, nameListChosenCountries: ['XX', 'YY']));
+      expect(find.text('None yet: tap to choose'), findsOneWidget);
+      expect(find.text('This name list has no names for the chosen countries, so a run chooses among all 7,994 names.'), findsOneWidget);
+      await pump(tester, IdentifyPrefs(nameListScope: kScopeCountries, nameListChosenCountries: ['DE', 'XX']));
+      expect(find.text('Germany'), findsOneWidget);
+      expect(find.text('A run chooses among the 6,000 names of Germany only (of 7,994 in the list).'), findsOneWidget);
+    });
+
+    testWidgets('the window fits a 360-px phone with the keyboard open', (tester) async {
+      await pump(tester, IdentifyPrefs(nameListScope: kScopeCountries));
+      await openWindow(tester);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 320);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.showKeyboard(find.byType(TextField));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Use these'), findsOneWidget);
+      expect(tester.getBottomLeft(find.text('Use these')).dy, lessThanOrEqualTo(780 - 320));
+      expect(tester.getSize(find.byType(ListView)).height, greaterThan(60), reason: 'entries stay in view above the keyboard');
+    });
+  });
+
   test('the Identify page gets the country lists of the chosen name list, decoded once; other lists have none', () async {
     final withLists = File('test/fauna_pulse/fixtures/tiny_pack_regions.fpack');
     final plain = File('test/fauna_pulse/fixtures/tiny_pack.fpack'), classes = File('test/fauna_pulse/fixtures/tiny_classes.fpack');
@@ -166,5 +267,10 @@ void main() {
     expect(countriesInWords(const ['MT', 'IT'], scope: kScopeNeighbours), 'Malta and its neighbour');
     expect(countriesInWords(const ['DE', 'AT', 'BE'], scope: kScopeNeighbours), 'Germany and its 2 neighbours');
     expect(countriesInWords(const ['XX'], scope: kScopeCountry), 'XX only', reason: 'an unknown code is shown as it is');
+    // Chosen by hand: named, up to three.
+    expect(countriesInWords(const ['DE'], scope: kScopeCountries), 'Germany only');
+    expect(countriesInWords(const ['AT', 'DE'], scope: kScopeCountries), 'Austria and Germany');
+    expect(countriesInWords(const ['AT', 'DE', 'MT'], scope: kScopeCountries), 'Austria, Germany and Malta');
+    expect(countriesInWords(const ['AT', 'DE', 'IS', 'MT', 'US'], scope: kScopeCountries), 'Austria, Germany and 3 more countries');
   });
 }
