@@ -56,7 +56,7 @@ import '../postprocess/video_tracker.dart' show VideoTracker;
 import '../widgets/setting_help.dart';
 import '../widgets/home_button.dart';
 import 'identification_choice_fields.dart' show thousands;
-import 'name_list_region_fields.dart' show countriesInWords;
+import 'name_list_region_fields.dart' show countriesInWords, taxaInWords;
 
 const _cellStyle = TextStyle(color: Colors.white, fontSize: 13);
 const _dimCellStyle = TextStyle(color: Colors.white54, fontSize: 13);
@@ -715,26 +715,29 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
     final packFile = s['settings'] is Map ? (s['settings'] as Map)['pack'] : null;
     final listName = packFile is String && packFile.isNotEmpty ? packFile : '${s['pack_id']}';
     // Round 373: the countries whose names were on offer, when a country list was used or
-    // asked for (results made with another choice are not comparable).
+    // asked for (results made with another choice are not comparable); round 377: the orders
+    // and families.
     final nameList = s['name_list'] is Map ? (s['name_list'] as Map) : const {};
     final countries = [for (final c in (nameList['countries'] as List?) ?? const []) '$c'];
+    final taxa = [for (final t in (nameList['taxa'] as List?) ?? const []) '$t'];
+    final onOffer = ' (${thousands((nameList['names'] as num?) ?? 0)} names)';
     final byHand = nameList['scope'] == kScopeCountries;
     final wholeReason = switch (nameList['whole_list_reason']) {
       kWholeNoCountry => byHand ? 'no country was chosen' : 'the session\'s country is not known',
       kWholeNotInList => 'the list has no names for ${byHand ? 'the chosen countries' : countryName('${nameList['country']}')}',
       kWholeShortList => 'few GBIF records from ${countryName('${nameList['country']}')} and its neighbours',
+      kWholeNoCommonNames => 'no name of the chosen orders and families is listed for the chosen countries',
       _ => null,
     };
     return [
       _kv('Model', '${s['model_id']}'),
       _kv(classList ? 'Class list' : 'Name list', '$listName$count'),
+      // The number of names stands where the last choice is named.
       if (countries.isNotEmpty)
-        _kv(
-          'Names from',
-          '${countriesInWords(countries, scope: '${nameList['scope']}')} (${thousands((nameList['names'] as num?) ?? 0)} names)',
-        )
+        _kv('Names from', '${countriesInWords(countries, scope: '${nameList['scope']}')}${taxa.isEmpty ? onOffer : ''}')
       else if (wholeReason != null)
         _kv('Names from', 'the whole name list ($wholeReason)'),
+      if (taxa.isNotEmpty) _kv('Orders and families', '${taxaInWords(taxa)}$onOffer'),
       _kv('Date run', when),
       _kv(
         'Track IDs',

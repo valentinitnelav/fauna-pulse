@@ -22,6 +22,81 @@ Uint8List _packWith(List<List<String>> labels, Map<String, dynamic> blocks) {
 }
 
 void main() {
+  // Round 377: the orders and families of a pack's names, for the choice by hand.
+  group('round 377: orders and families', () {
+    LabelRow row(String order, String family, [String genus = 'Genus', String species = 'species']) =>
+        LabelRow(['Animalia', 'Chordata', 'Aves', order, family, genus, species], '');
+    final taxa = PackTaxa.of([
+      row('Passeriformes', 'Turdidae'), // 0
+      row('Passeriformes', 'Paridae'), // 1
+      row('Accipitriformes', 'Accipitridae'), // 2
+      row('Passeriformes', 'Turdidae', '', ''), // 3: answered only down to family (a name-rules row)
+      row('Passeriformes', '', 'Genus', 'species'), // 4: no family: counts for its order only
+      row('', 'Accipitridae'), // 5: no order: counts for neither, although the family is named
+      const LabelRow(['Animalia', '', 'Aves', 'Passeriformes', 'Paridae', 'Parus', 'major'], ''), // 6: a gap higher up
+      const LabelRow(['none', '', '', '', '', '', 'flower'], 'a photo of a flower.'), // 7: "none of these"
+    ]);
+    List<int> rowsOf(Uint8List bits) => [for (var r = 0; r < 8; r++) if (PackRegions.hasRow(bits, r)) r];
+
+    test('names in alphabetical order, each family under its order', () {
+      expect(taxa.orders, ['Accipitriformes', 'Passeriformes']);
+      expect(taxa.families, ['Accipitridae', 'Paridae', 'Turdidae']);
+      expect([for (final o in taxa.familyOrder) taxa.orders[o]], ['Accipitriformes', 'Passeriformes', 'Passeriformes']);
+      expect(taxa.contains('Paridae'), isTrue);
+      expect(taxa.contains('Passeriformes'), isTrue);
+      expect(taxa.contains('Aves'), isFalse, reason: 'only orders and families');
+      expect(taxa.contains(''), isFalse);
+    });
+
+    test('a row counts down to the rank above its first empty slot', () {
+      expect(rowsOf(taxa.rowBits(['Turdidae'])), [0, 3], reason: 'a row answered down to family counts for its family');
+      expect(rowsOf(taxa.rowBits(['Passeriformes'])), [0, 1, 3, 4], reason: 'a row without a family counts for its order');
+      expect(rowsOf(taxa.rowBits(['Accipitridae'])), [2], reason: 'a row without an order counts for no family');
+      expect(rowsOf(taxa.rowBits(['Paridae'])), [1], reason: 'a gap above the order: the row counts for nothing here');
+      // An order and a family of another order: both, each row once. Unknown names add nothing.
+      expect(rowsOf(taxa.rowBits(['Accipitriformes', 'Paridae', 'Strigidae'])), [1, 2]);
+      expect(rowsOf(taxa.rowBits(const [])), isEmpty);
+      expect(rowsOf(taxa.rowBits([...taxa.orders, ...taxa.families])), [0, 1, 2, 3, 4], reason: 'never a "none of these" row');
+    });
+
+    test('names per order and family, in the whole pack or among some rows', () {
+      final all = taxa.counts();
+      expect([all.orders, all.families], [[1, 4], [1, 1, 2]]);
+      final some = taxa.counts(Uint8List.fromList([0x0B])); // rows 0, 1 and 3
+      expect([some.orders, some.families], [[0, 3], [0, 1, 2]]);
+    });
+
+    test('a name list\'s header brings them along; a class list has none', () async {
+      final header = await LabelPack.readHeader(File('test/fauna_pulse/fixtures/tiny_pack_regions.fpack'));
+      final fromHeader = header[kPackTaxaKey] as PackTaxa;
+      expect(header.containsKey('labels'), isFalse);
+      final pack = LabelPack.parseBytes(File('test/fauna_pulse/fixtures/tiny_pack_regions.fpack').readAsBytesSync());
+      final fromPack = PackTaxa.of(pack.labels);
+      expect(fromHeader.orders, ['Araneae', 'Diptera', 'Hymenoptera']);
+      expect(fromHeader.families, ['Apidae', 'Syrphidae', 'Thomisidae']);
+      expect(fromHeader.rowOrder, fromPack.rowOrder);
+      expect(fromHeader.rowFamily, fromPack.rowFamily);
+      expect(fromHeader.rowOrder.last, -1, reason: 'the "none of these" row');
+      expect((await LabelPack.readHeader(File('test/fauna_pulse/fixtures/tiny_classes.fpack'))).containsKey(kPackTaxaKey), isFalse);
+    });
+
+    test('labels of a wrong shape: the header is read, without orders and families', () async {
+      final bytes = _packWith([
+        ['Animalia', 'Arthropoda', 'Insecta', 'Diptera', 'Syrphidae', 'Genus', 'species', ''],
+      ], {});
+      final hlen = ByteData.sublistView(bytes, 4, 8).getUint32(0, Endian.little);
+      final header = jsonDecode(utf8.decode(bytes.sublist(8, 8 + hlen))) as Map<String, dynamic>;
+      header['labels'] = ['not a list'];
+      final hdr = utf8.encode(jsonEncode(header));
+      final dir = Directory.systemTemp.createTempSync('fp_taxa');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/odd.fpack')
+        ..writeAsBytesSync([...bytes.sublist(0, 4), ...(ByteData(4)..setUint32(0, hdr.length, Endian.little)).buffer.asUint8List(), ...hdr, ...bytes.sublist(8 + hlen)]);
+      expect((await LabelPack.readHeader(file)).containsKey(kPackTaxaKey), isFalse);
+      expect(() => LabelPack.parseBytes(file.readAsBytesSync()), throwsFormatException);
+    });
+  });
+
   // Round 372: the blocks of the `_v3` packs, read from the fixture fpack.py writes
   // (fauna-pulse-models, `_write_regions_fixture`: tiny_pack with made-up country lists).
   group('round 372: GBIF keys and country lists', () {

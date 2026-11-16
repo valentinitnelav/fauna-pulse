@@ -87,6 +87,12 @@ class IdentificationChoice {
 
   final _regions = <String, PackRegions?>{};
 
+  /// Round 377: the chosen name list's orders and families (null for a class list).
+  PackTaxa? get packTaxa {
+    final taxa = packHeader?[kPackTaxaKey];
+    return taxa is PackTaxa ? taxa : null;
+  }
+
   /// A fixed-class classifier's list (round 266), not a label pack.
   bool get isClassList => isClassListHeader(packHeader);
 

@@ -1,5 +1,5 @@
-// IdentifyPrefs persistence (round 262: the "Square crops" switch; rounds 373 and 376: the name
-// list's country settings).
+// IdentifyPrefs persistence (round 262: the "Square crops" switch; rounds 373, 376 and 377: the
+// name list's countries, orders and families).
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -57,6 +57,22 @@ void main() {
     expect((await IdentifyPrefs.load()).nameListChosenCountries, ['DE', 'FR']);
     SharedPreferences.setMockInitialValues({'identify_name_list_chosen_countries': 'DE'});
     expect((await IdentifyPrefs.load()).nameListChosenCountries, isEmpty);
+  });
+
+  test('round 377: the orders and families chosen by hand default to all, survive save and load', () async {
+    SharedPreferences.setMockInitialValues({});
+    final p = await IdentifyPrefs.load();
+    expect(p.nameListChosenTaxa, isEmpty, reason: 'empty = every order and family');
+    expect(p.toJson(), containsPair('name_list_chosen_taxa', []));
+    p.nameListChosenTaxa = ['Apidae', 'Diptera'];
+    await p.save();
+    final back = await IdentifyPrefs.load();
+    expect(back.nameListChosenTaxa, ['Apidae', 'Diptera']);
+    expect(back.toJson(), p.toJson());
+    SharedPreferences.setMockInitialValues({'identify_name_list_chosen_taxa': <String>['Syrphidae', '', 'Apidae', 'Syrphidae']});
+    expect((await IdentifyPrefs.load()).nameListChosenTaxa, ['Apidae', 'Syrphidae'], reason: 'each once, in alphabetical order');
+    SharedPreferences.setMockInitialValues({'identify_name_list_chosen_taxa': 'Apidae'});
+    expect((await IdentifyPrefs.load()).nameListChosenTaxa, isEmpty);
   });
 
   test('round 373: a saved value this version does not know, or of another type, gives the default', () async {

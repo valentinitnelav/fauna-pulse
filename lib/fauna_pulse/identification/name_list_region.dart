@@ -10,6 +10,12 @@
 // ([nameListForSettings]). How the rows on offer change the scores: track_fusion.dart, file
 // header.
 //
+// Round 377: any name list can also be narrowed to orders and families chosen by hand
+// ([PackTaxa], label_pack.dart, with the rule for rows that stop above the species). Both
+// choices together are an intersection: a name is on offer when it is listed for the
+// countries AND belongs to a chosen order or family. A choice only removes names from the
+// list, it never adds one.
+//
 // Pure Dart, no I/O, unit-tested.
 
 import 'dart:typed_data';
@@ -39,6 +45,9 @@ const kLowCountryCoverage = 0.8;
 const kWholeNoCountry = 'no_country'; // no position, or not on land, and no country chosen
 const kWholeNotInList = 'not_in_list'; // the name list has no names for that country (or those)
 const kWholeShortList = 'short_list'; // the default choice would be a short list
+// Round 377: no name is both listed for the countries and in a chosen order or family. Then
+// neither choice is used (there would be nothing to answer with).
+const kWholeNoCommonNames = 'no_common_names';
 
 /// The names a run chooses from.
 class NameListChoice {
@@ -46,11 +55,18 @@ class NameListChoice {
   /// first, then its neighbours; countries chosen by hand are in the order of their codes.
   final List<String> countries;
 
+  /// The orders and families whose names are on offer (round 377), by name in alphabetical
+  /// order; empty = all of them.
+  final List<String> taxa;
+
   /// The rows on offer ([PackRegions.rowBits]); null = the whole list.
   final Uint8List? rowBits;
 
-  /// Names on offer (without the "none of these" entries, which are always on offer).
+  /// Names on offer (without the "none of these" entries, which are always on offer), and
+  /// the names of [countries] before the orders and families narrowed them (the same number
+  /// when [taxa] is empty).
   final int names;
+  final int countryNames;
 
   /// The settings as asked, and the country they led to (null when none was found).
   final String scope;
@@ -72,29 +88,37 @@ class NameListChoice {
 
   const NameListChoice({
     required this.countries,
+    this.taxa = const [],
     required this.rowBits,
     required this.names,
+    int? countryNames,
     required this.scope,
     this.country,
     this.fromSession = false,
     this.wholeListReason,
     this.coverage,
     this.lowCoverageCountries = const [],
-  });
+  }) : countryNames = countryNames ?? names;
 
   bool get narrowed => rowBits != null;
 
-  /// A narrowed list with few names (see [kShortNameList]): the page warns.
-  bool get shortList => narrowed && names < kShortNameList;
+  /// The countries' list has few names (see [kShortNameList]): the page warns. Judged before
+  /// the orders and families narrow it: few names in a chosen family say nothing about how
+  /// well GBIF covers the countries.
+  bool get shortList => countries.isNotEmpty && countryNames < kShortNameList;
 
   bool get lowCoverage => lowCoverageCountries.isNotEmpty;
 
   /// `DE+AT+BE` or `all`: the `name_list_countries` column of the results.
   String get label => countries.isEmpty ? 'all' : countries.join('+');
 
+  /// `Apidae+Syrphidae` or `all`: the `name_list_taxa` column of the results.
+  String get taxaLabel => taxa.isEmpty ? 'all' : taxa.join('+');
+
   /// The `name_list` block of `summary_<pack>.json`.
   Map<String, dynamic> toJson() => {
     'countries': countries,
+    'taxa': taxa,
     'names': names,
     'scope': scope,
     'country': ?country,
@@ -119,6 +143,7 @@ NameListChoice nameListForSettings(
   PackRegions? regions, {
   required int packNames,
   String? sessionCountry,
+  PackTaxa? taxa,
 }) {
   final scope = settings['name_list_scope'], country = settings['name_list_country'], chosen = settings['name_list_chosen_countries'];
   return resolveNameList(
@@ -128,7 +153,15 @@ NameListChoice nameListForSettings(
     country: country is String ? country : '',
     chosenCountries: [if (chosen is List) ...chosen.whereType<String>()],
     sessionCountry: sessionCountry,
+    taxa: taxa,
+    chosenTaxa: chosenTaxaOf(settings),
   );
+}
+
+/// The orders and families these settings ask for (`name_list_chosen_taxa`); empty = all.
+List<String> chosenTaxaOf(Map<String, dynamic> settings) {
+  final chosen = settings['name_list_chosen_taxa'];
+  return [if (chosen is List) ...chosen.whereType<String>()];
 }
 
 /// The names on offer for a pack with [regions] (null: it has no country lists) and
@@ -140,12 +173,53 @@ NameListChoice nameListForSettings(
 /// pack has no names for the country, and when nothing was chosen by hand (the default
 /// "country and its neighbours" of the session's country) and that list is short. A choice
 /// made by hand is kept also when short; the page then warns.
+///
+/// [chosenTaxa] (order and family names of [taxa], the pack's own; null: a class list) then
+/// narrow those names further, or the whole list when no country narrows. Names the pack does
+/// not have (chosen for another name list) are left out; when none is left, nothing narrows.
 NameListChoice resolveNameList(
   PackRegions? regions, {
   required int packNames,
   required String scope,
   required String country,
   List<String> chosenCountries = const [],
+  String? sessionCountry,
+  PackTaxa? taxa,
+  List<String> chosenTaxa = const [],
+}) {
+  final place = _countryChoice(regions, packNames: packNames, scope: scope, country: country, chosenCountries: chosenCountries, sessionCountry: sessionCountry);
+  final used = taxa == null ? const <String>[] : ({for (final t in chosenTaxa) if (taxa.contains(t)) t}.toList()..sort());
+  if (taxa == null || used.isEmpty) return place;
+  final bits = taxa.rowBits(used);
+  if (place.rowBits case final listed?) {
+    for (var i = 0; i < bits.length && i < listed.length; i++) {
+      bits[i] &= listed[i];
+    }
+  }
+  final names = PackRegions.countRows(bits);
+  final none = names == 0;
+  return NameListChoice(
+    countries: none ? const [] : place.countries,
+    taxa: none ? const [] : used,
+    rowBits: none ? null : bits,
+    names: none ? packNames : names,
+    countryNames: none ? packNames : place.names,
+    scope: scope,
+    country: place.country,
+    fromSession: place.fromSession,
+    wholeListReason: none ? kWholeNoCommonNames : place.wholeListReason,
+    coverage: place.coverage,
+    lowCoverageCountries: none ? const [] : place.lowCoverageCountries,
+  );
+}
+
+/// The countries' part of [resolveNameList].
+NameListChoice _countryChoice(
+  PackRegions? regions, {
+  required int packNames,
+  required String scope,
+  required String country,
+  required List<String> chosenCountries,
   String? sessionCountry,
 }) {
   NameListChoice whole({String? reason, String? used, bool fromSession = false, double? coverage}) => NameListChoice(

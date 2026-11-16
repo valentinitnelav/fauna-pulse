@@ -100,7 +100,8 @@ A model can identify only with a name list made for it:
 A name list can also carry **country lists**: which of its species GBIF (the Global Biodiversity
 Information Facility, gbif.org) has records of in which country. With such a list the model can
 choose among the names of one country or of several
-([Names to choose from](#names-to-choose-from)).
+([Names to choose from](#names-to-choose-from)). Every name list can be narrowed to some of its
+orders and families there.
 The Europe list for BioCLIP 2 carries them from version 3 on
 (`bioclip-2_pollinator-orders-europe_v3.fpack`: the same names as version 2). A phone that has
 version 2 keeps using it, without the country choice; **Download & import models** offers
@@ -275,16 +276,21 @@ per track ID. Photos further apart have no track IDs, so their boxes are identif
 
 ### Names to choose from
 
-A name list for a large region holds many species that do not live where the camera stood. When
-the chosen name list carries country lists, **Names to choose from** appears under **Model and
-name list**, and the model chooses only among the species recorded in one country, or in the
-countries you tick:
+**Names to choose from** appears under **Model and name list**. It narrows the names the model
+chooses among, by place and by group. A name list for a large region holds many species that do
+not live where the camera stood: when the list carries country lists, the model chooses only
+among the species recorded in one country, or in the countries you tick. And when you study
+only some groups, **Orders and families** leaves only their names:
 
 | Control | Default | Choices |
 |---|---|---|
 | **Names from** | The country and its neighbours | **The country and its neighbours**, **The country only**, **Countries I choose**, **The whole name list** |
 | **Country** | Where the session was recorded | or one country chosen by hand (listed with its number of names) |
 | **Countries** (with **Countries I choose**) | none | any countries of the name list, ticked in a window with a search box |
+| **Orders and families** | All | any orders and families of the name list, ticked in a window with a search box |
+
+The first three show only for a name list with country lists; **Orders and families** shows
+for every name list of a BioCLIP model (not for a classifier's class list).
 
 **Countries I choose** puts the names of the ticked countries together, for example for a
 region that lies in several countries. No neighbours are added, and the session's position is
@@ -308,10 +314,30 @@ is used when it is:
 A country, "The country only" or countries chosen by hand are used as they are. An amber line
 then warns when:
 
-- the list on offer has under 5,000 names: GBIF holds few records from there, so species that
-  live there are probably missing, and the model then has to pick a wrong name;
+- the countries' list has under 5,000 names (counted before **Orders and families** narrows
+  it): GBIF holds few records from there, so species that live there are probably missing, and
+  the model then has to pick a wrong name;
 - the name list holds under 80 % of the country's own GBIF list: it was made for another region
   (with **Countries I choose**, each such country is named).
+
+**Orders and families** lists the orders of the name list, each with its families under it.
+Tick whole orders, single families, or both (an order stands for all its families); nothing
+ticked means all. The numbers in the window are the names among the chosen countries.
+
+- It only takes names away from the list; it never adds one.
+- With countries and groups together, a name must be listed for the countries **and** belong
+  to a ticked order or family. When no name is in both, neither choice is used and an amber
+  line says so.
+- **Every animal is then named within the ticked groups, also an animal of another group**: a
+  fly is named as a bee when only bees are on offer, because the model has no other names to
+  choose from (an amber line reminds of it). Use it when other animals do not matter for your
+  question, or are sorted out afterwards. "No organism" does not change with the choice.
+- A few names of a list are used only down to the family (their genus and species are not
+  in a plain form): they stay with their family. A name without an order or a family in the
+  list (some birds and mammals) belongs to no group here, so it is not on offer once groups are
+  ticked.
+- The ticked names are kept when you choose another name list; the ones that list does not
+  have are not used there.
 
 Good to know:
 
@@ -321,12 +347,13 @@ Good to know:
 - A neighbour shares a land border with the country, or lies at most 100 km away over the sea.
 - Results made with different choices cannot be compared directly: a shorter list shares the
   same 100 % among fewer names, so its percentages are higher. The results say which names were
-  used: the **Names from** row on the results screen and `name_list_countries` in
-  `tracks_<pack>.csv`. To repeat a run, set the same countries.
+  used: the **Names from** and **Orders and families** rows on the results screen, and
+  `name_list_countries` and `name_list_taxa` in `tracks_<pack>.csv`. To repeat a run, set the
+  same countries, orders and families.
 - "No organism", the weight of each crop and the joining of track IDs do not depend on the
   choice ([How the answer is computed](#how-the-answer-is-computed)).
-- Whether a country list names insects better than the whole list is not tested yet
-  ([Validation status](#how-the-answer-is-computed)).
+- Whether a country list, or a choice of orders and families, names insects better than the
+  whole list is not tested yet ([Validation status](#how-the-answer-is-computed)).
 
 ### Buttons
 
@@ -336,7 +363,7 @@ Good to know:
 | **Cancel (keeps what is done)** | Stops the run and keeps everything done so far. |
 | **Continue / re-run** | Shown in place of **Start** once crops are stored. Goes on where the run stopped, then scores everything again. On a session that did not change, this takes seconds. |
 | **Stop and leave** | When you leave the screen during a run (Back), the app asks *Identification is still running*. **Stop and leave** stops after the current photo and keeps what is done; **Cancel** stays on the screen. |
-| **Update results** | Repeats only the last step (seconds): the stored model output is compared with a different name list, or with the names of another country, without running the model again. Shown when stored model output exists and the track IDs did not change. |
+| **Update results** | Repeats only the last step (seconds): the stored model output is compared with a different name list, or with another choice of countries, orders and families, without running the model again. Shown when stored model output exists and the track IDs did not change. |
 | **Test speed** | In the Run section. Measures the seconds per crop on this phone with the current settings, so you can compare GPU on or off and thread counts in about a minute each (a few minutes on an older phone's CPU). |
 | **View results** | Opens the results ([next section](#read-the-results)). |
 | **Share results (CSV file)** | Under **Last run**. Shares the per-track-ID table. |
@@ -759,14 +786,15 @@ some keys are digits only.
    (`p_max_<rank>`), the agreeing-crops mean (`p_agree_<rank>`) and the agreement share
    (`agree_<rank>`), plus every crop's own values and its `counted` flag in `crops_<pack>.csv`.
 
-**With a country list** (round 373), steps 3 and 4 keep two sets of numbers:
+**With a choice of names** (countries, round 373; orders and families, round 377), steps 3 and
+4 keep two sets of numbers:
 
 - *Over every name of the list:* each crop's weight, the crops that are left out, the share of
   the "none of these" entries (per crop and per track ID, so also "no organism"), the vector of
-  the merge check and the names the merge check compares. None of these changes with the country.
+  the merge check and the names the merge check compares. None of these changes with the choice.
 - *Over the names on offer:* what is shown, that is each crop's best names, the ladder, the
-  identified rank and the best single view. A species outside the country list gets 0. The
-  species in it share what the "none of these" entries leave, in the proportions of their scores.
+  identified rank and the best single view. A species that is not on offer gets 0. The species
+  on offer share what the "none of these" entries leave, in the proportions of their scores.
 
 Why not simply remove the other names before the probabilities are computed: the "none of
 these" share would then rise as the list gets shorter, although the picture is the same. On 784
@@ -844,6 +872,9 @@ overall result. A full report is in preparation.
   pushes them to deeper ranks, which is why the app warns about it. The share of "none of
   these", the weights, the "no organism" flags and the joined track IDs were the same for every
   choice, as designed.
+- **Orders and families chosen by hand: not tested either.** The choice follows the same rule
+  as a country list, so the same numbers stay fixed. An animal outside the ticked groups always
+  gets a wrong name from them.
 - **The calibration temperature 1.0:** no calibration yet. Dussert et al. fit one temperature on
   a labelled test set and keep it; the pack format carries the field.
 

@@ -112,6 +112,7 @@ class IdentifyRunSettings {
   final String nameListScope;
   final String nameListCountry;
   final List<String> nameListChosenCountries;
+  final List<String> nameListChosenTaxa;
   final int batchSize;
   final Map<String, dynamic> extra;
 
@@ -142,6 +143,7 @@ class IdentifyRunSettings {
     this.nameListScope = kScopeNeighbours,
     this.nameListCountry = '',
     this.nameListChosenCountries = const [],
+    this.nameListChosenTaxa = const [],
     this.batchSize = 8,
     this.extra = const {},
   });
@@ -173,6 +175,7 @@ class IdentifyRunSettings {
     'name_list_scope': nameListScope,
     'name_list_country': nameListCountry,
     'name_list_chosen_countries': nameListChosenCountries,
+    'name_list_chosen_taxa': nameListChosenTaxa,
     ...extra,
   };
 }
@@ -764,13 +767,16 @@ class IdentificationJob {
   }
 
   /// The names a scoring chooses from (round 373), from its [settings] and the session.
-  /// Results made with another country choice are not comparable, so the files say which
-  /// one was used (`name_list` in the summary, `name_list_countries` in the tracks table).
+  /// Results made with another choice of countries, orders or families are not comparable,
+  /// so the files say which one was used (`name_list` in the summary, `name_list_countries`
+  /// and `name_list_taxa` in the tracks table).
   static NameListChoice nameListOf(LabelPack pack, Map<String, dynamic> settings, {String? sessionCountry}) => nameListForSettings(
     settings,
     pack.isClassList ? null : pack.regions,
     packNames: pack.rows - pack.sinkRows,
     sessionCountry: sessionCountry,
+    // The orders and families are read from the names only when some are asked for.
+    taxa: pack.isClassList || chosenTaxaOf(settings).isEmpty ? null : PackTaxa.of(pack.labels),
   );
 
   /// Isolates for the fusion when the "Cores for combining results" setting is 0 (automatic):

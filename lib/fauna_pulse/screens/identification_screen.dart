@@ -724,12 +724,14 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         }
       },
     ),
-    // Round 373: a name list with country lists can be narrowed to one country's names.
-    if (_choice.packRegions case final regions?) ...[
+    // Round 373: a name list with country lists can be narrowed to the names of countries;
+    // round 377: every name list (but a class list) to some of its orders and families.
+    if (_choice.packRegions != null || _choice.packTaxa != null) ...[
       const SizedBox(height: 16),
       NameListRegionFields(
         prefs: prefs,
-        regions: regions,
+        regions: _choice.packRegions,
+        taxa: _choice.packTaxa,
         packNames: ((_packHeader?['rows'] as num?) ?? 0).toInt() - ((_packHeader?['sink_rows'] as num?) ?? 0).toInt(),
         sessionCountry: _sessionCountry,
         onEdit: _edit,
@@ -913,7 +915,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
               _buttonNote(
                 'Update results',
                 'recomputes the results in seconds from the stored model answers, without running the '
-                    'model again: use it after changing the name list, the country of its names or any '
+                    'model again: use it after changing the name list, the names to choose from or any '
                     'threshold, merge or suspect setting.',
               ),
             if (_summaries.isNotEmpty) _buttonNote('View results', 'opens the newest results of this session.'),

@@ -64,7 +64,7 @@ void main() {
     final c = choose();
     expect(c.narrowed, isFalse);
     expect(c.wholeListReason, kWholeNoCountry);
-    expect(c.toJson(), {'countries': [], 'names': _rows - 6, 'scope': kScopeNeighbours, 'whole_list_reason': kWholeNoCountry});
+    expect(c.toJson(), {'countries': [], 'taxa': [], 'names': _rows - 6, 'scope': kScopeNeighbours, 'whole_list_reason': kWholeNoCountry});
   });
 
   test('the session\'s country with its neighbours is the default', () {
@@ -83,6 +83,7 @@ void main() {
     expect(small.label, 'SM+NR');
     expect(small.toJson(), {
       'countries': ['SM', 'NR'],
+      'taxa': [],
       'names': 5300,
       'scope': kScopeNeighbours,
       'country': 'SM',
@@ -144,7 +145,7 @@ void main() {
       expect(c.label, 'AL+SM');
       expect(c.country, isNull);
       expect(c.fromSession, isFalse);
-      expect(c.toJson(), {'countries': ['AL', 'SM'], 'names': 200, 'scope': kScopeCountries});
+      expect(c.toJson(), {'countries': ['AL', 'SM'], 'taxa': [], 'names': 200, 'scope': kScopeCountries});
       // Names two countries share count once.
       expect(byHand(['BG', 'NR', 'SM']).names, 6000);
       // One country by hand here equals "The country only" for that country.
@@ -163,7 +164,7 @@ void main() {
       final none = byHand([]);
       expect(none.narrowed, isFalse);
       expect(none.wholeListReason, kWholeNoCountry);
-      expect(none.toJson(), {'countries': [], 'names': _rows - 6, 'scope': kScopeCountries, 'whole_list_reason': kWholeNoCountry});
+      expect(none.toJson(), {'countries': [], 'taxa': [], 'names': _rows - 6, 'scope': kScopeCountries, 'whole_list_reason': kWholeNoCountry});
       final unknown = byHand(['ZZ', 'YY']);
       expect(unknown.narrowed, isFalse);
       expect(unknown.wholeListReason, kWholeNotInList);
@@ -192,6 +193,115 @@ void main() {
       expect(nameListNeedsSessionCountry({'name_list_scope': 'country', 'name_list_country': 'BG'}), isFalse);
       expect(nameListNeedsSessionCountry({'name_list_scope': 'countries', 'name_list_country': ''}), isFalse);
       expect(nameListNeedsSessionCountry({'name_list_scope': 'all', 'name_list_country': ''}), isFalse);
+    });
+  });
+
+  group('round 377: orders and families chosen by hand', () {
+    // The 7,994 names in two orders: Diptera = rows 0 .. 4,999 (Syrphidae rows 0 .. 49, then
+    // Muscidae), Hymenoptera = rows 5,000 .. 7,993 (Apidae 5,000 .. 5,099, then Formicidae).
+    // The six last rows are "none of these".
+    final taxa = PackTaxa.of([
+      for (var r = 0; r < _rows; r++)
+        r >= _rows - 6
+            ? const LabelRow(['none', '', '', '', '', '', 'flower'], '')
+            : LabelRow(['Animalia', 'Arthropoda', 'Insecta', r < 5000 ? 'Diptera' : 'Hymenoptera', r < 50 ? 'Syrphidae' : r < 5000 ? 'Muscidae' : r < 5100 ? 'Apidae' : 'Formicidae', 'G', 's$r'], ''),
+    ]);
+    NameListChoice pick(List<String> chosen, {String scope = kScopeAll, String country = '', List<String> countries = const [], String? session}) => resolveNameList(
+      regions,
+      packNames: _rows - 6,
+      scope: scope,
+      country: country,
+      chosenCountries: countries,
+      sessionCountry: session,
+      taxa: taxa,
+      chosenTaxa: chosen,
+    );
+
+    test('nothing chosen: every order and family, the record says so', () {
+      final c = pick([]);
+      expect(c.narrowed, isFalse);
+      expect(c.taxa, isEmpty);
+      expect(c.taxaLabel, 'all');
+      expect(c.toJson(), {'countries': [], 'taxa': [], 'names': _rows - 6, 'scope': kScopeAll});
+    });
+
+    test('on the whole list: the names of the chosen orders and families, each once', () {
+      final c = pick(['Syrphidae', 'Hymenoptera']);
+      expect(c.taxa, ['Hymenoptera', 'Syrphidae'], reason: 'alphabetical, whatever the order of the choice');
+      expect(c.names, 50 + 2994);
+      expect(c.countryNames, _rows - 6);
+      expect(c.narrowed, isTrue);
+      expect(c.countries, isEmpty);
+      expect(c.label, 'all');
+      expect(c.taxaLabel, 'Hymenoptera+Syrphidae');
+      expect(c.shortList, isFalse, reason: 'few names of a family say nothing about a country\'s records');
+      expect(c.toJson(), {'countries': [], 'taxa': ['Hymenoptera', 'Syrphidae'], 'names': 3044, 'scope': kScopeAll});
+      // A family of a chosen order adds nothing.
+      expect(pick(['Hymenoptera', 'Apidae']).names, 2994);
+      expect(PackRegions.hasRow(c.rowBits!, _rows - 1), isFalse, reason: 'the "none of these" rows are the scorer\'s, never in the bits');
+    });
+
+    test('with countries: a name must be listed for the countries and be in a chosen order or family', () {
+      // BG lists the rows 0 .. 5,999: all Diptera and the first 1,000 Hymenoptera.
+      final c = pick(['Hymenoptera'], scope: kScopeCountry, country: 'BG');
+      expect(c.countries, ['BG']);
+      expect(c.taxa, ['Hymenoptera']);
+      expect(c.names, 1000);
+      expect(c.countryNames, 6000);
+      expect(c.shortList, isFalse, reason: 'the country\'s own list is long enough');
+      expect(c.toJson(), {'countries': ['BG'], 'taxa': ['Hymenoptera'], 'names': 1000, 'scope': kScopeCountry, 'country': 'BG', 'country_from_session': false, 'country_coverage': 1.0});
+      // A short country list stays short, and is judged before the orders and families.
+      final small = pick(['Syrphidae'], scope: kScopeCountries, countries: ['SM']);
+      expect(small.names, 50);
+      expect(small.countryNames, 100);
+      expect(small.shortList, isTrue);
+      // The warning about a list made for another region stays the countries'.
+      expect(pick(['Diptera'], scope: kScopeCountry, country: 'FR').lowCoverageCountries, ['FR']);
+    });
+
+    test('the default never picks a short country list; the orders and families still narrow', () {
+      final c = pick(['Apidae'], scope: kScopeNeighbours, session: 'AL');
+      expect(c.wholeListReason, kWholeShortList);
+      expect(c.countries, isEmpty);
+      expect(c.taxa, ['Apidae']);
+      expect(c.names, 100);
+      expect(c.narrowed, isTrue);
+    });
+
+    test('no name in both choices: neither is used, with the reason', () {
+      // AL lists the rows 7,000 .. 7,099, all Formicidae.
+      final c = pick(['Syrphidae'], scope: kScopeCountry, country: 'AL');
+      expect(c.narrowed, isFalse);
+      expect(c.rowBits, isNull);
+      expect(c.wholeListReason, kWholeNoCommonNames);
+      expect(c.names, _rows - 6);
+      expect(c.countries, isEmpty);
+      expect(c.taxa, isEmpty);
+      expect(c.label, 'all');
+      expect(c.taxaLabel, 'all');
+      expect(c.shortList, isFalse);
+    });
+
+    test('names this name list does not have are left out; a class list has no such choice', () {
+      expect(pick(['Syrphidae', 'Felidae']).taxa, ['Syrphidae']);
+      final other = pick(['Felidae', 'Carnivora'], scope: kScopeCountry, country: 'BG');
+      expect(other.taxa, isEmpty);
+      expect(other.names, 6000, reason: 'the countries narrow as without the choice');
+      final classes = resolveNameList(null, packNames: 40, scope: kScopeAll, country: '', chosenTaxa: ['Syrphidae']);
+      expect(classes.narrowed, isFalse);
+    });
+
+    test('the settings as saved give the same answer', () {
+      final c = nameListForSettings(
+        {'name_list_scope': 'country', 'name_list_country': 'BG', 'name_list_chosen_taxa': ['Hymenoptera', 7, null]},
+        regions,
+        packNames: _rows - 6,
+        taxa: taxa,
+      );
+      expect(c.label, 'BG');
+      expect(c.taxaLabel, 'Hymenoptera');
+      expect(chosenTaxaOf({'name_list_chosen_taxa': 'Hymenoptera'}), isEmpty, reason: 'a value of a wrong kind');
+      expect(chosenTaxaOf({}), isEmpty);
     });
   });
 }

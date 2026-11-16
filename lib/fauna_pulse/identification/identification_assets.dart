@@ -145,6 +145,9 @@ class IdentifyPrefs {
   // Round 376: the countries of "Countries I choose" (two-letter codes); kept, unused, while
   // "Names from" says something else.
   List<String> nameListChosenCountries;
+  // Round 377: the orders and families a run is narrowed to, by name; empty = all. Names
+  // the chosen name list does not have are not used (they were chosen for another list).
+  List<String> nameListChosenTaxa;
 
   IdentifyPrefs({
     this.modelName,
@@ -172,6 +175,7 @@ class IdentifyPrefs {
     this.nameListScope = kScopeNeighbours,
     this.nameListCountry = '',
     this.nameListChosenCountries = const [],
+    this.nameListChosenTaxa = const [],
   });
 
   static const _kModel = kIdentifyModelPref;
@@ -199,6 +203,7 @@ class IdentifyPrefs {
   static const _kListScope = 'identify_name_list_scope';
   static const _kListCountry = 'identify_name_list_country';
   static const _kListCountries = 'identify_name_list_chosen_countries';
+  static const _kListTaxa = 'identify_name_list_chosen_taxa';
 
   /// A saved "Names from" value this app version knows, else the default.
   static String _scope(Object? saved) => saved is String && kNameListScopes.contains(saved) ? saved : kScopeNeighbours;
@@ -209,6 +214,10 @@ class IdentifyPrefs {
   /// The saved country codes among [saved], each once, sorted; anything else is left out.
   static List<String> _countries(Object? saved) =>
       {if (saved is List) for (final c in saved) _country(c)}.where((c) => c.isNotEmpty).toList()..sort();
+
+  /// The saved order and family names among [saved], each once, sorted.
+  static List<String> _taxa(Object? saved) =>
+      {if (saved is List) ...saved.whereType<String>().where((t) => t.isNotEmpty)}.toList()..sort();
 
   /// Per-model measured speed (ms per crop) from the last run on this phone,
   /// for the pre-flight time estimate.
@@ -243,6 +252,7 @@ class IdentifyPrefs {
       nameListScope: _scope(p.get(_kListScope)),
       nameListCountry: _country(p.get(_kListCountry)),
       nameListChosenCountries: _countries(p.get(_kListCountries)),
+      nameListChosenTaxa: _taxa(p.get(_kListTaxa)),
     );
   }
 
@@ -281,6 +291,7 @@ class IdentifyPrefs {
     await p.setString(_kListScope, nameListScope);
     await p.setString(_kListCountry, nameListCountry);
     await p.setStringList(_kListCountries, nameListChosenCountries);
+    await p.setStringList(_kListTaxa, nameListChosenTaxa);
   }
 
   /// Echoed into the identify_start record and the summary rows.
@@ -310,6 +321,7 @@ class IdentifyPrefs {
     'name_list_scope': nameListScope,
     'name_list_country': nameListCountry,
     'name_list_chosen_countries': nameListChosenCountries,
+    'name_list_chosen_taxa': nameListChosenTaxa,
   };
 }
 

@@ -64,7 +64,7 @@ bool canMergeVisits(
   if (gap < 0 || gap > gapMs) return false;
   final fa = a.fused, fb = b.fused;
   // Round 373: the answers over every name of the pack (mergeRank, mergeKeys), not the ones a
-  // country list narrowed, so the country choice never changes which track IDs are joined.
+  // country list narrowed, so the choice of names (countries, orders, families) never changes which track IDs are joined.
   if (fa.mergeRank == null || fb.mergeRank == null) return false;
   if (fa.noneMass > noneThreshold || fb.noneMass > noneThreshold) return false;
   final ia = kRankNames.indexOf(fa.mergeRank!), ib = kRankNames.indexOf(fb.mergeRank!);

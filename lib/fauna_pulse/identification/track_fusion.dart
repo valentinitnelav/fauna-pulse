@@ -56,6 +56,9 @@
 //     Idea of a regional list: BioCLIP's documentation ("Geo-Restricted Taxon List
 //     Predictions", Imageomics). Whether a country list names insects better than the
 //     whole list is not measured yet (docs/IDENTIFICATION.md, "Validation status").
+//     Round 377: the list can also be narrowed to orders and families chosen by hand
+//     (name_list_region.dart). The rule is the same, with "the listed species rows" = the
+//     rows of the countries that are also in a chosen order or family.
 
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -180,7 +183,7 @@ class FusedTrack {
   /// Round 373, for the merge check only (visit_merge.dart): the identified rank and the
   /// ladder keys (index = rank) of the answer over every name of the pack. They equal
   /// [identifiedRank] and the [ladder]'s keys unless a country list narrows the names; the
-  /// merge reads these so that the country choice never changes which track IDs are joined.
+  /// merge reads these so that the choice of names never changes which track IDs are joined.
   final String? mergeRank;
   final List<String> mergeKeys;
 

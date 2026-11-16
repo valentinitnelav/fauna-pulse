@@ -224,6 +224,109 @@ class PackRegions {
   }
 }
 
+/// Round 377: the orders and families of a pack's names, to narrow the names to some of them
+/// by hand (name_list_region.dart).
+///
+/// A row counts for an order or a family only when every rank down to it is named: the rule
+/// of the whole app (a row counts down to the rank above its first empty slot,
+/// `Scorer.rollUp`). So a row that the pack builder answers only down to family (its genus
+/// and species slots are empty: the `name_rules` rows) counts for its family and its order; a
+/// row with an empty family counts for its order only; a row with an empty order counts for
+/// neither, so it is never on offer once orders or families are chosen. The "none of these"
+/// rows are left out (they are always on offer). Taxa are told apart by their name: no
+/// published pack uses a name for two orders or two families, or for an order and a family
+/// (should a pack do so, the name stands for all of them).
+class PackTaxa {
+  /// The names of the orders and of the families, each in alphabetical order.
+  final List<String> orders;
+  final List<String> families;
+
+  /// Every family's order (an index into [orders]): the order of its first row.
+  final List<int> familyOrder;
+
+  /// Every row's order and family (indexes into [orders] and [families]); -1 = none.
+  final Int32List rowOrder;
+  final Int32List rowFamily;
+
+  const PackTaxa._(this.orders, this.families, this.familyOrder, this.rowOrder, this.rowFamily);
+
+  factory PackTaxa.of(List<LabelRow> labels) => PackTaxa._from(labels.length, (r, k) => labels[r].ranks[k]);
+
+  /// From a header's `labels` as decoded (one list of names per row, a missing name as null
+  /// or left out): no row objects are made, because every listing of the name lists builds
+  /// this (with them, reading a header of 35,000 names took a third longer).
+  factory PackTaxa.ofHeaderLabels(List<List> labels) => PackTaxa._from(labels.length, (r, k) {
+    final entry = labels[r];
+    return k < entry.length ? (entry[k] ?? '').toString() : '';
+  });
+
+  /// [rank] gives a row's name at a rank (0 = kingdom .. 4 = family), '' when it has none.
+  factory PackTaxa._from(int n, String Function(int row, int rank) rank) {
+    final orderOf = <String, int>{}, familyOf = <String, int>{};
+    final orderOfFamily = <int>[];
+    final rowOrder = Int32List(n)..fillRange(0, n, -1), rowFamily = Int32List(n)..fillRange(0, n, -1);
+    for (var r = 0; r < n; r++) {
+      final kingdom = rank(r, 0);
+      if (kingdom.isEmpty || kingdom == kSinkKingdom || rank(r, 1).isEmpty || rank(r, 2).isEmpty) continue;
+      final order = rank(r, 3);
+      if (order.isEmpty) continue;
+      final o = rowOrder[r] = orderOf.putIfAbsent(order, () => orderOf.length);
+      final family = rank(r, 4);
+      if (family.isEmpty) continue;
+      rowFamily[r] = familyOf.putIfAbsent(family, () {
+        orderOfFamily.add(o);
+        return familyOf.length;
+      });
+    }
+    // Alphabetical: the indexes above follow the rows, so they are renumbered.
+    final orders = orderOf.keys.toList()..sort(), families = familyOf.keys.toList()..sort();
+    final newOrder = List<int>.filled(orders.length, 0), newFamily = List<int>.filled(families.length, 0);
+    for (var i = 0; i < orders.length; i++) {
+      newOrder[orderOf[orders[i]]!] = i;
+    }
+    for (var i = 0; i < families.length; i++) {
+      newFamily[familyOf[families[i]]!] = i;
+    }
+    for (var r = 0; r < n; r++) {
+      if (rowOrder[r] >= 0) rowOrder[r] = newOrder[rowOrder[r]];
+      if (rowFamily[r] >= 0) rowFamily[r] = newFamily[rowFamily[r]];
+    }
+    return PackTaxa._(orders, families, [for (final f in families) newOrder[orderOfFamily[familyOf[f]!]]], rowOrder, rowFamily);
+  }
+
+  /// Whether the pack has an order or a family of this name.
+  bool contains(String name) => orders.contains(name) || families.contains(name);
+
+  /// The rows of the orders and families named in [names], as bits like [PackCountry.bits]; a
+  /// name the pack does not have adds nothing.
+  Uint8List rowBits(Iterable<String> names) {
+    final wanted = names.toSet();
+    final o = [for (final x in orders) wanted.contains(x)], f = [for (final x in families) wanted.contains(x)];
+    final out = Uint8List((rowOrder.length + 7) ~/ 8);
+    for (var r = 0; r < rowOrder.length; r++) {
+      final ro = rowOrder[r], rf = rowFamily[r];
+      if ((ro >= 0 && o[ro]) || (rf >= 0 && f[rf])) out[r >> 3] |= 1 << (r & 7);
+    }
+    return out;
+  }
+
+  /// The number of names of every order and of every family, among the rows of [within]
+  /// (bits; null = every row).
+  ({List<int> orders, List<int> families}) counts([Uint8List? within]) {
+    final o = List<int>.filled(orders.length, 0), f = List<int>.filled(families.length, 0);
+    for (var r = 0; r < rowOrder.length; r++) {
+      if (rowOrder[r] < 0 || (within != null && !PackRegions.hasRow(within, r))) continue;
+      o[rowOrder[r]]++;
+      if (rowFamily[r] >= 0) f[rowFamily[r]]++;
+    }
+    return (orders: o, families: f);
+  }
+}
+
+/// Where [LabelPack.readHeader] puts the pack's [PackTaxa] (not a field of the file: the
+/// names it is made from are left out of that map).
+const kPackTaxaKey = '_taxa';
+
 class LabelPack {
   final String packId;
   final String modelId;
@@ -470,7 +573,8 @@ class LabelPack {
     }
   }
 
-  /// Reads only the JSON header of [file] (no matrix), for listings.
+  /// Reads only the JSON header of [file] (no matrix), for listings. A label pack's orders
+  /// and families come along under [kPackTaxaKey] (round 377).
   ///
   /// Round 372: in a helper isolate. Decoding a header of tens of thousands of names took
   /// about 0.1 s on a laptop, 0.15 s with the GBIF keys and country lists of a `_v3` pack,
@@ -499,7 +603,12 @@ class LabelPack {
       final payload = raf.lengthSync() - 8 - hlen;
       if (payload < 0) throw const FormatException('Label pack header is truncated');
       final map = _checkedHeader(raf.readSync(hlen), payload);
-      map.remove('labels'); // keep listings light
+      final labels = map.remove('labels'); // keep listings light
+      // Round 377: what the Identify page needs of the names, the orders and families. Label
+      // entries of a wrong shape are parseBytes' to report: such a pack has no taxa here.
+      if (!isClassListHeader(map) && labels is List && labels.every((e) => e is List)) {
+        map[kPackTaxaKey] = PackTaxa.ofHeaderLabels(labels.cast<List>());
+      }
       // Round 372: the GBIF keys are one entry per name, read only by the scoring. The
       // `regions` block stays: the Identify page reads it ([PackRegions.tryParse]).
       final gbif = map['gbif'];
@@ -524,6 +633,15 @@ class LabelPack {
     if (gbif is Map) out['gbif'] = _withoutKeys(gbif, const {'species_key', 'species'});
     if (regions is Map) out['regions'] = _withoutKeys(regions, const {'countries', 'neighbours'});
     return out;
+  }
+
+  /// A `labels` entry as a row: seven rank names and the common name, a missing one as ''.
+  static LabelRow _labelRow(List entry) {
+    final l = entry.map((x) => (x ?? '').toString()).toList();
+    while (l.length < 8) {
+      l.add('');
+    }
+    return LabelRow(l.sublist(0, 7), l[7]);
   }
 
   /// One text per row from a list of the `gbif` block, '' for a row without a value; empty
@@ -593,14 +711,7 @@ class LabelPack {
     final rows = header['rows'] as int;
     final dtype = (header['dtype'] as String?) ?? 'f16';
     final rawLabels = header['labels'] as List;
-    final labels = <LabelRow>[];
-    for (final e in rawLabels) {
-      final l = (e as List).map((x) => (x ?? '').toString()).toList();
-      while (l.length < 8) {
-        l.add('');
-      }
-      labels.add(LabelRow(l.sublist(0, 7), l[7]));
-    }
+    final labels = [for (final e in rawLabels) _labelRow(e as List)];
     if (isClassListHeader(header)) {
       return _classList(header, labels, dim, rows);
     }

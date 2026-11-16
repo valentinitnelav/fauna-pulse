@@ -353,8 +353,8 @@ void main() {
     expect(csvLines[1], contains('TestPhone,s1,1,2,'));
     // Round 335: no Device ID, so the phone model names the device; it also has its own last
     // column.
-    expect(header, endsWith(',model_class_p,phone_model,gbif_species,gbif_species_key,name_list_countries'));
-    expect(csvLines[1], endsWith(',TestPhone,,,all'));
+    expect(header, endsWith(',model_class_p,phone_model,gbif_species,gbif_species_key,name_list_countries,name_list_taxa'));
+    expect(csvLines[1], endsWith(',TestPhone,,,all,all'));
     expect(csvLines[1], contains('Syrphidae')); // family at target rank 'family'
     expect(paths.readme.existsSync(), isTrue);
     expect(paths.predictionsJsonl('tiny_pack').readAsLinesSync().length, 3);
@@ -386,7 +386,7 @@ void main() {
     final paths = IdentificationPaths(session);
     final csv = paths.tracksCsv('tiny_pack').readAsLinesSync();
     expect(csv[1], startsWith('plot 3 - A,plot1,1,')); // "/" cannot be in insect-detect-post's folder names
-    expect(csv[1], endsWith(',TestPhone,,,all'));
+    expect(csv[1], endsWith(',TestPhone,,,all,all'));
     final json = jsonDecode(paths.tracksJson('tiny_pack').readAsStringSync()) as Map<String, dynamic>;
     expect(json['device_id'], 'plot 3 - A');
     expect(json['phone_model'], 'TestPhone');
@@ -428,7 +428,7 @@ void main() {
     expect((tracks[1]['crops'] as List).first['top1'], 'Syrphidae');
     expect((tracks[1]['crops'] as List).first['top1_class'], 'Syrphidae');
     final csv = paths.tracksCsv('tiny_classes').readAsLinesSync();
-    expect(csv.first, endsWith(',model_class,model_class_p,phone_model,gbif_species,gbif_species_key,name_list_countries'));
+    expect(csv.first, endsWith(',model_class,model_class_p,phone_model,gbif_species,gbif_species_key,name_list_countries,name_list_taxa'));
     expect(csv[1], contains(',Eristalis tenax,0.9'));
     expect(paths.cropsCsv('tiny_classes').readAsLinesSync()[1], contains(',Eristalis tenax,'));
   });
@@ -885,8 +885,8 @@ void main() {
   });
 
   // Round 373, the acceptance test of the country lists: one session scored with the whole
-  // list, a country with a neighbour, a country alone and countries chosen by hand (round
-  // 376) has the same "none of these" share
+  // list, a country with a neighbour, a country alone, countries chosen by hand (round 376)
+  // and orders and families chosen by hand (round 377) has the same "none of these" share
   // (per crop and per track ID), the same weights and left-out crops, the same "no organism"
   // flags and the same joined track IDs. Only the names and their percentages follow the list.
   test('round 373: the country choice changes the names, never the none share, the weights or the merge', () async {
@@ -950,7 +950,7 @@ void main() {
     final session = makeMergeSession('countries');
     // No appearance check and a long gap: only the names decide which track IDs are joined, so
     // a merge that read the narrowed names would join all three under the honey bee's list.
-    IdentifyRunSettings choice(String scope, String country, {List<String> byHand = const []}) => IdentifyRunSettings(
+    IdentifyRunSettings choice(String scope, String country, {List<String> byHand = const [], List<String> taxa = const []}) => IdentifyRunSettings(
       modelName: 'fake_model.tflite',
       modelId: 'fake',
       packName: 'fake_countries.fpack',
@@ -964,6 +964,7 @@ void main() {
       nameListScope: scope,
       nameListCountry: country,
       nameListChosenCountries: byHand,
+      nameListChosenTaxa: taxa,
     );
     expect((await job.run(session, settings: choice(kScopeAll, ''), packFile: countriesPack)).error, isNull);
     final paths = IdentificationPaths(session);
@@ -994,27 +995,31 @@ void main() {
     List<String> headlines() => [
       for (final t in (jsonDecode(paths.tracksJson('fake_countries').readAsStringSync())['tracks'] as List)) t['headline'] as String,
     ];
-    Map<String, dynamic> rescore(String scope, String country, {List<String> byHand = const []}) => IdentificationJob.scoreSessionSync(
-      session,
-      modelName: 'fake_model.tflite',
-      modelId: 'fake',
-      packFile: countriesPack,
-      settings: choice(scope, country, byHand: byHand).toJson(),
-    );
+    Map<String, dynamic> rescore(String scope, String country, {List<String> byHand = const [], List<String> taxa = const []}) =>
+        IdentificationJob.scoreSessionSync(
+          session,
+          modelName: 'fake_model.tflite',
+          modelId: 'fake',
+          packFile: countriesPack,
+          settings: choice(scope, country, byHand: byHand, taxa: taxa).toJson(),
+        );
+    // The two last columns of the tracks table, of its first track ID: the countries and the
+    // orders and families whose names were on offer.
+    List<String> onOffer() => tracksTable(session, 'fake_countries')[1].reversed.take(2).toList().reversed.toList();
 
     final whole = fixedPart();
     final wholeTracks = whole['tracks'] as List;
     expect([for (final t in wholeTracks) t['track_ids']], [[1, 3], [2]], reason: 'the two hoverfly track IDs are joined');
     expect(headlines(), ['Eristalis tenax', 'Apis mellifera']);
     expect(wholeTracks.first['none_p'], greaterThan(0.02), reason: 'a none share worth comparing');
-    expect(tracksTable(session, 'fake_countries')[1].last, 'all');
+    expect(onOffer(), ['all', 'all']);
 
     // Every species on offer: the whole list's answers.
     var summary = rescore(kScopeNeighbours, 'AA');
     expect(fixedPart(), whole);
     expect(headlines(), ['Eristalis tenax', 'Apis mellifera']);
     expect(summary['name_list'], containsPair('countries', ['AA']));
-    expect(tracksTable(session, 'fake_countries')[1].last, 'AA');
+    expect(onOffer(), ['AA', 'all']);
 
     // The honey bee's country alone: every track ID is named a honey bee, with the same none
     // share. Masking before the softmax would call the hoverfly track ID "no organism" here
@@ -1023,41 +1028,84 @@ void main() {
     expect(fixedPart(), whole);
     expect(headlines(), ['Apis mellifera', 'Apis mellifera']);
     expect(summary['no_organism'], 0);
-    expect(summary['name_list'], {'countries': ['BB'], 'names': 1, 'scope': kScopeCountry, 'country': 'BB', 'country_from_session': false, 'country_coverage': 1.0});
+    expect(summary['name_list'], {'countries': ['BB'], 'taxa': [], 'names': 1, 'scope': kScopeCountry, 'country': 'BB', 'country_from_session': false, 'country_coverage': 1.0});
     expect((summary['settings'] as Map)['name_list_country'], 'BB');
     final table = tracksTable(session, 'fake_countries');
-    expect(table.first.last, 'name_list_countries');
-    expect([for (final r in table.skip(1)) r.last], ['BB', 'BB']);
+    expect(table.first.sublist(table.first.length - 2), ['name_list_countries', 'name_list_taxa']);
+    expect([for (final r in table.skip(1)) r.sublist(r.length - 2).join(' ')], ['BB all', 'BB all']);
 
     // A country with its neighbour: the hoverflies and the honey bee.
     summary = rescore(kScopeNeighbours, 'CC');
     expect(fixedPart(), whole);
     expect(headlines(), ['Eristalis tenax', 'Apis mellifera']);
     expect(summary['name_list'], containsPair('countries', ['CC', 'BB']));
-    expect(tracksTable(session, 'fake_countries')[1].last, 'CC+BB');
+    expect(onOffer(), ['CC+BB', 'all']);
 
     // Round 376, countries chosen by hand: their names put together, in the order of the
     // codes; the single country ('AA') is not read. The same rule: only the names change.
     summary = rescore(kScopeCountries, 'AA', byHand: ['CC', 'BB']);
     expect(fixedPart(), whole);
     expect(headlines(), ['Eristalis tenax', 'Apis mellifera']);
-    expect(summary['name_list'], {'countries': ['BB', 'CC'], 'names': 3, 'scope': kScopeCountries});
+    expect(summary['name_list'], {'countries': ['BB', 'CC'], 'taxa': [], 'names': 3, 'scope': kScopeCountries});
     expect((summary['settings'] as Map)['name_list_chosen_countries'], ['CC', 'BB'], reason: 'the settings keep what was asked');
-    expect(tracksTable(session, 'fake_countries')[1].last, 'BB+CC');
+    expect(onOffer(), ['BB+CC', 'all']);
     summary = rescore(kScopeCountries, 'AA', byHand: ['BB']);
     expect(fixedPart(), whole);
     expect(headlines(), ['Apis mellifera', 'Apis mellifera']);
     // Nothing chosen: the whole list, with the reason.
     summary = rescore(kScopeCountries, 'AA');
     expect(fixedPart(), whole);
-    expect(summary['name_list'], {'countries': [], 'names': 4, 'scope': kScopeCountries, 'whole_list_reason': kWholeNoCountry});
-    expect(tracksTable(session, 'fake_countries')[1].last, 'all');
+    expect(summary['name_list'], {'countries': [], 'taxa': [], 'names': 4, 'scope': kScopeCountries, 'whole_list_reason': kWholeNoCountry});
+    expect(onOffer(), ['all', 'all']);
+
+    // Round 377, orders and families chosen by hand. The same rule again: the names follow
+    // the choice, the whole-list numbers do not. A family alone, on the whole list:
+    summary = rescore(kScopeAll, '', taxa: ['Apidae']);
+    expect(fixedPart(), whole);
+    expect(headlines(), ['Apis mellifera', 'Apis mellifera']);
+    expect(summary['no_organism'], 0);
+    expect(summary['name_list'], {'countries': [], 'taxa': ['Apidae'], 'names': 2, 'scope': kScopeAll});
+    expect((summary['settings'] as Map)['name_list_chosen_taxa'], ['Apidae']);
+    expect(onOffer(), ['all', 'Apidae']);
+    // An order: the honey bee track ID has only hoverfly names left, and they score the same,
+    // so it is named down to the family.
+    summary = rescore(kScopeAll, '', taxa: ['Diptera']);
+    expect(fixedPart(), whole);
+    expect(headlines(), ['Eristalis tenax', 'Syrphidae']);
+    expect(onOffer(), ['all', 'Diptera']);
+    // An order and a family of another order, a name this list does not have left out:
+    // here that is every name, so the whole list's answers.
+    summary = rescore(kScopeAll, '', taxa: ['Diptera', 'Apidae', 'Formicidae']);
+    expect(fixedPart(), whole);
+    expect(headlines(), ['Eristalis tenax', 'Apis mellifera']);
+    expect(summary['name_list'], {'countries': [], 'taxa': ['Apidae', 'Diptera'], 'names': 4, 'scope': kScopeAll});
+    expect(onOffer(), ['all', 'Apidae+Diptera']);
+    // Only names this list does not have: nothing narrows.
+    summary = rescore(kScopeAll, '', taxa: ['Formicidae']);
+    expect(summary['name_list'], {'countries': [], 'taxa': [], 'names': 4, 'scope': kScopeAll});
+    // With countries: a name must be listed for the countries AND be in a chosen order or
+    // family. AA lists every species, of which two are bees.
+    summary = rescore(kScopeCountry, 'AA', taxa: ['Hymenoptera']);
+    expect(fixedPart(), whole);
+    expect(headlines(), ['Apis mellifera', 'Apis mellifera']);
+    expect(summary['name_list'], {'countries': ['AA'], 'taxa': ['Hymenoptera'], 'names': 2, 'scope': kScopeCountry, 'country': 'AA', 'country_from_session': false, 'country_coverage': 1.0});
+    expect(onOffer(), ['AA', 'Hymenoptera']);
+    summary = rescore(kScopeCountries, '', byHand: ['BB', 'CC'], taxa: ['Syrphidae']);
+    expect(fixedPart(), whole);
+    expect(summary['name_list'], {'countries': ['BB', 'CC'], 'taxa': ['Syrphidae'], 'names': 2, 'scope': kScopeCountries});
+    expect(onOffer(), ['BB+CC', 'Syrphidae']);
+    // No name in both (CC lists only hoverflies): neither choice is used, with the reason.
+    summary = rescore(kScopeCountry, 'CC', taxa: ['Apidae']);
+    expect(fixedPart(), whole);
+    expect(headlines(), ['Eristalis tenax', 'Apis mellifera']);
+    expect(summary['name_list'], {'countries': [], 'taxa': [], 'names': 4, 'scope': kScopeCountry, 'country': 'CC', 'country_from_session': false, 'whole_list_reason': kWholeNoCommonNames, 'country_coverage': 1.0});
+    expect(onOffer(), ['all', 'all']);
 
     // No country (no position, none chosen): the whole list, with the reason.
     summary = rescore(kScopeNeighbours, '');
     expect(fixedPart(), whole);
     expect(summary['name_list'], containsPair('whole_list_reason', kWholeNoCountry));
-    expect(tracksTable(session, 'fake_countries')[1].last, 'all');
+    expect(onOffer(), ['all', 'all']);
 
     // Round 374: without a country chosen by hand, the session's country is used. "The country
     // only" for a session in BB gives BB's names; nothing is looked up for the whole list.
@@ -1077,11 +1125,11 @@ void main() {
     expect(asked, ['countries']);
     expect(fixedPart(), whole);
     expect(headlines(), ['Apis mellifera', 'Apis mellifera']);
-    expect(summary['name_list'], {'countries': ['BB'], 'names': 1, 'scope': kScopeCountry, 'country': 'BB', 'country_from_session': true, 'country_coverage': 1.0});
+    expect(summary['name_list'], {'countries': ['BB'], 'taxa': [], 'names': 1, 'scope': kScopeCountry, 'country': 'BB', 'country_from_session': true, 'country_coverage': 1.0});
     // The default choice (the country and its neighbours) never uses a short list: here every
     // list is short, so the whole list is used and the reason and the country are kept.
     summary = await fromSession(kScopeNeighbours, 'CC');
-    expect(summary['name_list'], {'countries': [], 'names': 4, 'scope': kScopeNeighbours, 'country': 'CC', 'country_from_session': true, 'whole_list_reason': kWholeShortList, 'country_coverage': 1.0});
+    expect(summary['name_list'], {'countries': [], 'taxa': [], 'names': 4, 'scope': kScopeNeighbours, 'country': 'CC', 'country_from_session': true, 'whole_list_reason': kWholeShortList, 'country_coverage': 1.0});
     expect(headlines(), ['Eristalis tenax', 'Apis mellifera']);
     summary = await fromSession(kScopeNeighbours, null);
     expect(summary['name_list'], containsPair('whole_list_reason', kWholeNoCountry));
@@ -1100,7 +1148,19 @@ void main() {
     expect(r.summary!['name_list'], containsPair('countries', ['BB']));
     expect(r.summary!['name_list'], containsPair('country_from_session', true));
 
-    // The worker isolates get the list too and write the same files.
+    // The worker isolates get the list too and write the same files, also with orders and
+    // families chosen.
+    rescore(kScopeAll, '', taxa: ['Diptera']);
+    final taxaSameIsolate = [paths.tracksCsv('fake_countries').readAsStringSync(), paths.cropsCsv('fake_countries').readAsStringSync()];
+    await IdentificationJob.scoreSession(
+      session,
+      modelName: 'fake_model.tflite',
+      modelId: 'fake',
+      packFile: countriesPack,
+      settings: choice(kScopeAll, '', taxa: ['Diptera']).toJson(),
+      workers: 3,
+    );
+    expect([paths.tracksCsv('fake_countries').readAsStringSync(), paths.cropsCsv('fake_countries').readAsStringSync()], taxaSameIsolate);
     rescore(kScopeCountry, 'BB');
     final sameIsolate = [paths.tracksCsv('fake_countries').readAsStringSync(), paths.cropsCsv('fake_countries').readAsStringSync()];
     await IdentificationJob.scoreSession(
@@ -1133,7 +1193,7 @@ void main() {
     expect(t1['flags'], contains('short'));
     expect(t1['flags'], isNot(contains('suspect')));
     final csv = paths.tracksCsv('tiny_pack').readAsStringSync();
-    expect(csv.split('\n').first, endsWith(',merged_track_ids,n_detections,suspect,rival_rank,rival_taxon,rival_p,model_class,model_class_p,phone_model,gbif_species,gbif_species_key,name_list_countries'));
+    expect(csv.split('\n').first, endsWith(',merged_track_ids,n_detections,suspect,rival_rank,rival_taxon,rival_p,model_class,model_class_p,phone_model,gbif_species,gbif_species_key,name_list_countries,name_list_taxa'));
     // The compact summary list carries the verdict for the Photos tab.
     final lite = (s['tracks'] as List).cast<Map<String, dynamic>>();
     expect(lite.firstWhere((t) => t['track_id'] == 2)['suspect'], isTrue);

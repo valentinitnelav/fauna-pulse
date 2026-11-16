@@ -1425,6 +1425,7 @@ shows.
 | `phone_model` | Trailing: the phone model from the start record (`device.model`); empty for imported videos. |
 | `gbif_species`, `gbif_species_key` | Trailing: the name GBIF accepts for `bioclip_species` and its species key in the Catalogue of Life checklist GBIF uses. The keys are those of insect-detect-post v1.1.0 (the same mapping table), so results of both programs and GBIF data join on the key, synonyms included. Read the key as text: some keys are digits only (for example `78358`). Empty when the track ID has no `bioclip_species`, or the name list holds no keys (lists before `_v3`, class lists). |
 | `name_list_countries` | Trailing: the countries whose names were on offer, as two-letter codes joined with `+`, the country itself first (`DE+AT+BE+…`; countries chosen by hand in the order of their codes), or `all` for the whole name list. Answers made with different lists are not comparable: a shorter list shares the same 100 % among fewer names, so its Conf. values are higher. `none_p`, the flag `no_organism` and `merged_track_ids` do not depend on it. |
+| `name_list_taxa` | Trailing: the orders and families whose names were on offer, by name in alphabetical order, joined with `+` (`Apidae+Syrphidae`), or `all`. A name was on offer when it is listed for `name_list_countries` and belongs to one of these (an order stands for all its families). The same holds as for the countries: answers are not comparable across choices, and `none_p`, `no_organism` and `merged_track_ids` do not depend on it. |
 
 | `flags` value | Meaning |
 |---|---|
@@ -1462,7 +1463,8 @@ fauna-pulse-export writes the same name for insect-detect-post (`device_name_cas
   in the `.bin`.
 - Round 335: `device_id` is the device's name; before round 335 it was the phone model (now
   `phone_model`, added in round 335). Round 336: the field notes' `device_id` comes first.
-- Round 372: `gbif_species`, `gbif_species_key`. Round 373: `name_list_countries`.
+- Round 372: `gbif_species`, `gbif_species_key`. Round 373: `name_list_countries`. Round 377:
+  `name_list_taxa`.
 
 </details>
 
@@ -1484,7 +1486,7 @@ One row per crop (photo × track), for tracing a track ID's answer to single pho
 | `ladder_<rank>` | The track ID's ladder taxa, repeated per row. |
 | `p_<rank>` | This crop's own Conf. under each of them. |
 | `top1_class` | Trailing: a fixed-class classifier's own class behind `top1_species`; empty for BioCLIP. For a class above species, e.g. the genus *Bombus*, `top1_species` holds its deepest named rank. |
-| `weight`, `none_p` | Trailing: the crop's weight in the track ID's answer (its highest probability over every name of the list) and its share on the "none of these" entries. Both are computed over the whole name list, so they are the same for every country choice; `weight` equals `top1_p` unless a country list narrows the names. |
+| `weight`, `none_p` | Trailing: the crop's weight in the track ID's answer (its highest probability over every name of the list) and its share on the "none of these" entries. Both are computed over the whole name list, so they are the same for every choice of countries, orders and families; `weight` equals `top1_p` unless such a choice narrows the names. |
 
 <details>
 <summary>Checking the numbers: identities between the two CSV files</summary>
@@ -1499,7 +1501,9 @@ Identities for checking in R, over a track ID's rows:
 The track's own `p_<rank>` is NOT a function of these columns (it comes from the averaged
 embeddings). Recompute it with `bioclip_export/reproduce_track_conf.py` of
 [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models) (it scores the
-whole name list; for a run with a country list, compare with `name_list_countries` = `all`).
+whole name list unless it is given the run's choice: `--countries` takes the value of
+`name_list_countries`; for a run with `name_list_taxa` other than `all`, check that the script
+has an option for it).
 
 Column history: `crops_<pack>.csv` exists since round 215; `pad_frac` is descriptive only since
 round 217; `counted` since round 219; `top1_kingdom` … `top1_family` since round 220;
@@ -1549,17 +1553,21 @@ Counts for the app:
 - `taxa_order`, `taxa_family` (track IDs per taxon among the track IDs identified at least to
   that rank);
 - `name_list` (since round 373): the names that were on offer. `countries` (two-letter codes,
-  the country itself first; countries chosen by hand in the order of their codes; empty = the
-  whole list), `names` (how many), `scope` (the *Names from* setting: `neighbours`, `country`,
-  `countries` = chosen by hand, or `all`), for one country `country` with
-  `country_from_session` (false = chosen by hand) and `country_coverage` (the share of that
-  country's own GBIF list that the name list holds), and `whole_list_reason` when a country
-  list was asked for but the whole list was used: `no_country` (the session's country is not
-  known, or no country was chosen), `not_in_list` (the name list has no names for it) or
-  `short_list` (with both settings at their defaults, the country and its neighbours have under
-  5,000 names). The run's `settings` hold what was asked for (`name_list_scope`,
+  the country itself first; countries chosen by hand in the order of their codes; empty = every
+  country), `taxa` (since round 377: the names of the orders and families, alphabetical; empty
+  = all of them), `names` (how many names were on offer, after both), `scope` (the *Names from*
+  setting: `neighbours`, `country`, `countries` = chosen by hand, or `all`), for one country
+  `country` with `country_from_session` (false = chosen by hand) and `country_coverage` (the
+  share of that country's own GBIF list that the name list holds), and `whole_list_reason` when
+  a choice was asked for but not used: `no_country` (the session's country is not known, or no
+  country was chosen), `not_in_list` (the name list has no names for it), `short_list` (with
+  both country settings at their defaults, the country and its neighbours have under 5,000
+  names; these three are about the countries, the orders and families still narrow) or
+  `no_common_names` (no name is both listed for the countries and in a chosen order or family:
+  the whole list was used). The run's `settings` hold what was asked for (`name_list_scope`,
   `name_list_country`: empty = the session's country; `name_list_chosen_countries`: the
-  countries ticked for `countries`, read only with that scope);
+  countries ticked for `countries`, read only with that scope; `name_list_chosen_taxa`: the
+  ticked orders and families, of which those the name list has are used);
 - a compact `tracks[]` list (`track_id`, `track_ids`, `suspect`, `headline`, `identified_rank`,
   `p`, `n_crops`; plus `src` = the photo name when the entry is a per-photo crop of a no-AI
   session) and the run's provenance. The app's session summary reads this list to label photos,

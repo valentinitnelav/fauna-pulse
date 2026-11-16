@@ -392,8 +392,9 @@ Map<String, dynamic> writeOutputs({
   NameListChoice? nameList,
 }) {
   paths.dir.createSync(recursive: true);
-  // Round 373: the countries whose names were on offer, or "all".
-  final listLabel = nameList?.label ?? 'all';
+  // Round 373: the countries whose names were on offer, or "all"; round 377: the orders and
+  // families.
+  final listLabel = nameList?.label ?? 'all', taxaLabel = nameList?.taxaLabel ?? 'all';
   final targetRank = (settings['target_rank'] as String?) ?? 'family';
   final noneThreshold = (settings['none_threshold'] as num?)?.toDouble() ?? 0.5;
   // Round 212 "suspect visit" thresholds (flags only; nothing is dropped).
@@ -500,6 +501,9 @@ Map<String, dynamic> writeOutputs({
     // with different lists are not comparable: a shorter list shares the same 100 % among
     // fewer names.
     'name_list_countries',
+    // Round 377: the orders and families whose names were on offer (alphabetical, joined
+    // with "+"), or "all". Both columns together say which names a run chose from.
+    'name_list_taxa',
   ];
   // The pack row of every species path. A row that stops above species (a class-list class, or
   // a name the pack builder answers only at genus or family) is never a track ID's species, so
@@ -542,7 +546,7 @@ Map<String, dynamic> writeOutputs({
         for (final r in kRankNames) 'p_$r',
         'top1_class', // round 266: the classifier's own class (empty for BioCLIP)
         // Round 373: the crop's weight in the pooling and its "none of these" share, both over
-        // every name of the pack (top1_p is the weight only while no country list narrows).
+        // every name of the pack (top1_p is the weight only while no choice narrows the names).
         'weight',
         'none_p',
       ].join(','),
@@ -663,6 +667,7 @@ Map<String, dynamic> writeOutputs({
       gbifRow == null ? '' : pack.gbifSpecies[gbifRow],
       gbifRow == null ? '' : pack.gbifKeys[gbifRow],
       listLabel,
+      taxaLabel,
     ];
     csv.writeln(row.map(csvCell).join(','));
     for (var i = 0; i < t.crops.length; i++) {
@@ -905,6 +910,9 @@ tracks_<name list>.csv columns
                                       countries chosen by hand in the order of their codes; joined with
                                       "+"), or "all" for the whole name list; answers made with different
                                       lists are not comparable
+  name_list_taxa                      the orders and families whose names were on offer (alphabetical,
+                                      joined with "+"), or "all"; a name was on offer when it is listed
+                                      for name_list_countries and belongs to one of these
 
 crops_<name list>.csv columns
   session_id, track_id, crop_no       the track ID and the crop's number within it (capture order)
@@ -923,8 +931,8 @@ crops_<name list>.csv columns
   top1_class                          fixed-class classifiers only: the model's own class behind top1_species
   weight, none_p                      the crop's weight in the combined answer (its highest probability over
                                       every name of the list) and its share on the "none of these" entries;
-                                      both are the same for every country choice (weight = top1_p unless a
-                                      country list narrows the names)
+                                      both are the same for every choice of countries, orders and families
+                                      (weight = top1_p unless such a choice narrows the names)
 
 phone_during_identification.csv columns (one row per sample; the .jsonl holds the same as records)
   run, time_s, epoch_ms               the run (1, 2, ... per start of Identify or Update results),

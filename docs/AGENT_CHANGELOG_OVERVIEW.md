@@ -285,14 +285,18 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   what it carries, once per worker). A published name list is never changed: a fix is a new
   version. The first published list with both blocks: BioCLIP 2's Europe list v3 (round 375;
   v2 in `former_name_lists`).
-- **A country list narrows only what is shown** (each crop's candidates, the ladder, the
-  identified rank, the best view). The "none of these" share, the crops' weights, the drop rule
-  and the merge check (`FusedTrack.mergeRank`, `mergeKeys`) read the scores over every name of
-  the list, so they are the same for every country choice (rule and reason: `track_fusion.dart`
-  header; acceptance test in `identification_job_test.dart`). Which names a run uses (one
-  country, with its neighbours, or countries chosen by hand) is decided in one place,
-  `nameListForSettings` (`name_list_region.dart`), for the scoring and the Identify page; the
-  results record it (`name_list`, `name_list_countries`).
+- **A choice of names narrows only what is shown** (each crop's candidates, the ladder, the
+  identified rank, the best view): countries (one, with its neighbours, or chosen by hand; a
+  list's `regions` block) and orders and families chosen by hand (`PackTaxa`, any name list but
+  a class list). Both together are an intersection, and a choice never adds a name. The "none
+  of these" share, the crops' weights, the drop rule and the merge check
+  (`FusedTrack.mergeRank`, `mergeKeys`) read the scores over every name of the list, so they
+  are the same for every choice (rule and reason: `track_fusion.dart` header; acceptance test
+  in `identification_job_test.dart`; fauna-pulse-models' `reproduce_track_conf.py` repeats the
+  rule). Which names a run uses is decided in one place, `nameListForSettings`
+  (`name_list_region.dart`), for the scoring and the Identify page; the results record it
+  (`name_list`, `name_list_countries`, `name_list_taxa`). `LabelPack.readHeader` leaves out the
+  names and gives the page their orders and families under `kPackTaxaKey`.
 - **The session's country** comes from its position and `assets/country_borders.json`
   (`country_lookup.dart`; found on the calling isolate, because the borders are an asset).
   `tool/country_borders/make_country_borders.py` writes that file and the shared test points

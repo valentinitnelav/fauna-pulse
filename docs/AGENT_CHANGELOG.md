@@ -10481,3 +10481,10 @@ Asked: on Identify organisms, a "Names from" choice where any countries of the n
 ticked in a searchable list and their names put together, recorded so that a run can be
 repeated; and short changelog entries from now on (AGENTS.md). Open: nothing.
 
+## Round 377 (2026-11-16): orders and families chosen by hand narrow the names of a name list
+
+Asked: on Identify organisms, tick orders and families of the chosen name list; with the
+countries as an intersection; recorded so that a run can be repeated. Open: fauna-pulse-models'
+`reproduce_track_conf.py` does not copy this choice yet (hand-off note written); whether a
+narrowed list names animals better is not measured.
+

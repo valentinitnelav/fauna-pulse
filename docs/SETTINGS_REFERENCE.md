@@ -1040,30 +1040,35 @@ were saved only at Start).
 
 ## Names to choose from (Identify organisms screen)
 
-Shown under **Model and name list** when the chosen name list carries country lists (which of
-its species GBIF has records of in which country). The model then chooses only among the names
-of one country or of the countries you tick. Stored on the phone as `identify_name_list_scope`,
-`identify_name_list_country` and `identify_name_list_chosen_countries`, echoed into every run's
-settings; the results say which names were used (**Names from** on the results screen,
-`name_list_countries` and `name_list` in the files).
+Shown under **Model and name list**. The country settings show when the chosen name list
+carries country lists (which of its species GBIF has records of in which country): the model
+then chooses only among the names of one country or of the countries you tick. **Orders and
+families** shows for every name list of a BioCLIP model. Stored on the phone as
+`identify_name_list_scope`, `identify_name_list_country`, `identify_name_list_chosen_countries`
+and `identify_name_list_chosen_taxa`, echoed into every run's settings; the results say which
+names were used (**Names from** and **Orders and families** on the results screen,
+`name_list_countries`, `name_list_taxa` and `name_list` in the files).
 
 | Setting | Default | Meaning |
 |---|---|---|
 | **Names from** | The country and its neighbours | **The country and its neighbours**: the species recorded in the country or in a country next to it (a shared land border, or at most 100 km of sea between them). The default, because species do not stop at borders and some countries have few records. **The country only**: its own list. **Countries I choose**: the names of the countries ticked under **Countries**, put together. **The whole name list**: every name, countries ignored. |
 | **Country** | Where the session was recorded | The country of the session's position (found on the phone from bundled country borders; a position within 25 km of a coast counts for the nearest country), shown in the box. Or one country chosen by hand; each is listed with its number of names. Greyed with **The whole name list**. |
 | **Countries** | none | Shown in place of **Country** with **Countries I choose**: a window with a search box, where any countries of the name list are ticked. No neighbours are added and the session's position is not read. While none is ticked, the whole list is used. The ticked countries are kept when **Names from** changes. |
+| **Orders and families** | All | A window with a search box that lists the orders of the name list with their families. The model then chooses only among the names of the ticked orders and families (an order stands for all its families); nothing ticked = all. It only takes names away. Together with countries, a name must be listed for the countries and belong to a ticked group; when no name is in both, neither choice is used. Every animal is then named within the ticked groups, also an animal of another group. A name the list uses only down to the family stays with its family; a name without an order or a family in the list belongs to no group and is not on offer once groups are ticked. Names of another name list are kept but not used. |
 
 The whole list is used, with the reason on the screen, when the session's country is not known
 (no position, or one far from land), when the name list has no names for the country, and when both settings are at their defaults and the country with its neighbours
 has under 5,000 names. A choice made by hand (one country or several) is used as it is. An
-amber line warns when the list on offer has under 5,000 names (GBIF holds few records from
-there, so species that live there are probably missing and the model then has to pick a wrong
-name), or when the name list holds under 80 % of a chosen country's own GBIF list (it was made
-for another region). Both numbers are the developers' judgement, not fitted values.
+amber line warns when the countries' list has under 5,000 names, counted before the orders and
+families narrow it (GBIF holds few records from there, so species that live there are probably
+missing and the model then has to pick a wrong name), or when the name list holds under 80 %
+of a chosen country's own GBIF list (it was made for another region). Both numbers are the
+developers' judgement, not fitted values. Few names in a ticked order or family give no such
+warning: they say nothing about the records of a country.
 
 The share of the "none of these" entries, the crops' weights and the joining of track IDs are
-computed over the whole name list, so they do not change with these settings; the names and
-their percentages do. Method and limits: [IDENTIFICATION.md](IDENTIFICATION.md), *Names to
+computed over the whole name list, so they do not change with any of these settings; the names
+and their percentages do. Method and limits: [IDENTIFICATION.md](IDENTIFICATION.md), *Names to
 choose from*.
 
 ## Identification (Identify organisms screen → Advanced settings)

@@ -1,7 +1,8 @@
 // Round 373: "Names to choose from" on Identify organisms (name_list_region_fields.dart) on a
 // 360-px phone: each control changes one stored setting, the page says which names a run will
 // use and why, and warns about a short list or a list made for another region. Round 376:
-// countries chosen by hand in a window with a search box.
+// countries chosen by hand in a window with a search box. Round 377: orders and families
+// chosen by hand, in the same kind of window with the families under their order.
 
 import 'dart:convert';
 import 'dart:io';
@@ -42,7 +43,17 @@ void main() {
     },
   }, _rows)!;
 
-  Future<void> pump(WidgetTester tester, IdentifyPrefs prefs, {String? sessionCountry}) async {
+  // The 7,994 names in two orders: Diptera = rows 0 .. 4,999 (Syrphidae rows 0 .. 49, then
+  // Muscidae), Hymenoptera = the others (Apidae rows 5,000 .. 5,099, then Formicidae); the six
+  // last rows are "none of these".
+  final groups = PackTaxa.of([
+    for (var r = 0; r < _rows; r++)
+      r >= _rows - 6
+          ? const LabelRow(['none', '', '', '', '', '', 'flower'], '')
+          : LabelRow(['Animalia', 'Arthropoda', 'Insecta', r < 5000 ? 'Diptera' : 'Hymenoptera', r < 50 ? 'Syrphidae' : r < 5000 ? 'Muscidae' : r < 5100 ? 'Apidae' : 'Formicidae', 'G', 's$r'], ''),
+  ]);
+
+  Future<void> pump(WidgetTester tester, IdentifyPrefs prefs, {String? sessionCountry, PackTaxa? taxa, bool countryLists = true}) async {
     tester.view.physicalSize = const Size(360, 780);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -56,7 +67,8 @@ void main() {
               child: StatefulBuilder(
                 builder: (context, setState) => NameListRegionFields(
                   prefs: prefs,
-                  regions: regions,
+                  regions: countryLists ? regions : null,
+                  taxa: taxa,
                   packNames: _rows - 6,
                   sessionCountry: sessionCountry,
                   onEdit: (change) => setState(change),
@@ -244,6 +256,139 @@ void main() {
     });
   });
 
+  group('round 377: orders and families chosen by hand', () {
+    Future<void> openWindow(WidgetTester tester) async {
+      await tester.tap(find.byKey(const ValueKey('name list taxa')));
+      await tester.pumpAndSettle();
+    }
+
+    CheckboxListTile tile(WidgetTester tester, String label) => tester.widget(find.widgetWithText(CheckboxListTile, label));
+
+    testWidgets('ticked in a window, the families under their order; one setting is written', (tester) async {
+      final prefs = IdentifyPrefs();
+      await pump(tester, prefs, sessionCountry: 'DE', taxa: groups);
+      expect(find.text('All'), findsOneWidget);
+      expect(find.text('A run chooses among the 6,000 names of Germany and its neighbour (of 7,994 in the list).'), findsOneWidget);
+      expect(find.textContaining('⚠'), findsNothing);
+
+      // Each entry with its number of names among the countries' names (rows 0 .. 5,999).
+      await openWindow(tester);
+      expect(find.widgetWithText(AlertDialog, 'Orders and families'), findsOneWidget);
+      expect(find.text('Order, 5,000 names'), findsOneWidget);
+      expect(find.text('Family of Diptera, 50 names'), findsOneWidget);
+      expect(find.text('Order, 1,000 names'), findsOneWidget);
+      expect(find.text('Family of Hymenoptera, 900 names'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      // A family, then a whole order: its families show ticked and cannot be changed.
+      await tester.tap(find.text('Apidae'));
+      await tester.tap(find.text('Diptera'));
+      await tester.pump();
+      expect(find.text('2 ticked'), findsOneWidget);
+      expect(tile(tester, 'Syrphidae').value, isTrue);
+      expect(tile(tester, 'Syrphidae').onChanged, isNull);
+      expect(tile(tester, 'Formicidae').value, isFalse);
+      expect(prefs.nameListChosenTaxa, isEmpty, reason: 'nothing is saved before "Use these"');
+      await tester.tap(find.text('Use these'));
+      await tester.pumpAndSettle();
+      expect(prefs.nameListChosenTaxa, ['Apidae', 'Diptera']);
+      expect(prefs.nameListScope, kScopeNeighbours, reason: 'the countries keep their settings');
+      expect(find.text('Apidae, Diptera'), findsOneWidget);
+      expect(find.text('A run chooses among the 5,100 names of Apidae and Diptera listed for Germany and its neighbour (of 7,994 in the list).'), findsOneWidget);
+      expect(
+        find.text('⚠ Every animal is named as one of Apidae and Diptera, also an animal of another order or family: the model has no other names to choose from.'),
+        findsOneWidget,
+      );
+
+      // Ticking the order of a ticked family: the order then stands for it.
+      await openWindow(tester);
+      expect(find.text('2 ticked'), findsOneWidget);
+      await tester.tap(find.text('Hymenoptera'));
+      await tester.pump();
+      expect(find.text('2 ticked'), findsOneWidget);
+      expect(tile(tester, 'Apidae').onChanged, isNull);
+      // The search shows orders and families that match, whatever the case of the letters.
+      await tester.enterText(find.byType(TextField), 'MICI');
+      await tester.pump();
+      expect(find.text('Formicidae'), findsOneWidget);
+      expect(find.text('Diptera'), findsNothing);
+      await tester.tap(find.text('Use these'));
+      await tester.pumpAndSettle();
+      expect(prefs.nameListChosenTaxa, ['Diptera', 'Hymenoptera']);
+
+      // Nothing ticked is every order and family again.
+      await openWindow(tester);
+      await tester.tap(find.text('Untick all'));
+      await tester.tap(find.text('Use these'));
+      await tester.pumpAndSettle();
+      expect(prefs.nameListChosenTaxa, isEmpty);
+      expect(find.text('All'), findsOneWidget);
+      expect(find.textContaining('⚠'), findsNothing);
+    });
+
+    testWidgets('a name list without country lists has only this choice', (tester) async {
+      final prefs = IdentifyPrefs(nameListChosenTaxa: ['Syrphidae', 'Felidae']);
+      await pump(tester, prefs, taxa: groups, countryLists: false);
+      expect(find.text('Names to choose from'), findsOneWidget);
+      expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+      expect(find.text('Syrphidae'), findsOneWidget, reason: 'a name this list does not have is not shown');
+      expect(find.text('A run chooses among the 50 names of Syrphidae (of 7,994 in the list).'), findsOneWidget);
+      // The numbers in the window are the whole list's.
+      await openWindow(tester);
+      expect(find.text('Order, 2,994 names'), findsOneWidget);
+      expect(tile(tester, 'Syrphidae').value, isTrue);
+      expect(find.text('1 ticked'), findsOneWidget);
+    });
+
+    testWidgets('no name in both choices: said in amber, nothing narrows', (tester) async {
+      // Iceland lists the rows 7,000 .. 7,099, all Formicidae.
+      await pump(tester, IdentifyPrefs(nameListCountry: 'IS', nameListChosenTaxa: ['Syrphidae']), taxa: groups);
+      expect(
+        find.text('⚠ No name of the chosen orders and families is listed for the chosen countries, so a run chooses among all 7,994 names. Change one of the two choices.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Every animal'), findsNothing);
+    });
+
+    testWidgets('a short country list is judged before the orders and families', (tester) async {
+      await pump(tester, IdentifyPrefs(nameListCountry: 'IS', nameListChosenTaxa: ['Formicidae']), taxa: groups);
+      expect(find.text('A run chooses among the 100 names of Formicidae listed for Iceland only (of 7,994 in the list).'), findsOneWidget);
+      expect(find.textContaining('⚠ Only 100 names in all orders and families. GBIF holds few records from Iceland'), findsOneWidget);
+      // Few names of a family in a well recorded country are no reason to warn.
+      await pump(tester, IdentifyPrefs(nameListCountry: 'DE', nameListScope: kScopeCountry, nameListChosenTaxa: ['Syrphidae']), taxa: groups);
+      expect(find.text('A run chooses among the 50 names of Syrphidae listed for Germany only (of 7,994 in the list).'), findsOneWidget);
+      expect(find.textContaining('Only '), findsNothing);
+      // Where the whole list is used for a reason, the orders and families still narrow.
+      await pump(tester, IdentifyPrefs(nameListChosenTaxa: ['Apidae']), taxa: groups);
+      expect(
+        find.text(
+          'The country of this session is not known (it has no position, or one far from land), so a run chooses among '
+          'the 100 names of Apidae (of 7,994 in the list). Choose a country above to narrow them.',
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the window fits a 360-px phone with the keyboard open', (tester) async {
+      await pump(tester, IdentifyPrefs(), taxa: groups);
+      await openWindow(tester);
+      tester.view.viewInsets = const FakeViewPadding(bottom: 320);
+      addTearDown(tester.view.resetViewInsets);
+      await tester.showKeyboard(find.byType(TextField));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(tester.getBottomLeft(find.text('Use these')).dy, lessThanOrEqualTo(780 - 320));
+      expect(tester.getSize(find.byType(ListView)).height, greaterThan(60), reason: 'entries stay in view above the keyboard');
+    });
+
+    test('taxaInWords', () {
+      expect(taxaInWords(const ['Apidae']), 'Apidae');
+      expect(taxaInWords(const ['Apidae', 'Diptera']), 'Apidae and Diptera');
+      expect(taxaInWords(const ['Apidae', 'Diptera', 'Vespidae']), 'Apidae, Diptera and Vespidae');
+      expect(taxaInWords(const ['A', 'B', 'C', 'D', 'E']), 'A, B and 3 more orders or families');
+    });
+  });
+
   test('the Identify page gets the country lists of the chosen name list, decoded once; other lists have none', () async {
     final withLists = File('test/fauna_pulse/fixtures/tiny_pack_regions.fpack');
     final plain = File('test/fauna_pulse/fixtures/tiny_pack.fpack'), classes = File('test/fauna_pulse/fixtures/tiny_classes.fpack');
@@ -255,10 +400,13 @@ void main() {
     final lists = choice.packRegions;
     expect(lists!.countries.keys, unorderedEquals(['AT', 'DE', 'MT']));
     expect(identical(choice.packRegions, lists), isTrue);
+    expect(choice.packTaxa!.families, ['Apidae', 'Syrphidae', 'Thomisidae']);
     choice.selectPack(plain);
     expect(choice.packRegions, isNull);
+    expect(choice.packTaxa!.orders, ['Araneae', 'Diptera', 'Hymenoptera'], reason: 'round 377: every name list has orders and families');
     choice.selectPack(classes);
     expect(choice.packRegions, isNull);
+    expect(choice.packTaxa, isNull, reason: 'a class list is never narrowed');
   });
 
   test('countriesInWords', () {

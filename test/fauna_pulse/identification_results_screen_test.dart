@@ -35,6 +35,68 @@ Map<String, dynamic> _track(int id, List<String> path, String rank, double p) =>
 };
 
 void main() {
+  // Round 377: the header names the orders and families whose names were on offer; the number
+  // of names stands where the last choice is named.
+  testWidgets('the header says which countries, orders and families the names came from', (tester) async {
+    simulateBottomSystemBar(tester);
+    final tmp = Directory.systemTemp.createTempSync('identify_results_taxa');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    final idDir = Directory('${tmp.path}/identification')..createSync();
+    final tracksJson = File('${idDir.path}/tracks_p.json')
+      ..writeAsStringSync(
+        jsonEncode({
+          'session_id': 's',
+          'tracks': [_track(1, ['Animalia', 'Arthropoda', 'Insecta', 'Hymenoptera', 'Apidae', 'Bombus', 'Bombus terrestris'], 'genus', 0.9)],
+        }),
+      );
+    Future<void> show(Map<String, dynamic> nameList) async {
+      final summaryJson = File('${idDir.path}/summary_p.json')
+        ..writeAsStringSync(
+          jsonEncode({
+            'generated_iso': '2026-11-16T10:00:00.000',
+            'model_id': 'bioclip-2',
+            'pack_id': 'europe',
+            'pack_rows': 34984,
+            'pack_sink_rows': 6,
+            'name_list': nameList,
+            'tracks_total': 1,
+            'by_identified_rank': {'genus': 1},
+            'no_organism': 0,
+            'unidentified': 0,
+            'taxa_order': {},
+            'taxa_family': {},
+            'tracks': [],
+          }),
+        );
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(
+        MaterialApp(
+          home: IdentificationResultsScreen(sessionDir: tmp, tracksJson: tracksJson, summaryJson: summaryJson, tracksCsv: File('${idDir.path}/tracks_p.csv')),
+        ),
+      );
+      for (var i = 0; i < 100; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump();
+        if (find.text('Bombus').evaluate().isNotEmpty) break;
+      }
+      expect(tester.takeException(), isNull);
+    }
+
+    // Countries chosen by hand and two families.
+    await show({'countries': ['AT', 'DE', 'MT'], 'taxa': ['Apidae', 'Syrphidae'], 'names': 1203, 'scope': 'countries'});
+    expect(find.text('Austria, Germany and Malta'), findsOneWidget);
+    expect(find.text('Orders and families'), findsOneWidget);
+    expect(find.text('Apidae and Syrphidae (1,203 names)'), findsOneWidget);
+    // Orders and families alone: no "Names from" row.
+    await show({'countries': [], 'taxa': ['Coleoptera', 'Diptera', 'Apidae', 'Vespidae'], 'names': 19001, 'scope': 'all'});
+    expect(find.text('Names from'), findsNothing);
+    expect(find.text('Coleoptera, Diptera and 2 more orders or families (19,001 names)'), findsOneWidget);
+    // No name in both choices: the whole list, and why.
+    await show({'countries': [], 'taxa': [], 'names': 34978, 'scope': 'country', 'country': 'MT', 'whole_list_reason': 'no_common_names'});
+    expect(find.text('Orders and families'), findsNothing);
+    expect(find.text('the whole name list (no name of the chosen orders and families is listed for the chosen countries)'), findsOneWidget);
+  });
+
   testWidgets('results table: no overflow on a 360-px phone, last row above the bar', (tester) async {
     simulateBottomSystemBar(tester);
     final tmp = Directory.systemTemp.createTempSync('identify_results');
