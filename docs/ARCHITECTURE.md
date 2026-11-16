@@ -84,7 +84,7 @@ are sent.** `_onStreamingData` reads it.
 |---|---|---|
 | `faunapulse/crop` | Dart → native | `cropRoiJpeg`: take a full-resolution photo and cut the ROI out of it; also gallery saves. |
 | `faunapulse/thermal` | Dart → native | `getThermal` (Dart `DeviceThermal.read`): every phone reading in one call: battery temperature, current, voltage and charge counter, the OS heat status, chip temperatures (where the phone allows it), memory, and this process's memory and CPU time ("cores busy" comes from two readings). Also `getFreeStorage` (free and total bytes of the session volume). |
-| `faunapulse/keepalive` | Dart → native | Start and stop `RecordingService`, the foreground service that keeps a long session alive (`services/recording_keepalive.dart`). `startAnalysis`/`stopAnalysis`: `AnalysisService` (type `dataSync`, `mediaProcessing` on Android 15+), held with a reference count by `services/analysis_keepalive.dart` while *Find animals in videos/photos* or Identify runs. Also phone state and phone settings. |
+| `faunapulse/keepalive` | Dart → native | Start and stop `RecordingService`, the foreground service that keeps a long session alive (`services/recording_keepalive.dart`). `startAnalysis`/`stopAnalysis`: `AnalysisService` (type `dataSync`, `mediaProcessing` on Android 15+), held with a reference count by `services/analysis_keepalive.dart` while *Find animals in videos/photos* or Identify runs. Also phone state, phone settings and the web search for a name (`webSearch`, called by `searchTheWeb` in `widgets/external_link.dart`). |
 | `faunapulse/diagnostics` | Dart → native | Save logcat into the session folder; send a problem report by email. |
 
 The identification run (`IdentificationRun` in

@@ -10488,3 +10488,10 @@ countries as an intersection; recorded so that a run can be repeated. Open: faun
 `reproduce_track_conf.py` does not copy this choice yet (hand-off note written); whether a
 narrowed list names animals better is not measured.
 
+## Round 378 (2026-11-16): a page lists the names a run chooses from; a name can be searched on the web or copied
+
+Asked: see which names a run chooses from (a page with a search box, from Identify organisms
+and from a name list's card), and search the web for a name or copy it, also in the
+identification results. Open: the web search ran on one phone model only; the privacy policy
+does not mention it.
+

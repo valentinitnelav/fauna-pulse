@@ -298,9 +298,12 @@ void main() {
         final start = find.text('Start');
         await pumpUntil(
           tester,
-          () => find.textContaining('Name list tiny-test', skipOffstage: false).evaluate().isNotEmpty && start.evaluate().isNotEmpty,
-          'the model, the name list and the Start button',
+          () => find.textContaining('Name list tiny-test', skipOffstage: false).evaluate().isNotEmpty,
+          'the model and the name list',
         );
+        // The Start button lies further down than this test's screen builds (since round 378
+        // the page has one more row above it): scroll to it, as a user does.
+        await tester.scrollUntilVisible(start, 200, scrollable: find.byType(Scrollable).first);
         for (var i = 0; i < 10; i++) {
           await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
           await tester.pump(const Duration(milliseconds: 20));

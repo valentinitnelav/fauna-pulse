@@ -8,8 +8,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/identification_results_screen.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/name_actions.dart';
 
 import 'summary_bottom_inset_test.dart' show expectAboveBottomInset, simulateBottomSystemBar;
 
@@ -337,6 +339,82 @@ void main() {
     await tester.dragUntilVisible(find.byIcon(Icons.photo), sheet, const Offset(0, -150));
     await tester.pumpAndSettle();
     expect(find.byIcon(Icons.photo), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // Round 378: a name in the results can be searched on the web or copied. A tap on a row
+  // already opens the next view, so the rows that show a name take a long press; the sheet
+  // of one track ID has a link for the identified name.
+  testWidgets('hold a name to search the web for it; a link on the sheet of one track ID', (tester) async {
+    simulateBottomSystemBar(tester);
+    final searched = <Object?>[];
+    const native = MethodChannel('faunapulse/keepalive');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(native, (call) async {
+      if (call.method == 'webSearch') searched.add((call.arguments as Map)['query']);
+      return true;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(native, null));
+    final tmp = Directory.systemTemp.createTempSync('identify_results_names');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    final idDir = Directory('${tmp.path}/identification')..createSync();
+    final tracksJson = File('${idDir.path}/tracks_p.json')
+      ..writeAsStringSync(
+        jsonEncode({
+          'session_id': 's',
+          'tracks': [_track(1, ['Animalia', 'Arthropoda', 'Insecta', 'Hymenoptera', 'Apidae', 'Bombus', 'Bombus terrestris'], 'genus', 0.9)],
+        }),
+      );
+    final summaryJson = File('${idDir.path}/summary_p.json')
+      ..writeAsStringSync(jsonEncode({'generated_iso': '2026-11-16T10:00:00.000', 'model_id': 'bioclip', 'pack_id': 'pack', 'pack_rows': 10, 'tracks_total': 1, 'tracks': []}));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: IdentificationResultsScreen(sessionDir: tmp, tracksJson: tracksJson, summaryJson: summaryJson, tracksCsv: File('${idDir.path}/tracks_p.csv')),
+      ),
+    );
+    for (var i = 0; i < 100; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+      if (find.text('Bombus').evaluate().isNotEmpty) break;
+    }
+    final window = find.byType(AlertDialog);
+    Finder inWindow(String text) => find.descendant(of: window, matching: find.text(text));
+
+    // The Results table: said under it; a long press opens the window of that name.
+    expect(find.text(kHoldNameHint), findsOneWidget);
+    await tester.longPress(find.text('Bombus'));
+    await tester.pumpAndSettle();
+    expect(inWindow('Bombus'), findsOneWidget);
+    expect(inWindow('Copy the name'), findsOneWidget);
+    await tester.tap(inWindow('Search the web'));
+    await tester.pumpAndSettle();
+    expect(window, findsNothing);
+    expect(searched, ['Bombus']);
+
+    // A tap still opens the track IDs of the row, and a tap there the track ID.
+    await tester.tap(find.text('Bombus'));
+    await tester.pumpAndSettle();
+    await tester.dragUntilVisible(find.text('#1'), find.byType(ListView).last, const Offset(0, -150));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('#1'));
+    await tester.pumpAndSettle();
+    final sheet = find.byType(ListView).last;
+
+    // The sheet of one track ID: a link for the identified name.
+    await tester.tap(find.text('Search the web for Bombus'));
+    await tester.pumpAndSettle();
+    expect(searched, ['Bombus', 'Bombus']);
+    // Its ladder: a tap selects a row, a long press opens the window of the row's name.
+    await tester.dragUntilVisible(find.text('Apidae').first, sheet, const Offset(0, -150));
+    await tester.pumpAndSettle();
+    expect(find.text(kHoldNameHint), findsNWidgets(2), reason: 'said under the ladder too (the first one is on the screen below)');
+    await tester.longPress(find.text('Apidae').first);
+    await tester.pumpAndSettle();
+    expect(inWindow('Apidae'), findsOneWidget);
+    await tester.tap(inWindow('Close'));
+    await tester.pumpAndSettle();
+    expect(window, findsNothing);
+    expect(searched, ['Bombus', 'Bombus']);
+    expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
 

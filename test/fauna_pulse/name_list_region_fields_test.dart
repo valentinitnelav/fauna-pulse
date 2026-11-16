@@ -2,7 +2,8 @@
 // 360-px phone: each control changes one stored setting, the page says which names a run will
 // use and why, and warns about a short list or a list made for another region. Round 376:
 // countries chosen by hand in a window with a search box. Round 377: orders and families
-// chosen by hand, in the same kind of window with the families under their order.
+// chosen by hand, in the same kind of window with the families under their order. Round 378:
+// "Show these names" hands over the names a run would choose from, to be listed.
 
 import 'dart:convert';
 import 'dart:io';
@@ -53,7 +54,17 @@ void main() {
           : LabelRow(['Animalia', 'Arthropoda', 'Insecta', r < 5000 ? 'Diptera' : 'Hymenoptera', r < 50 ? 'Syrphidae' : r < 5000 ? 'Muscidae' : r < 5100 ? 'Apidae' : 'Formicidae', 'G', 's$r'], ''),
   ]);
 
-  Future<void> pump(WidgetTester tester, IdentifyPrefs prefs, {String? sessionCountry, PackTaxa? taxa, bool countryLists = true}) async {
+  // What "Show these names" hands over: the choice and the sentence that says which names.
+  final shown = <(NameListChoice, String)>[];
+  Future<void> pump(
+    WidgetTester tester,
+    IdentifyPrefs prefs, {
+    String? sessionCountry,
+    PackTaxa? taxa,
+    bool countryLists = true,
+    bool namesButton = true,
+  }) async {
+    shown.clear();
     tester.view.physicalSize = const Size(360, 780);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -72,6 +83,7 @@ void main() {
                   packNames: _rows - 6,
                   sessionCountry: sessionCountry,
                   onEdit: (change) => setState(change),
+                  onShowNames: namesButton ? (choice, listed) => shown.add((choice, listed)) : null,
                 ),
               ),
             ),
@@ -407,6 +419,53 @@ void main() {
     choice.selectPack(classes);
     expect(choice.packRegions, isNull);
     expect(choice.packTaxa, isNull, reason: 'a class list is never narrowed');
+  });
+
+  group('round 378: "Show these names"', () {
+    Future<void> tapShow(WidgetTester tester) async {
+      await tester.ensureVisible(find.text('Show these names'));
+      await tester.tap(find.text('Show these names'));
+      await tester.pump();
+    }
+
+    testWidgets('hands over the rows a run would choose from and says which names they are', (tester) async {
+      // Countries and groups together: Apidae (rows 5,000 .. 5,099) and Diptera (0 .. 4,999)
+      // among the names of Germany and Austria (rows 0 .. 5,999).
+      await pump(tester, IdentifyPrefs(nameListChosenTaxa: ['Apidae', 'Diptera']), sessionCountry: 'DE', taxa: groups);
+      await tapShow(tester);
+      expect(shown.single.$2, 'The 5,100 names of Apidae and Diptera listed for Germany and its neighbour (of 7,994 in the list).');
+      final bits = shown.single.$1.rowBits!;
+      expect(PackRegions.countRows(bits), 5100);
+      expect(PackRegions.hasRow(bits, 5099), isTrue);
+      expect(PackRegions.hasRow(bits, 5100), isFalse, reason: 'Formicidae is not ticked');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a family on the whole list, whatever the country', (tester) async {
+      await pump(tester, IdentifyPrefs(nameListScope: kScopeAll, nameListChosenTaxa: ['Apidae']), sessionCountry: 'IS', taxa: groups);
+      expect(find.text('A run chooses among the 100 names of Apidae (of 7,994 in the list).'), findsOneWidget);
+      await tapShow(tester);
+      expect(shown.single.$2, 'The 100 names of Apidae (of 7,994 in the list).');
+      expect(PackRegions.countRows(shown.single.$1.rowBits!), 100);
+    });
+
+    testWidgets('nothing chosen, or no name in both choices: every name', (tester) async {
+      await pump(tester, IdentifyPrefs(nameListScope: kScopeAll), taxa: groups);
+      await tapShow(tester);
+      expect(shown.single.$2, 'All 7,994 names.');
+      expect(shown.single.$1.rowBits, isNull);
+      // Iceland lists the rows 7,000 .. 7,099, all Formicidae: no Syrphidae among them.
+      await pump(tester, IdentifyPrefs(nameListScope: kScopeCountry, nameListCountry: 'IS', nameListChosenTaxa: ['Syrphidae']), taxa: groups);
+      expect(find.textContaining('⚠ No name of the chosen orders and families is listed for the chosen countries'), findsOneWidget);
+      await tapShow(tester);
+      expect(shown.single.$2, 'All 7,994 names.');
+      expect(shown.single.$1.rowBits, isNull);
+    });
+
+    testWidgets('no button where the names cannot be listed', (tester) async {
+      await pump(tester, IdentifyPrefs(), taxa: groups, namesButton: false);
+      expect(find.text('Show these names'), findsNothing);
+    });
   });
 
   test('countriesInWords', () {

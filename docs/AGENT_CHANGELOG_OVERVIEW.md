@@ -69,7 +69,8 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
   folds, `numeric_setting_field.dart`, `dialog_title.dart`, `home_button.dart`,
   `model_kind_panel.dart`, `tracker_tuning_fields.dart`, `video_timeline_bar.dart`,
   `selection_app_bar.dart`, `multi_pick_dialog.dart` = a window to tick entries of a long list,
-  with a search box), `services/` (recording and analysis keep-alive), `perf/`.
+  with a search box, `external_link.dart` = web pages and `searchTheWeb`, `name_actions.dart` =
+  the window of an organism's name), `services/` (recording and analysis keep-alive), `perf/`.
 
 Settings outside `SessionConfig` are shared preferences: Find in photos `analysis_*` (its
 tracker = the camera's), Find in videos `video_analysis_*` (own tracker values, never touching the
@@ -125,6 +126,11 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   pushed with `restorablePush` (static builder marked `@pragma('vm:entry-point')`) or
   `RestorableRouteFuture`: low-memory phones close the app in the background, and a screen comes
   back only if every route below it is restorable.
+- **A listed name of an organism can be looked up:** `showNameActions` (web search, copy) on a
+  tap, or on a long press where a tap already opens the next view (then the view shows
+  `kHoldNameHint`). `searchTheWeb` sends Android's own web-search request (native `webSearch`),
+  so the app names no search engine (owner's decision; a DuckDuckGo address only when no app
+  answers).
 - **One unit per sentence:** two sizes in one sentence share the larger one's unit
   (`formatBytes(unitOf:)`, `freeStorageClause`, `formatMegabytes`).
 - **An empty chart keeps its card** and says why it is empty (a hidden chart looks removed).
@@ -296,7 +302,9 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   rule). Which names a run uses is decided in one place, `nameListForSettings`
   (`name_list_region.dart`), for the scoring and the Identify page; the results record it
   (`name_list`, `name_list_countries`, `name_list_taxa`). `LabelPack.readHeader` leaves out the
-  names and gives the page their orders and families under `kPackTaxaKey`.
+  names and gives the page their orders and families under `kPackTaxaKey`. The page "Names to
+  choose from" (`name_list_names_screen.dart`) lists the rows of `NameListChoice.rowBits`,
+  read without the vectors (`readNameListNames`).
 - **The session's country** comes from its position and `assets/country_borders.json`
   (`country_lookup.dart`; found on the calling isolate, because the borders are an asset).
   `tool/country_borders/make_country_borders.py` writes that file and the shared test points

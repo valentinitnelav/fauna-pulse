@@ -67,13 +67,18 @@ not request the restricted direct battery-exemption permission.
 
 FaunaPulse is designed to run fully offline, and normal recording never touches the
 network. No AI model comes inside the app, so you download the ones you need once. There
-are exactly two exceptions, both about AI models and their name lists:
+are three exceptions (about downloading AI models and their name lists, and an optional
+web search of taxa names):
 
 1. You tap a download on the **Download & import models** screen or on a **What do you
    want to watch?** page. The file is downloaded over HTTPS from the link in the app's
    built-in list of models, which points to the project's model pages on Hugging Face
    (huggingface.co) or to the project's GitHub releases.
 2. You paste an HTTPS link into **Download from a link**, and the app fetches that file.
+3. On a taxa name you long press (on the identification results screens), or a tap
+   (on a name list screen associated with BioCLIP classifiers). It opens a small window where
+   "Search the web" is an option, but it will not search the web automatically.
+   It gives you the option to further search the web for the taxonomic name.
 
 Both are file downloads only. Nothing about you, your sessions, your photos or your
 location is sent anywhere in the process. As with any download, the server that holds the

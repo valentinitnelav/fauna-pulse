@@ -236,7 +236,8 @@ screen.
 
 The ⓘ card of each model and name list links its model card on Hugging Face (in its last row).
 The model card says who made the model, how it was adapted for FaunaPulse, its licence, how to
-cite it and whether there is a newer version.
+cite it and whether there is a newer version. The card of a name list also has **Show the
+names**: every name of the list on one page, with a search box.
 
 **Your own models:** once you have one or more `.tflite` model files to test (see
 [S1. Getting the models](#s1-getting-the-models)), add them in one of two ways:

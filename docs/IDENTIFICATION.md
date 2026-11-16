@@ -311,6 +311,13 @@ is used when it is:
 - the name list has no names for the country;
 - with both boxes at their defaults, the country and its neighbours have under 5,000 names.
 
+**Show these names**, under that line, opens a page with exactly these names: every name of the
+list, or only the ones your countries and groups leave. They are in alphabetical order, each
+with its family, its order and, when the list has one, its common name. The search box looks
+in all of these, so typing a family shows its names. Tap a name to search the web for it or to
+copy it ([Looking up a name](#looking-up-a-name)). The same page, with every name of a list,
+opens from the name list's ⓘ card on **Download & import models** (**Show the names**).
+
 A country, "The country only" or countries chosen by hand are used as they are. An amber line
 then warns when:
 
@@ -456,7 +463,8 @@ one rank, such as the order Hymenoptera or the genus *Bombus*.
 2. Read the columns. *Track IDs* is the number of track IDs in the row. *Time* adds up their
    durations. *Med. Conf.* is their median confidence.
 3. Tap a row to see its track IDs. Tap a track ID to open its sheet with the full ladder (see
-   below).
+   below). Hold a row that shows a name (a long press) to search the web for the name or to
+   copy it ([Looking up a name](#looking-up-a-name)).
 4. Tap the share icon at the top right (**Share results (CSV file)**) to hand the per-track-ID
    table (`tracks_<pack>.csv`, one row per track ID) to another app. The same file stays in the
    session folder under `identification/`, so you can also copy it over USB.
@@ -483,10 +491,27 @@ It is not an answer per photo: the guesses per crop are in `predictions_<pack>.j
 | **no organism** | The "none of these" entries (flower, leaf, shadow, …) took more than the "No organism" threshold. |
 | **Best single photo** | The crop whose own top species has the highest Species conf.: the photo the model is surest about on its own. |
 
+### Looking up a name
+
+Wherever the app lists names of organisms, a name can be looked up: tap it on the **Names to
+choose from** page, hold it (a long press) in the results, where a tap already opens the next
+view. A small window then offers:
+
+- **Search the web**: FaunaPulse hands the name to the phone's own web search, so the search
+  app or browser you use on the phone opens with the results (the phone may ask once which
+  app to use). FaunaPulse names no search engine and sends nothing itself. Only on a phone
+  where no app answers, the search opens in the browser on DuckDuckGo. It needs internet.
+  Photos of the species beside your crops are a quick check of an identification.
+- **Copy the name**, to paste it into another app.
+
+While an identification is running, look names up before or after it: heavy work goes best
+with FaunaPulse on the screen.
+
 ### A track ID's sheet
 
+- **Search the web for** the identified name, a link under the first line.
 - **The ladder**, as an aligned table. The reported rank is highlighted; the taxa below it
-  (suggestions) are grey.
+  (suggestions) are grey. Hold a row of the ladder, or of the crops table, to look up its name.
 - **The best single photo**, with its full file name on its own line. The sheet also names its
   species and confidence, the crop number, and how many photos name the same species, and it
   opens the photo view on it. In the photo, the yellow box is the detector's box, labelled with

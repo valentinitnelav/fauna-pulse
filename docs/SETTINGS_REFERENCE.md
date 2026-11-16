@@ -1047,7 +1047,8 @@ families** shows for every name list of a BioCLIP model. Stored on the phone as
 `identify_name_list_scope`, `identify_name_list_country`, `identify_name_list_chosen_countries`
 and `identify_name_list_chosen_taxa`, echoed into every run's settings; the results say which
 names were used (**Names from** and **Orders and families** on the results screen,
-`name_list_countries`, `name_list_taxa` and `name_list` in the files).
+`name_list_countries`, `name_list_taxa` and `name_list` in the files). **Show these names**
+(not a setting) lists the names a run would choose from with the choices as they are.
 
 | Setting | Default | Meaning |
 |---|---|---|

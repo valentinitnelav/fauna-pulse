@@ -62,6 +62,10 @@ class NameListRegionFields extends StatelessWidget {
   /// Applies a change in the host's setState and saves (as IdentifySettingsFields).
   final void Function(VoidCallback change) onEdit;
 
+  /// Round 378: opens the list of the names a run would choose from ("Show these names");
+  /// [listed] says which names they are, in one sentence. Null: no such button.
+  final void Function(NameListChoice choice, String listed)? onShowNames;
+
   const NameListRegionFields({
     super.key,
     required this.prefs,
@@ -69,6 +73,7 @@ class NameListRegionFields extends StatelessWidget {
     this.taxa,
     required this.packNames,
     required this.onEdit,
+    this.onShowNames,
     this.sessionCountry,
   });
 
@@ -131,6 +136,19 @@ class NameListRegionFields extends StatelessWidget {
             padding: const EdgeInsets.only(top: 6),
             child: Text(sentence, style: helperTextStyle),
           ),
+        if (onShowNames case final show?)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const ValueKey('show names'),
+              onPressed: () {
+                final names = _namesInWords(choice, all);
+                show(choice, '${names[0].toUpperCase()}${names.substring(1)}.');
+              },
+              icon: const Icon(Icons.list, size: 18),
+              label: const Text('Show these names'),
+            ),
+          ),
         if (choice.shortList)
           _warning(
             'Only ${thousands(choice.countryNames)} names${choice.taxa.isEmpty ? '' : ' in all orders and families'}. '
@@ -147,7 +165,7 @@ class NameListRegionFields extends StatelessWidget {
         if (choice.lowCoverage) _warning(_lowCoverage(choice.lowCoverageCountries)),
         if (choice.taxa.isNotEmpty)
           _warning(
-            'Every animal will be named as one of ${taxaInWords(choice.taxa)}.'
+            'Every animal will be named as one of ${taxaInWords(choice.taxa)}. '
             'This forces the model to pick a name from these groups, even for an animal of another group.',
           ),
       ],
@@ -291,18 +309,24 @@ class NameListRegionFields extends StatelessWidget {
         'region, so many species of these countries cannot be named with it.';
   }
 
+  /// The names on offer in words: "the 8,405 names of Apidae listed for Germany and its 10
+  /// neighbours (of 34,978 in the list)", "all 34,978 names". For the sentence below and for
+  /// the page that lists them.
+  static String _namesInWords(NameListChoice c, String all) {
+    final groups = c.taxa.isEmpty ? null : taxaInWords(c.taxa);
+    if (c.countries.isEmpty) {
+      return groups == null ? 'all $all names' : 'the ${thousands(c.names)} names of $groups (of $all in the list)';
+    }
+    final where = countriesInWords(c.countries, scope: c.scope);
+    return 'the ${thousands(c.names)} names of ${groups == null ? where : '$groups listed for $where'} (of $all in the list)';
+  }
+
   /// One sentence on the names a run will choose from. Every form holds "run chooses among"
   /// (the device check finds the sentence by it).
   static String _used(NameListChoice c, String all) {
-    final groups = c.taxa.isEmpty ? null : taxaInWords(c.taxa);
-    if (c.countries.isNotEmpty) {
-      final where = countriesInWords(c.countries, scope: c.scope);
-      return groups == null
-          ? 'A run chooses among the ${thousands(c.names)} names of $where (of $all in the list).'
-          : 'A run chooses among the ${thousands(c.names)} names of $groups listed for $where (of $all in the list).';
-    }
+    final names = _namesInWords(c, all);
+    if (c.countries.isNotEmpty) return 'A run chooses among $names.';
     // No country narrows: every name, or those of the chosen orders and families.
-    final names = groups == null ? 'all $all names' : 'the ${thousands(c.names)} names of $groups (of $all in the list)';
     final country = c.country == null ? null : countryName(c.country!);
     if (c.wholeListReason == kWholeNoCommonNames) {
       return 'No name of the chosen orders and families is listed for the chosen countries, so a run chooses among '

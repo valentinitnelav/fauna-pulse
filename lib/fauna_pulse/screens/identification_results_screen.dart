@@ -54,7 +54,9 @@ import '../identification/taxa_table.dart';
 import '../logging/app_error_hooks.dart';
 import '../postprocess/video_tracker.dart' show VideoTracker;
 import '../widgets/setting_help.dart';
+import '../widgets/external_link.dart' show WebSearchLink;
 import '../widgets/home_button.dart';
+import '../widgets/name_actions.dart';
 import 'identification_choice_fields.dart' show thousands;
 import 'name_list_region_fields.dart' show countriesInWords, taxaInWords;
 
@@ -224,6 +226,9 @@ class _TableRow extends StatelessWidget {
   final bool highlight;
   final bool selected;
   final VoidCallback? onTap;
+
+  /// Round 378: on the rows that show a name, the window of that name (web search, copy).
+  final VoidCallback? onLongPress;
   final Widget? below;
   final double? flexWidth;
   const _TableRow({
@@ -233,6 +238,7 @@ class _TableRow extends StatelessWidget {
     this.highlight = false,
     this.selected = false,
     this.onTap,
+    this.onLongPress,
     this.below,
     this.flexWidth,
   });
@@ -242,6 +248,7 @@ class _TableRow extends StatelessWidget {
     final row = _cellsRow(cols, widths, cells, flexWidth);
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 5),
         decoration: BoxDecoration(
@@ -802,7 +809,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
             ),
           ],
           outro: 'Tap a column header to sort it, tap a row to list its track IDs, '
-                 'and, in the next screen, tap a track ID to list its detailed results.'
+                 'and, in the next screen, tap a track ID to list its detailed results. $kHoldNameHint'
         ),
       ),
       const SizedBox(height: 6),
@@ -873,6 +880,7 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
           for (final r in shown) _taxonRow(r, widths, fw),
         ],
       ),
+      if (shown.any((r) => !r.isBucket)) const Padding(padding: EdgeInsets.only(top: 4), child: Text(kHoldNameHint, style: helperTextStyle)),
       if (filtered.length > shown.length)
         TextButton(
           onPressed: () => setState(() => _allRows = true),
@@ -900,6 +908,8 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
       // A bucket row ("unidentified", "not resolved …") holds track ids of
       // different taxa, so its sheet keeps the taxon column.
       onTap: () => _showVisits(r.isBucket ? r.taxon : '${r.taxon} (${r.rank})', r.tracks, rank: r.isBucket ? null : r.rank, showTaxon: r.isBucket),
+      // A bucket row has no name of an organism.
+      onLongPress: r.isBucket ? null : () => showNameActions(context, r.taxon),
       cells: [
         _txt(r.taxon, style: style, bold: !r.isBucket, maxLines: 2),
         _txt(r.isBucket ? '–' : r.rank, style: _dimCellStyle),
@@ -1130,9 +1140,10 @@ class _VisitsSheetState extends State<_VisitsSheet> {
                 ],
                 outro: widget.rank == null || median == null
                     ? 'Tap a row for the full ladder, photo and crops. Drag the table sideways if it is wider than the screen.'
+                          '${widget.showTaxon ? ' $kHoldNameHint' : ''}'
                     : 'Median Conf. across these ${_plural(widget.tracks.length, 'track ID')}: ${_pct(median)} '
                           '(the Med. Conf. of this row on the previous screen). Tap a row for the full ladder, photo and crops. '
-                          'Drag the table sideways if it is wider than the screen.',
+                          'Drag the table sideways if it is wider than the screen.${widget.showTaxon ? ' $kHoldNameHint' : ''}',
               ),
               const SizedBox(height: 6),
             ],
@@ -1160,6 +1171,8 @@ class _VisitsSheetState extends State<_VisitsSheet> {
           cols: _cols,
           widths: widths,
           onTap: () => widget.onOpen(t),
+          // Only where the row shows a name (the rows of one taxon do not).
+          onLongPress: widget.showTaxon && !dim ? () => showNameActions(context, '${t['headline']}') : null,
           cells: [
             _txt('$no', style: _dimCellStyle),
             Column(
@@ -1438,6 +1451,12 @@ class _TrackSheetState extends State<_TrackSheet> {
           ),
           style: const TextStyle(color: Colors.white70),
         ),
+        // Round 378: the identified name can be compared with photos on the web in one tap.
+        if (_rank != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Align(alignment: Alignment.centerLeft, child: WebSearchLink('${t['headline']}', fontSize: 13)),
+          ),
         ..._visitNotes(ids.length, durS, det, detConf, shortDur, shortDet),
         // Round 266: a fixed-class classifier's own class (e.g. insectDCT's "Apoidea small"),
         // which can say more than the ladder where its groups have no rank (bees vs wasps).
@@ -1499,6 +1518,7 @@ class _TrackSheetState extends State<_TrackSheet> {
                 highlight: _ladder[k]['rank'] == _rank,
                 selected: k == _sel,
                 onTap: () => setState(() => _sel = k),
+                onLongPress: () => showNameActions(context, '${_ladder[k]['taxon']}'),
                 cells: [
                   _txt('${_ladder[k]['rank']}', style: _dimCellStyle, bold: _ladder[k]['rank'] == _rank),
                   _rowWarned(k)
@@ -1517,6 +1537,7 @@ class _TrackSheetState extends State<_TrackSheet> {
               ),
           ],
         ),
+        const Padding(padding: EdgeInsets.only(top: 4), child: Text(kHoldNameHint, style: helperTextStyle)),
         ..._ladderNotes(),
         if (bestSpecies.isNotEmpty)
           Padding(
@@ -1832,6 +1853,7 @@ class _TrackSheetState extends State<_TrackSheet> {
                 _shown = _crops.indexOf(c);
                 _zoom.value = Matrix4.identity();
               }),
+              onLongPress: '${c['top1'] ?? ''}'.isEmpty ? null : () => showNameActions(context, '${c['top1']}'),
               cells: [
                 Row(
                   mainAxisSize: MainAxisSize.min,

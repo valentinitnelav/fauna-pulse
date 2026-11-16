@@ -45,6 +45,7 @@ import '../widgets/dialog_title.dart';
 import 'identification_choice_fields.dart';
 import 'identification_results_screen.dart';
 import 'identify_settings_fields.dart';
+import 'name_list_names_screen.dart';
 import 'name_list_region_fields.dart';
 import 'models_screen.dart';
 import 'video_analysis_screen.dart';
@@ -735,6 +736,14 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         packNames: ((_packHeader?['rows'] as num?) ?? 0).toInt() - ((_packHeader?['sink_rows'] as num?) ?? 0).toInt(),
         sessionCountry: _sessionCountry,
         onEdit: _edit,
+        // Round 378: the names a run would choose from, as a list to read and search.
+        onShowNames: (choice, listed) {
+          final pack = _choice.pack;
+          if (pack == null) return;
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (_) => NameListNamesScreen(packFile: pack, rowBits: choice.rowBits, intro: listed)),
+          );
+        },
       ),
     ],
   ];

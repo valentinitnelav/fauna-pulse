@@ -111,6 +111,7 @@ import '../widgets/home_button.dart';
 import '../widgets/model_kind_panel.dart';
 import '../widgets/selection_app_bar.dart';
 import '../widgets/dialog_title.dart';
+import 'name_list_names_screen.dart';
 
 /// Opens the Download & import models screen; the caller re-reads its own
 /// model list after.
@@ -847,7 +848,9 @@ class _ModelsScreenState extends State<ModelsScreen> {
   /// (round 324, owner: after the card's own details). Pushed restorably with
   /// plain values (round 325): the card's links open the browser, which is
   /// when Android tends to close the app, and the user expects the card back.
-  void _showCard(IconData icon, String title, List<(String, String)> rows, {String? modelCard}) {
+  /// [namesOf] (round 378): the path of a name list file, for a row that opens the list of
+  /// its names.
+  void _showCard(IconData icon, String title, List<(String, String)> rows, {String? modelCard, String? namesOf}) {
     assert(_cardIcons.contains(icon), 'add the icon to _cardIcons');
     Navigator.of(context).restorablePush(
       _cardRoute,
@@ -856,6 +859,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
         'title': title,
         'rows': [for (final (label, value) in rows) [label, value]],
         'modelCard': modelCard,
+        'namesOf': namesOf,
       },
     );
   }
@@ -869,6 +873,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
     final title = a['title'] as String;
     final rows = [for (final r in a['rows'] as List) ((r as List)[0] as String, r[1] as String)];
     final modelCard = a['modelCard'] as String?;
+    final namesOf = a['namesOf'] as String?;
     return DialogRoute<void>(context: context, builder: (ctx) => AlertDialog(
       title: DialogTitle(
         Row(
@@ -892,6 +897,15 @@ class _ModelsScreenState extends State<ModelsScreen> {
                 _linkRows.contains(label) && _isLink(value)
                     ? ExternalLinkText(value, logTag: 'model_card_link')
                     : SelectableText(value, style: const TextStyle(fontSize: 14)),
+              ),
+            if (namesOf != null)
+              _cardRow(
+                'Names',
+                TextButton.icon(
+                  onPressed: () => Navigator.of(ctx).restorablePush(nameListNamesRoute, arguments: namesOf),
+                  icon: const Icon(Icons.list, size: 18),
+                  label: const Text('Show the names'),
+                ),
               ),
             if (modelCard != null)
               _cardRow(_modelCardHeading, ExternalLinkText(modelCard, label: _modelCardLink, logTag: 'model_card_link')),
@@ -1041,7 +1055,8 @@ class _ModelsScreenState extends State<ModelsScreen> {
       if (list != null && list.licence.isNotEmpty) ('Licence', list.licence),
       if (list != null && list.source.isNotEmpty) ('Source', list.source),
       if (list == null || list.licence.isEmpty) ..._originRows(offer?.$1),
-    ], modelCard: _modelCardUrl(list?.file));
+      // The names can be listed only when the file's header could be read.
+    ], modelCard: _modelCardUrl(list?.file), namesOf: inv.headers[f.path] == null ? null : f.path);
   }
 
   /// The card of a model to download. Its label packs have rows of their

@@ -31,6 +31,7 @@ import 'package:fauna_pulse/fauna_pulse/models/model_file_kind.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_downloads.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_import.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/models_screen.dart';
+import 'package:fauna_pulse/fauna_pulse/screens/name_list_names_screen.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/external_link.dart';
 import 'package:fauna_pulse/fauna_pulse/widgets/model_kind_panel.dart';
 
@@ -271,6 +272,22 @@ void main() {
     expect(find.text('Class list of insectdct-cls-v7_eff2s_fp16: 104 classes'), findsOneWidget);
     expect(find.text('insectDCT classifier: Its 104 classes'), findsOneWidget);
     await _close(tester);
+  });
+
+  // Round 378: a name list's card opens the list of its names; a model has no such row.
+  testWidgets("a name list's card opens the page of its names", (tester) async {
+    await _pump(tester);
+    await _card(tester, _clsName);
+    expect(find.text('Show the names'), findsNothing);
+    await _close(tester);
+    await _card(tester, 'insectdct-cls-v7_eff2s_fp16.fpack');
+    await tester.tap(find.text('Show the names'));
+    // No pumpAndSettle: the page turns its progress circle until the file is read.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(tester.widget<NameListNamesScreen>(find.byType(NameListNamesScreen)).packFile.path, _classList.path);
+    expect(tester.widget<NameListNamesScreen>(find.byType(NameListNamesScreen)).rowBits, isNull, reason: 'every name of the list');
+    await tester.pumpWidget(const SizedBox());
   });
 
   // Round 329: the rows that come from the app's list stay links.

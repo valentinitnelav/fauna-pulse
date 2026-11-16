@@ -586,6 +586,35 @@ class LabelPack {
   }
 
   static Map<String, dynamic> _readHeaderSync(File file) {
+    final map = _decodeHeaderSync(file);
+    final labels = map.remove('labels'); // keep listings light
+    // Round 377: what the Identify page needs of the names, the orders and families. Label
+    // entries of a wrong shape are parseBytes' to report: such a pack has no taxa here.
+    if (!isClassListHeader(map) && labels is List && labels.every((e) => e is List)) {
+      map[kPackTaxaKey] = PackTaxa.ofHeaderLabels(labels.cast<List>());
+    }
+    // Round 372: the GBIF keys are one entry per name, read only by the scoring. The
+    // `regions` block stays: the Identify page reads it ([PackRegions.tryParse]).
+    final gbif = map['gbif'];
+    if (gbif is Map) map['gbif'] = _withoutKeys(gbif, const {'species_key', 'species'});
+    return map;
+  }
+
+  /// The names of [file] as rows, in the order of the file, without reading the vectors
+  /// (round 378: the page that lists a name list's names, name_list_names.dart).
+  /// Synchronous: call it from a helper isolate, as [readHeader] does (decoding a header of
+  /// tens of thousands of names takes 0.1 s and more).
+  static List<LabelRow> readLabelsSync(File file) {
+    final labels = _decodeHeaderSync(file)['labels'] as List; // a list: _checkedHeader
+    try {
+      return [for (final e in labels) _labelRow(e as List)];
+    } on TypeError catch (e) {
+      throw FormatException('Label pack header has a wrong field type: $e');
+    }
+  }
+
+  /// The whole JSON header of [file], checked and decoded, with the names (no vectors).
+  static Map<String, dynamic> _decodeHeaderSync(File file) {
     final raf = file.openSync();
     try {
       final magic = raf.readSync(4);
@@ -602,18 +631,7 @@ class LabelPack {
       // readSync returns only what is left, so a cut file must be caught here.
       final payload = raf.lengthSync() - 8 - hlen;
       if (payload < 0) throw const FormatException('Label pack header is truncated');
-      final map = _checkedHeader(raf.readSync(hlen), payload);
-      final labels = map.remove('labels'); // keep listings light
-      // Round 377: what the Identify page needs of the names, the orders and families. Label
-      // entries of a wrong shape are parseBytes' to report: such a pack has no taxa here.
-      if (!isClassListHeader(map) && labels is List && labels.every((e) => e is List)) {
-        map[kPackTaxaKey] = PackTaxa.ofHeaderLabels(labels.cast<List>());
-      }
-      // Round 372: the GBIF keys are one entry per name, read only by the scoring. The
-      // `regions` block stays: the Identify page reads it ([PackRegions.tryParse]).
-      final gbif = map['gbif'];
-      if (gbif is Map) map['gbif'] = _withoutKeys(gbif, const {'species_key', 'species'});
-      return map;
+      return _checkedHeader(raf.readSync(hlen), payload);
     } finally {
       raf.closeSync();
     }

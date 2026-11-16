@@ -6,6 +6,7 @@
 package com.ultralytics.yolo
 
 import android.app.ActivityManager
+import android.app.SearchManager
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -347,6 +348,7 @@ class MainActivity : FlutterFragmentActivity() {
                     "phoneState" -> result.success(readPhoneState())
                     "openPhoneSettings" ->
                         result.success(openPhoneSettings(call.argument<String>("page") ?: ""))
+                    "webSearch" -> result.success(webSearch(call.argument<String>("query") ?: ""))
                     else -> result.notImplemented()
                 }
             }
@@ -398,6 +400,18 @@ class MainActivity : FlutterFragmentActivity() {
 
     /// Round 298: opens the settings page for one phone tip; Android's main Settings when the
     /// phone has no such page. Returns whether a page opened.
+    /// Round 378: a web search for the name of an organism, with Android's own web-search
+    /// request. The phone opens the search app or browser its user chose (or asks which one),
+    /// so the app names no search engine. Starting an activity needs no `<queries>` entry in
+    /// the manifest (only asking which apps exist does). False when no app answers; the Dart
+    /// side (`searchTheWeb`) then opens a web address.
+    private fun webSearch(query: String): Boolean = try {
+        startActivity(Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, query))
+        true
+    } catch (e: Exception) {
+        false
+    }
+
     private fun openPhoneSettings(page: String): Boolean {
         val action = when (page) {
             "airplane" -> Settings.ACTION_AIRPLANE_MODE_SETTINGS
