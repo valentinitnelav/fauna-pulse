@@ -11,6 +11,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/country_field.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/identification_assets.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/identification_choice.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/label_pack.dart';
@@ -26,6 +27,9 @@ String _bits(int from, int to) {
   }
   return base64.encode(b);
 }
+
+/// The search box of the window (the country box on the page is a text field too, r382).
+final _windowSearch = find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField));
 
 void main() {
   // Germany 6,000 names with Austria next to it; Iceland 100 names and no neighbour; the pack
@@ -152,7 +156,22 @@ void main() {
     expect(find.text('A run chooses among all 7,994 names.'), findsOneWidget);
     expect(find.text('Not used with the whole name list.'), findsOneWidget);
     expect(find.textContaining('⚠'), findsNothing);
-    expect(tester.widget<DropdownButtonFormField<String>>(find.byKey(const ValueKey('name list country IS true'))).onChanged, isNull);
+    expect(tester.widget<CountryField>(find.byKey(const ValueKey('name list country IS true'))).onChanged, isNull);
+  });
+
+  testWidgets('typing in the country box narrows the countries (r382)', (tester) async {
+    final prefs = IdentifyPrefs(nameListScope: kScopeCountry);
+    await pump(tester, prefs, sessionCountry: 'DE');
+    final box = find.descendant(of: find.byKey(const ValueKey('name list country  false')), matching: find.byType(TextField));
+    await tester.tap(box);
+    await tester.pumpAndSettle();
+    await tester.enterText(box, 'ICE');
+    await tester.pumpAndSettle();
+    expect(find.text('Iceland (100 names)'), findsWidgets);
+    expect(find.text('Austria (5,200 names)'), findsNothing);
+    await tester.tap(find.text('Iceland (100 names)').last);
+    await tester.pumpAndSettle();
+    expect(prefs.nameListCountry, 'IS');
   });
 
   testWidgets('a name list made for another region: the coverage warning', (tester) async {
@@ -202,7 +221,7 @@ void main() {
       expect(prefs.nameListCountry, 'IS', reason: 'the single country keeps its value');
       expect(find.text('None yet: tap to choose'), findsOneWidget);
       expect(find.text('No country is chosen yet, so a run chooses among all 7,994 names. Tap "Countries" above to choose.'), findsOneWidget);
-      expect(find.byType(DropdownButtonFormField<String>), findsOneWidget, reason: 'the single-country box is replaced');
+      expect(find.byType(CountryField), findsNothing, reason: 'the single-country box is replaced');
 
       // Every country of the list is offered, by name with its number of names.
       await openWindow(tester);
@@ -212,14 +231,14 @@ void main() {
       expect(find.textContaining('South Georgia and the South Sandwich Islands'), findsOneWidget);
       expect(tester.takeException(), isNull);
       // The search narrows the entries, whatever the case of the letters.
-      await tester.enterText(find.byType(TextField), 'LAND');
+      await tester.enterText(_windowSearch, 'LAND');
       await tester.pump();
       expect(find.text('Iceland (100 names)'), findsOneWidget);
       expect(find.text('Austria (5,200 names)'), findsNothing);
       await tester.tap(find.text('Iceland (100 names)'));
       await tester.pump();
       expect(find.text('1 ticked'), findsOneWidget);
-      await tester.enterText(find.byType(TextField), 'xyz');
+      await tester.enterText(_windowSearch, 'xyz');
       await tester.pump();
       expect(find.text('Nothing found.'), findsOneWidget);
       await tester.tap(find.byTooltip('Clear the search'));
@@ -278,7 +297,7 @@ void main() {
       await openWindow(tester);
       tester.view.viewInsets = const FakeViewPadding(bottom: 320);
       addTearDown(tester.view.resetViewInsets);
-      await tester.showKeyboard(find.byType(TextField));
+      await tester.showKeyboard(_windowSearch);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.text('Use these'), findsOneWidget);
@@ -338,7 +357,7 @@ void main() {
       expect(find.text('2 ticked'), findsOneWidget);
       expect(tile(tester, 'Apidae').onChanged, isNull);
       // The search shows orders and families that match, whatever the case of the letters.
-      await tester.enterText(find.byType(TextField), 'MICI');
+      await tester.enterText(_windowSearch, 'MICI');
       await tester.pump();
       expect(find.text('Formicidae'), findsOneWidget);
       expect(find.text('Diptera'), findsNothing);
@@ -405,7 +424,7 @@ void main() {
       await openWindow(tester);
       tester.view.viewInsets = const FakeViewPadding(bottom: 320);
       addTearDown(tester.view.resetViewInsets);
-      await tester.showKeyboard(find.byType(TextField));
+      await tester.showKeyboard(_windowSearch);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(tester.getBottomLeft(find.text('Use these')).dy, lessThanOrEqualTo(780 - 320));

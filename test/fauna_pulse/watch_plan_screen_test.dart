@@ -16,6 +16,7 @@
 
 import 'dart:io';
 
+import 'package:fauna_pulse/fauna_pulse/widgets/country_field.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/name_list_for_country.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/device_storage.dart' show formatBytes;
 import 'package:fauna_pulse/fauna_pulse/models/model_choice_keys.dart';
@@ -428,7 +429,7 @@ void main() {
 
   group('the name list for the user\'s country (r381)', () {
     const nothing = ModelFilesOnPhone(detectors: {}, idModels: {}, nameLists: {});
-    Finder countryBox() => find.byWidgetPredicate((w) => w is DropdownButtonFormField<String>);
+    Finder countryBox() => find.byType(CountryField);
 
     testWidgets('a country from the mobile network suggests its list; another country chosen by hand', (tester) async {
       final calls = _Calls();
@@ -438,8 +439,13 @@ void main() {
       expect(find.textContaining('holds 38,286 species that GBIF lists for'), findsOneWidget);
       expect(find.text('Suggested AI models'), findsOneWidget);
 
-      await _tap(tester, countryBox());
-      // The open menu shows the countries near the chosen one.
+      // Typed letters narrow the countries, also by another name (r382).
+      final field = find.descendant(of: countryBox(), matching: find.byType(TextField));
+      await _tap(tester, field);
+      await tester.enterText(field, 'uk');
+      await tester.pumpAndSettle();
+      expect(find.text('Ukraine'), findsOneWidget);
+      expect(find.text('Germany'), findsNothing);
       await _tap(tester, find.text('United Kingdom').last);
       expect(find.text('with bioclip-2_pollinator-orders-europe_v4.fpack'), findsOneWidget);
       expect(find.text('with bioclip-2_pollinator-orders-north-america_v1.fpack'), findsNothing);

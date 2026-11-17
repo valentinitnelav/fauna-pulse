@@ -57,7 +57,7 @@ If you choose **Not now** under **To name them**, the animals are found and coun
 that holds the most species of your country (one list per continent, see below). It takes the
 country from where your last session was recorded, else from the mobile network the phone is on,
 else from its SIM card; it asks for no permission. **Your country (for the name list)** shows it
-and where it came from; choose another country there (the app remembers it). Near the border of
+and where it came from; choose another country there (type its first letters, or an everyday name such as "Turkey" or "UK"; the app remembers it). Near the border of
 two continents a second list can hold almost as many species (Turkey: Asia and Europe): the page
 names it, and it is under **Choose other models**. When no country is known, it suggests Europe.
 
@@ -297,7 +297,7 @@ only some groups, **Orders and families** leaves only their names:
 | Control | Default | Choices |
 |---|---|---|
 | **Names from** | The country and its neighbours | **The country and its neighbours**, **The country only**, **Countries I choose**, **The whole name list** |
-| **Country** | Where the session was recorded | or one country chosen by hand (listed with its number of names) |
+| **Country** | Where the session was recorded | or one country chosen by hand (listed with its number of names; typing narrows the list) |
 | **Countries** (with **Countries I choose**) | none | any countries of the name list, ticked in a window with a search box |
 | **Orders and families** | All | any orders and families of the name list, ticked in a window with a search box |
 

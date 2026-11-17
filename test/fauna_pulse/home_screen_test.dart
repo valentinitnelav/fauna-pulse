@@ -41,6 +41,7 @@ final _sessions = [
 ];
 
 final _downloads = ModelDownloads.parse(File('assets/model_downloads.json').readAsStringSync());
+final _countryTable = NameListCountries.parse(File(kNameListCountriesAsset).readAsStringSync());
 
 const _tiles = ['Pollinators on flowers', 'Insects on a flat surface', 'Mammals and birds', 'Other models'];
 
@@ -52,6 +53,7 @@ Future<void> _pumpHome(
   ModelChoice choice = _noChoice,
   ModelFilesOnPhone files = const ModelFilesOnPhone(),
   List<ModelChoice>? saved,
+  String? country,
 }) async {
   var current = choice;
   await tester.pumpWidget(
@@ -63,8 +65,8 @@ Future<void> _pumpHome(
         loadDownloads: () async => _downloads,
         modelFiles: () async => files,
         modelChoice: (_) async => current,
-        watchCountry: () async => null,
-        countryTable: () async => const NameListCountries({}),
+        watchCountry: () async => country == null ? null : (code: country, source: CountrySource.network),
+        countryTable: () async => _countryTable,
         saveChoice: ({detector, idModel, nameList}) async {
           current = (detector: detector, idModel: idModel, nameList: nameList);
           saved?.add(current);
@@ -243,6 +245,44 @@ void main() {
     expect(ticked(), [true, false, false, false]);
     expect(find.text('Name: none (animals are found and counted, not named)'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a tap switches to the name list of the user\'s country, not to another continent\'s (r382)',
+      (tester) async {
+    final flat = _downloads.uses[1];
+    const detector = 'flatbug-n_640_fp16.tflite', bioclip = 'bioclip-2_224_fp16.tflite';
+    const europe = 'bioclip-2_pollinator-orders-europe_v4.fpack';
+    const northAmerica = 'bioclip-2_pollinator-orders-north-america_v1.fpack';
+    _phoneSize(tester, const Size(360, 1600));
+
+    // Both lists on the phone, the user in the United States: the North America list.
+    var saved = <ModelChoice>[];
+    await _pumpHome(
+      tester,
+      country: 'US',
+      files: const ModelFilesOnPhone(detectors: {detector}, idModels: {bioclip}, nameLists: {europe, northAmerica}),
+      saved: saved,
+    );
+    await tester.tap(find.text(flat.title));
+    await tester.pumpAndSettle();
+    expect(saved, [(detector: detector, idModel: bioclip, nameList: northAmerica)]);
+    expect(find.text('Use these'), findsOneWidget);
+
+    // Only the Europe list on the phone: no switch; the page offers the North America list.
+    SharedPreferences.setMockInitialValues({});
+    saved = <ModelChoice>[];
+    await tester.pumpWidget(const SizedBox());
+    await _pumpHome(
+      tester,
+      country: 'US',
+      files: const ModelFilesOnPhone(detectors: {detector}, idModels: {bioclip}, nameLists: {europe}),
+      saved: saved,
+    );
+    await tester.tap(find.text(flat.title));
+    await tester.pumpAndSettle();
+    expect(saved, isEmpty, reason: 'the list for the country is not on the phone');
+    expect(find.text('with $northAmerica'), findsOneWidget);
+    expect(find.textContaining('Download and use'), findsOneWidget);
   });
 
   testWidgets('the answer chosen last with a model of its own: a tap ticks it and changes no model', (tester) async {

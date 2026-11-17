@@ -3,7 +3,9 @@
 
 import 'dart:io';
 
+import 'package:fauna_pulse/fauna_pulse/identification/country_names.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/name_list_for_country.dart';
+import 'package:fauna_pulse/fauna_pulse/widgets/multi_pick_dialog.dart' show matchesSearch;
 import 'package:fauna_pulse/fauna_pulse/models/model_downloads.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -70,5 +72,17 @@ void main() {
       expect(await guess(sim: 'IT'), (code: 'IT', source: CountrySource.sim));
       expect(await guess(), isNull);
     });
+  });
+
+  test('a country search ignores case and accents and knows other names (r382)', () {
+    bool finds(String code, String query) => matchesSearch(countrySearchText(code), query);
+    expect(finds('TR', 'turk'), isTrue);
+    expect(finds('TR', 'Turkey'), isTrue);
+    expect(finds('CI', 'cote'), isTrue);
+    expect(finds('CI', 'Ivory'), isTrue);
+    expect(finds('GB', 'uk'), isTrue);
+    expect(finds('US', 'USA'), isTrue);
+    expect(finds('AX', 'aland'), isTrue);
+    expect(finds('DE', 'france'), isFalse);
   });
 }

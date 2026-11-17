@@ -69,7 +69,7 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
   folds, `numeric_setting_field.dart`, `dialog_title.dart`, `home_button.dart`,
   `model_kind_panel.dart`, `tracker_tuning_fields.dart`, `video_timeline_bar.dart`,
   `selection_app_bar.dart`, `multi_pick_dialog.dart` = a window to tick entries of a long list,
-  with a search box, `external_link.dart` = web pages and `searchTheWeb`, `name_actions.dart` =
+  with a search box, `country_field.dart` = one country, typed or picked (every country choice), `external_link.dart` = web pages and `searchTheWeb`, `name_actions.dart` =
   the window of an organism's name), `services/` (recording and analysis keep-alive), `perf/`.
 
 Settings outside `SessionConfig` are shared preferences: Find in photos `analysis_*` (its

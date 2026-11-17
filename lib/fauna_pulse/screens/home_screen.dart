@@ -252,6 +252,9 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
   /// Switches to [use] when its models are on the phone, then opens its page
   /// (its models, the setup drawing, other models); back with a choice, the
   /// user is pointed at New session.
+  /// The names per country of the name lists, read at the first tap on an answer.
+  NameListCountries? _countryTable;
+
   Future<void> _openWatch(WatchUse use) async {
     if (_opening) return;
     _opening = true;
@@ -265,11 +268,16 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
   Future<void> _switchAndOpen(WatchUse use) async {
     final files = await widget.modelFiles();
     final now = await widget.modelChoice(files.all);
+    // Round 382: the switch takes the name list of the user's country, as the page suggests it
+    // (an American with only the Europe list on the phone gets the page, not that list). The
+    // page gets the same country, so it is looked up once per tap.
+    final country = await widget.watchCountry();
+    final fitted = useForCountry(use, country?.code, _countryTable ??= await widget.countryTable());
     var switched = false;
     if (_activeUse(now) != use) {
       // The answer chosen last has the models in use as its own until it
       // remembers some (its page opens with them too).
-      final ready = readyChoice(use, _lastChoices[use.id] ?? (use.id == _watchUse ? now : null), files);
+      final ready = readyChoice(fitted, _lastChoices[use.id] ?? (use.id == _watchUse ? now : null), files);
       if (ready != null) {
         if (ready != now) {
           await widget.saveChoice(detector: ready.detector, idModel: ready.idModel, nameList: ready.nameList);
@@ -285,8 +293,8 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
           use: use,
           onPhone: widget.modelFiles,
           saveChoice: widget.saveChoice,
-          country: widget.watchCountry,
-          countryTable: widget.countryTable,
+          country: () async => country,
+          countryTable: () async => _countryTable!,
           // The answer in use opens with the models in use now.
           inUse: use.id == _watchUse ? widget.modelChoice : null,
         ),

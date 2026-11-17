@@ -16,8 +16,21 @@ class PickItem {
   final String? detail;
   final String? group;
 
-  const PickItem(this.value, this.label, {this.detail, this.group});
+  /// What the search box looks in (round 382; a country's other names); [label] when null.
+  final String? searchText;
+
+  const PickItem(this.value, this.label, {this.detail, this.group, this.searchText});
 }
+
+/// Round 382: whether [text] holds [query], ignoring upper and lower case and the accents of the
+/// country names ("turk" finds "Türkiye", "cote" finds "Côte d'Ivoire"). Shared by every search
+/// box over a list (this window, `CountryField`).
+bool matchesSearch(String text, String query) => _fold(text).contains(_fold(query.trim()));
+
+const _plainLetters = {'å': 'a', 'á': 'a', 'à': 'a', 'ä': 'a', 'ç': 'c', 'é': 'e', 'è': 'e', 'ë': 'e', 'í': 'i',
+    'ô': 'o', 'ó': 'o', 'ö': 'o', 'ü': 'u', 'ú': 'u', 'ñ': 'n', '’': "'"};
+
+String _fold(String s) => s.toLowerCase().split('').map((c) => _plainLetters[c] ?? c).join();
 
 /// Shows [items] with the entries of [chosen] ticked. Returns the ticked values in the order
 /// of [items], or null when the window was closed without "Use these" (nothing changes then).
@@ -65,8 +78,8 @@ class _MultiPickDialogState extends State<_MultiPickDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final query = _search.text.trim().toLowerCase();
-    final shown = query.isEmpty ? widget.items : [for (final i in widget.items) if (i.label.toLowerCase().contains(query)) i];
+    final query = _search.text.trim();
+    final shown = query.isEmpty ? widget.items : [for (final i in widget.items) if (matchesSearch(i.searchText ?? i.label, query)) i];
     void close() => Navigator.of(context).pop();
     return AlertDialog(
       actionsOverflowDirection: VerticalDirection.up,

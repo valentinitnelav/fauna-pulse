@@ -10509,3 +10509,7 @@ measured on a phone yet (unit tests only).
 Asked: offer the six BioCLIP 2.5 lists (Europe v3 replaces v2, owner) and suggest the list for
 where the user is (owner chose: guess from last session, network, SIM, and a country box). Open:
 the big session with BioCLIP 2.5 crops (not embedded: about 14 h on the CPU).
+
+## Round 382 (2026-11-17): the home tap follows the user's country; type to find a country
+Asked: the switch on a tap on Home takes the name list of the user's country; every country list
+lets the user type to find a country. Open: the Identify device check was changed, not run.

@@ -214,10 +214,13 @@ void main() {
     final countryBox = find.byKey(const ValueKey('name list country  false'));
     await tester.dragUntilVisible(countryBox, list, const Offset(0, 150));
     await tester.pump(const Duration(milliseconds: 400));
-    await tester.tap(countryBox);
+    // Round 382: the box takes typed letters and lists only the countries that match.
+    final field = find.descendant(of: countryBox, matching: find.byType(TextField));
+    await tester.tap(field);
+    await tester.pumpAndSettle();
+    await tester.enterText(field, countryName(code));
     await tester.pumpAndSettle();
     final item = find.textContaining(RegExp('^${RegExp.escape(countryName(code))} \\('));
-    await tester.scrollUntilVisible(item, 300, scrollable: find.byType(Scrollable).last, maxScrolls: 200);
     await tester.tap(item.last);
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(used, 80, scrollable: list);

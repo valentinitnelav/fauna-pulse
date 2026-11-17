@@ -13,6 +13,7 @@ import '../identification/country_names.dart';
 import '../identification/identification_assets.dart';
 import '../identification/label_pack.dart';
 import '../identification/name_list_region.dart';
+import '../widgets/country_field.dart';
 import '../widgets/multi_pick_dialog.dart';
 import '../widgets/setting_help.dart';
 import 'identification_choice_fields.dart' show thousands;
@@ -252,7 +253,7 @@ class NameListRegionFields extends StatelessWidget {
               context,
               title: 'Countries',
               searchHint: 'Search a country',
-              items: [for (final c in codes) PickItem(c, withNames(c))],
+              items: [for (final c in codes) PickItem(c, withNames(c), searchText: countrySearchText(c))],
               chosen: prefs.nameListChosenCountries,
             );
             // Saved in the order of the codes: the same set is always the same saved value.
@@ -268,34 +269,25 @@ class NameListRegionFields extends StatelessWidget {
           ),
         )
       else
-        DropdownButtonFormField<String>(
+        // Round 382: typing narrows the countries (CountryField).
+        CountryField(
           // The key shows a country that is no longer in the list as "the session's" one.
           key: ValueKey('name list country ${prefs.nameListCountry} $wholeList'),
-          initialValue: regions.countries.containsKey(prefs.nameListCountry) ? prefs.nameListCountry : '',
-          isExpanded: true,
-          decoration: InputDecoration(
-            labelText: 'Country',
-            helperText: wholeList ? 'Not used with the whole name list.' : null,
-          ),
-          items: [
-            DropdownMenuItem(
-              value: '',
-              child: Text(
-                sessionCountry == null
-                    ? 'Where the session was recorded'
-                    : 'Where the session was recorded (${countryName(sessionCountry!)})',
-                overflow: TextOverflow.ellipsis,
-              ),
+          value: regions.countries.containsKey(prefs.nameListCountry) ? prefs.nameListCountry : '',
+          codes: codes,
+          labelOf: withNames,
+          label: 'Country',
+          helperText: wholeList ? 'Not used with the whole name list.' : null,
+          extra: [
+            (
+              '',
+              sessionCountry == null
+                  ? 'Where the session was recorded'
+                  : 'Where the session was recorded (${countryName(sessionCountry!)})',
             ),
-            for (final c in codes)
-              DropdownMenuItem(value: c, child: Text(withNames(c), overflow: TextOverflow.ellipsis)),
           ],
           // Greyed with the whole list; the stored country stays for the next change.
-          onChanged: wholeList
-              ? null
-              : (v) {
-                  if (v != null) onEdit(() => prefs.nameListCountry = v);
-                },
+          onChanged: wholeList ? null : (v) => onEdit(() => prefs.nameListCountry = v),
         ),
     ];
   }

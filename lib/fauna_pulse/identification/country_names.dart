@@ -9,6 +9,29 @@
 /// The country's English name, or [code] itself when unknown.
 String countryName(String code) => kCountryNames[code] ?? code;
 
+/// Round 382: names people also type for a country (former or everyday names), so a country
+/// search finds it ("Turkey", "UK", "Ivory Coast").
+const Map<String, String> _kOtherNames = {
+  'CD': 'DR Congo, DRC, Zaire',
+  'CI': 'Ivory Coast',
+  'CV': 'Cape Verde',
+  'CZ': 'Czech Republic',
+  'GB': 'UK, Great Britain, England, Scotland, Wales, Northern Ireland',
+  'KP': 'Korea',
+  'KR': 'Korea',
+  'MK': 'Macedonia',
+  'MM': 'Burma',
+  'NL': 'Holland',
+  'SZ': 'Swaziland',
+  'TL': 'East Timor',
+  'TR': 'Turkey',
+  'US': 'USA, United States of America',
+  'VA': 'Holy See',
+};
+
+/// What a country search looks in: the name, the other names and the code.
+String countrySearchText(String code) => '${countryName(code)} ${_kOtherNames[code] ?? ''} $code';
+
 const Map<String, String> kCountryNames = {
   'AD': 'Andorra',
   'AE': 'United Arab Emirates',

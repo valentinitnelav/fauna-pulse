@@ -56,6 +56,7 @@ import '../models/models_on_phone.dart';
 import '../identification/country_names.dart';
 import '../identification/identification_store.dart' show stemOf;
 import '../identification/name_list_for_country.dart';
+import '../widgets/country_field.dart';
 import '../widgets/download_files_dialog.dart';
 import '../widgets/setting_help.dart' show helperTextStyle;
 import '../widgets/watch_tiles.dart';
@@ -406,21 +407,15 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          DropdownButtonFormField<String>(
-            key: ValueKey('watch country ${country?.code}'),
-            initialValue: country != null && codes.contains(country.code) ? country.code : '',
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Your country (for the name list)'),
-            items: [
-              if (country == null || !codes.contains(country.code))
-                const DropdownMenuItem(value: '', child: Text('Not known', overflow: TextOverflow.ellipsis)),
-              for (final c in codes)
-                DropdownMenuItem(value: c, child: Text(countryName(c), overflow: TextOverflow.ellipsis)),
-            ],
+          CountryField(
+            value: country != null && codes.contains(country.code) ? country.code : '',
+            codes: codes,
+            label: 'Your country (for the name list)',
+            extra: [if (country == null || !codes.contains(country.code)) ('', 'Not known')],
             onChanged: _busy
                 ? null
                 : (v) {
-                    if (v != null && v.isNotEmpty) _setCountry(v);
+                    if (v.isNotEmpty) _setCountry(v);
                   },
           ),
           const SizedBox(height: 4),
