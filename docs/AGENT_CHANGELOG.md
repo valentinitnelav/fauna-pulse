@@ -10495,3 +10495,8 @@ and from a name list's card), and search the web for a name or copy it, also in 
 identification results. Open: the web search ran on one phone model only; the privacy policy
 does not mention it.
 
+## Round 379 (2026-11-17): BioCLIP 2 name lists for every continent; Europe v4 suggested
+Asked: add the six published continent lists, measure the North America list on a phone, and
+weigh the ways to a world list. Open: the world list (owner's plan: load only the names on
+offer, after a check on expert-named photos); a cache for name list headers.
+

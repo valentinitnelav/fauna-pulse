@@ -31,13 +31,15 @@ void main() {
     final all = [
       for (final d in [...c.detectorOffers, ...c.identificationOffers]) ...[d.file!, for (final l in d.nameLists) l.file],
     ];
-    expect(all, hasLength(4 + 3 + 1 + 2 + 1), reason: 'round 322: the v2 label packs, no 32-family demo; round 375: v3 of the BioCLIP 2 Europe list');
+    expect(all, hasLength(4 + 3 + 1 + 7 + 1),
+        reason: 'round 322: the v2 label packs, no 32-family demo; round 379: the six continent lists of BioCLIP 2 and its world mammals and birds');
     // Round 322: the lists no longer offered keep their pinned links and
     // checksums (update_catalogue.py --urls matches them by checksum).
     final former = [for (final d in c.identificationOffers) ...d.formerNameLists];
     expect(former.map((l) => l.file.name), [
       'bioclip-2_pollinator-orders-europe_v1.fpack',
       'bioclip-2_pollinator-orders-europe_v2.fpack',
+      'bioclip-2_pollinator-orders-europe_v3.fpack',
       'bioclip-2_flower-visitors-32fam_v1.fpack',
       'bioclip-2_mammals-birds-world_v1.fpack',
       'bioclip-2.5_pollinator-orders-europe_v1.fpack',
@@ -80,10 +82,15 @@ void main() {
     expect(list.classList, isTrue);
     expect(c.listFor('bioclip-2_pollinator-orders-europe_v2.fpack')!.$2.classList, isFalse, reason: 'a label pack');
     expect(c.listFor('bioclip-2_pollinator-orders-europe_v2.fpack')!.$2.licence, startsWith('CC0-1.0'));
-    // Round 375: v3 (the same names plus GBIF keys and country lists) is offered, v2 is kept as a former list.
-    expect(c.listFor('bioclip-2_pollinator-orders-europe_v3.fpack')!.$2.licence, startsWith('CC0-1.0'));
+    // Round 379: Europe v4 (newer GBIF data) is offered and suggested, v3 is kept as a former list;
+    // the other five continents are offered too.
+    expect(c.listFor('bioclip-2_pollinator-orders-europe_v4.fpack')!.$2.licence, startsWith('CC0-1.0'));
+    expect(c.listFor('bioclip-2_pollinator-orders-europe_v3.fpack')!.$2.note, startsWith('Replaced by version 4'));
+    expect(c.identificationOffers.firstWhere((d) => d.id == 'bioclip-2').nameLists.map((l) => l.file.name), containsAll([
+      for (final r in ['north-america', 'south-america', 'africa', 'asia', 'oceania']) 'bioclip-2_pollinator-orders-${r}_v1.fpack',
+    ]));
     expect(c.uses.where((u) => u.id == 'pollinators' || u.id == 'flat_surface').map((u) => u.name.first.$2.file.name),
-        everyElement('bioclip-2_pollinator-orders-europe_v3.fpack'));
+        everyElement('bioclip-2_pollinator-orders-europe_v4.fpack'));
     // A list no longer offered is still found, with its licence and its note.
     final (_, demo) = c.listFor('bioclip-2_flower-visitors-32fam_v1.fpack')!;
     expect(demo.licence, startsWith('CC0-1.0'));

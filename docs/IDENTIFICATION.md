@@ -102,10 +102,14 @@ Information Facility, gbif.org) has records of in which country. With such a lis
 choose among the names of one country or of several
 ([Names to choose from](#names-to-choose-from)). Every name list can be narrowed to some of its
 orders and families there.
-The Europe list for BioCLIP 2 carries them from version 3 on
-(`bioclip-2_pollinator-orders-europe_v3.fpack`: the same names as version 2). A phone that has
-version 2 keeps using it, without the country choice; **Download & import models** offers
-version 3. The BioCLIP 2.5 lists have no country lists yet.
+The BioCLIP 2 lists of the four pollinator orders carry them: one list per continent (Europe,
+North America with Central America and the Caribbean, South America, Africa, Asia, Oceania;
+the continents as GBIF draws them), each with the species that have at least 3 GBIF records
+there. Europe is version 4 (`bioclip-2_pollinator-orders-europe_v4.fpack`, made from newer GBIF
+data than version 3). A phone that has an older version keeps using it; **Download & import
+models** offers the newest. The BioCLIP 2.5 lists have no country lists yet.
+A country near the border of two continents has many of its species only in the neighbouring
+continent's list (Indonesia: 4,665 names in the Asia list, 2,191 in the Oceania list).
 
 ### Download & import models
 
@@ -173,7 +177,7 @@ delete the copies in Downloads afterwards.
 - **How a list finds its model (round 271).** A class list belongs to the model with the same
   file name. A label pack belongs to every model file whose name starts the same way, by the
   naming rule of round 276 (`tool/model_downloads/README.md`):
-  `bioclip-2_pollinator-orders-europe_v3.fpack` goes with `bioclip-2_224_fp16.tflite` and
+  `bioclip-2_pollinator-orders-europe_v4.fpack` goes with `bioclip-2_224_fp16.tflite` and
   `bioclip-2_224_fp32.tflite`. BioCLIP 2.5 packs start with `bioclip-2.5_`.
 - A pack also names its model in its header (`model_id`). So a renamed pack still finds a model
   whose name starts with that id (upper and lower case, "-" and "." alike: `bioclip-2.5` also
@@ -325,7 +329,9 @@ then warns when:
   it): GBIF holds few records from there, so species that live there are probably missing, and
   the model then has to pick a wrong name;
 - the name list holds under 80 % of the country's own GBIF list: it was made for another region
-  (with **Countries I choose**, each such country is named).
+  (with **Countries I choose**, each such country is named). For one country, the warning also
+  names the list on the phone that holds more of that country's names, or says that **Download
+  & import models** offers lists for other parts of the world.
 
 **Orders and families** lists the orders of the name list, each with its families under it.
 Tick whole orders, single families, or both (an order stands for all its families); nothing
@@ -470,7 +476,7 @@ one rank, such as the order Hymenoptera or the genus *Bombus*.
    session folder under `identification/`, so you can also copy it over USB.
 
 The header's *Name list* row shows the name list by its file name, as on **Identify organisms**
-(for example "bioclip-2_pollinator-orders-europe_v3.fpack (34,978 names)").
+(for example "bioclip-2_pollinator-orders-europe_v4.fpack (35,018 names)").
 
 One identification belongs to one **track ID** and combines all photos of that track ID. After
 the run, the **Photos** tab of the session summary shows it under every photo of that track ID.

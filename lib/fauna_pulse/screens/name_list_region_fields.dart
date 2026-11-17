@@ -66,6 +66,10 @@ class NameListRegionFields extends StatelessWidget {
   /// [listed] says which names they are, in one sentence. Null: no such button.
   final void Function(NameListChoice choice, String listed)? onShowNames;
 
+  /// Round 379: another name list on this phone that holds more names of a country, by file
+  /// name, with that number (IdentificationChoice.listWithMoreNamesOf); null: none.
+  final ({String file, int names})? Function(String country)? listWithMoreNamesOf;
+
   const NameListRegionFields({
     super.key,
     required this.prefs,
@@ -75,6 +79,7 @@ class NameListRegionFields extends StatelessWidget {
     required this.onEdit,
     this.onShowNames,
     this.sessionCountry,
+    this.listWithMoreNamesOf,
   });
 
   static const _countriesHelp =
@@ -300,8 +305,12 @@ class NameListRegionFields extends StatelessWidget {
   String _lowCoverage(List<String> low) {
     String share(String c) => '${((regions?.countries[c]?.coverage ?? 0) * 100).round()} of 100';
     if (low.length == 1) {
+      // Round 379: the lists for the other continents; the one on the phone that holds the most
+      // names of that country, or where to get one.
+      final better = listWithMoreNamesOf?.call(low.first);
       return 'This name list holds only ${share(low.first)} species that GBIF lists for ${countryName(low.first)}: it was '
-          'made for another region, so many species of that country cannot be named with it.';
+          'made for another region, so many species of that country cannot be named with it. '
+          '${better == null ? 'Download & import models offers name lists for other parts of the world.' : 'The name list ${better.file} on this phone holds ${thousands(better.names)} of them: choose it under "Name list" above.'}';
     }
     final named = [for (final c in low.take(4)) '${countryName(c)} (${share(c)})'].join(', ');
     return 'This name list holds only a part of the species that GBIF lists for $named'

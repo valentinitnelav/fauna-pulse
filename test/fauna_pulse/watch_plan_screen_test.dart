@@ -95,8 +95,8 @@ void main() {
     expect(_downloads.uses.map((u) => u.id), ['pollinators', 'flat_surface', 'mammals_birds']);
     expect(_use('pollinators').find.map((d) => d.id), ['flatbug-n', 'flatbug-s', 'insectdct-v8s']);
     expect(_use('pollinators').name.map((n) => n.$1.id), ['bioclip-2', 'insectdct-cls-v7-eff2s']);
-    expect(_use('pollinators').name.first.$2.file.name, 'bioclip-2_pollinator-orders-europe_v3.fpack');
-    expect(_use('flat_surface').name.first.$2.file.name, 'bioclip-2_pollinator-orders-europe_v3.fpack');
+    expect(_use('pollinators').name.first.$2.file.name, 'bioclip-2_pollinator-orders-europe_v4.fpack');
+    expect(_use('flat_surface').name.first.$2.file.name, 'bioclip-2_pollinator-orders-europe_v4.fpack');
     for (final u in _downloads.uses) {
       expect(u.name.first.$1.id, 'bioclip-2', reason: '${u.id}: BioCLIP 2 is suggested for naming');
     }
@@ -121,7 +121,7 @@ void main() {
     expect(find.text('Back to the suggested models'), findsNothing);
     expect(find.text('flatbug-n_640_fp16.tflite'), findsOneWidget);
     expect(find.text('bioclip-2_224_fp16.tflite'), findsOneWidget);
-    expect(find.text('with bioclip-2_pollinator-orders-europe_v3.fpack'), findsOneWidget);
+    expect(find.text('with bioclip-2_pollinator-orders-europe_v4.fpack'), findsOneWidget);
     expect(find.text('flatbug-s_640_fp16.tflite'), findsNothing, reason: 'the other models wait in the fold');
     expect(find.text('insectdct-v8s_640_fp16.tflite'), findsNothing, reason: 'the other models wait in the fold');
     expect(find.text('Choose other models'), findsOneWidget);
@@ -134,21 +134,21 @@ void main() {
     expect(inRow('flatbug-n_640_fp16.tflite', find.byIcon(Icons.check_circle)), findsOneWidget);
     expect(inRow('bioclip-2_224_fp16.tflite', find.byIcon(Icons.download)), findsOneWidget);
     expect(inRow('bioclip-2_224_fp16.tflite', find.text(' ${formatBytes(bioclip.$1.file!.bytes)}')), findsOneWidget);
-    final list = 'with bioclip-2_pollinator-orders-europe_v3.fpack';
+    final list = 'with bioclip-2_pollinator-orders-europe_v4.fpack';
     expect(inRow(list, find.text(' ${formatBytes(bioclip.$2.file.bytes)}')), findsOneWidget);
     final button = 'Download and use (${formatBytes(bioclip.$1.file!.bytes + bioclip.$2.file.bytes)})';
     expect(find.text('The rest is on this phone. A large download: use Wi-Fi.'), findsOneWidget);
     await _tap(tester, find.text(button));
     expect(
       find.textContaining(
-        'bioclip-2_224_fp16.tflite, bioclip-2_pollinator-orders-europe_v3.fpack (the other chosen files are on this phone).',
+        'bioclip-2_224_fp16.tflite, bioclip-2_pollinator-orders-europe_v4.fpack (the other chosen files are on this phone).',
       ),
       findsOneWidget,
     );
     await _tap(tester, _inDialog('Download'));
-    expect(calls.downloaded, [('bioclip-2_224_fp16.tflite', true), ('bioclip-2_pollinator-orders-europe_v3.fpack', true)]);
+    expect(calls.downloaded, [('bioclip-2_224_fp16.tflite', true), ('bioclip-2_pollinator-orders-europe_v4.fpack', true)]);
     expect(calls.saved, [
-      ('flatbug-n_640_fp16.tflite', 'bioclip-2_224_fp16.tflite', 'bioclip-2_pollinator-orders-europe_v3.fpack'),
+      ('flatbug-n_640_fp16.tflite', 'bioclip-2_224_fp16.tflite', 'bioclip-2_pollinator-orders-europe_v4.fpack'),
     ]);
     expect(find.byType(WatchPlanScreen), findsNothing, reason: 'back on the home screen');
   });
@@ -157,8 +157,8 @@ void main() {
     final calls = _Calls();
     await _pump(tester, _use('pollinators'), const ModelFilesOnPhone(), calls);
     await _tap(tester, find.text('Choose other models'));
-    expect(find.text('Flies, bees and wasps, beetles, butterflies and moths of Europe, with country lists (34,978 names)'), findsOneWidget);
-    expect(find.text('with bioclip-2_pollinator-orders-europe_v3.fpack'), findsNWidgets(2), reason: 'box and fold');
+    expect(find.text('Flies, bees and wasps, beetles, butterflies and moths of Europe, with country lists (35,018 names)'), findsOneWidget);
+    expect(find.text('with bioclip-2_pollinator-orders-europe_v4.fpack'), findsNWidgets(2), reason: 'box and fold');
     expect(tester.takeException(), isNull, reason: 'the open fold fits 360 px');
     await _tap(tester, find.text('flatbug-s_640_fp16.tflite'));
     await _tap(tester, find.text('Not now'));
@@ -348,7 +348,7 @@ void main() {
     final use = _use('flat_surface');
     const flatbug = 'flatbug-n_640_fp16.tflite', insectdct = 'insectdct-v8s_640_fp16.tflite';
     const classifier = ('insectdct-cls-v7-eff2s_224_fp16.tflite', 'insectdct-cls-v7-eff2s_224_fp16.fpack');
-    const bioclip = ('bioclip-2_224_fp16.tflite', 'bioclip-2_pollinator-orders-europe_v3.fpack');
+    const bioclip = ('bioclip-2_224_fp16.tflite', 'bioclip-2_pollinator-orders-europe_v4.fpack');
     ModelFilesOnPhone files(Set<String> detectors, List<(String, String)> namings) => ModelFilesOnPhone(
       detectors: detectors,
       idModels: {for (final n in namings) n.$1},

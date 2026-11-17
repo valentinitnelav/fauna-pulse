@@ -63,6 +63,7 @@ void main() {
     PackTaxa? taxa,
     bool countryLists = true,
     bool namesButton = true,
+    ({String file, int names})? Function(String country)? moreNamesOf,
   }) async {
     shown.clear();
     tester.view.physicalSize = const Size(360, 780);
@@ -84,6 +85,7 @@ void main() {
                   sessionCountry: sessionCountry,
                   onEdit: (change) => setState(change),
                   onShowNames: namesButton ? (choice, listed) => shown.add((choice, listed)) : null,
+                  listWithMoreNamesOf: moreNamesOf,
                 ),
               ),
             ),
@@ -157,6 +159,23 @@ void main() {
     await pump(tester, IdentifyPrefs(nameListCountry: 'US'));
     expect(find.textContaining('⚠ This name list holds only 14 of 100 species that GBIF lists for United States'), findsOneWidget);
     expect(find.textContaining('Only 5,500 names'), findsNothing);
+    expect(find.textContaining('Download & import models offers name lists for other parts of the world.'), findsOneWidget);
+  });
+
+  testWidgets('round 379: the warning names a list on the phone that holds more of the country\'s names', (tester) async {
+    await pump(
+      tester,
+      IdentifyPrefs(nameListCountry: 'US'),
+      moreNamesOf: (c) => c == 'US' ? (file: 'bioclip-2_pollinator-orders-north-america_v1.fpack', names: 41000) : null,
+    );
+    expect(
+      find.textContaining(
+        'The name list bioclip-2_pollinator-orders-north-america_v1.fpack on this phone holds 41,000 of them: choose it under "Name list" above.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Download & import models offers'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('the default never uses a short list: the whole list and the reason', (tester) async {

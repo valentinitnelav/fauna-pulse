@@ -736,6 +736,10 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         packNames: ((_packHeader?['rows'] as num?) ?? 0).toInt() - ((_packHeader?['sink_rows'] as num?) ?? 0).toInt(),
         sessionCountry: _sessionCountry,
         onEdit: _edit,
+        listWithMoreNamesOf: (country) => switch (_choice.listWithMoreNamesOf(country)) {
+          (:final file, :final names) => (file: file.path.split('/').last, names: names),
+          null => null,
+        },
         // Round 378: the names a run would choose from, as a list to read and search.
         onShowNames: (choice, listed) {
           final pack = _choice.pack;

@@ -289,8 +289,9 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   neighbours). `LabelPack` keeps them in typed fields, not in `header`; a damaged block is left
   out, never an error. Scoring workers get `LabelPack.forWorker()` (an isolate message copies
   what it carries, once per worker). A published name list is never changed: a fix is a new
-  version. The first published list with both blocks: BioCLIP 2's Europe list v3 (round 375;
-  v2 in `former_name_lists`).
+  version. BioCLIP 2's pollinator lists (one per continent, Europe suggested) carry both
+  blocks. No world list is offered: its 193,000 names do not fit a phone's memory with this
+  scoring (owner's plan: load only the names on offer, after a check on expert-named photos).
 - **A choice of names narrows only what is shown** (each crop's candidates, the ladder, the
   identified rank, the best view): countries (one, with its neighbours, or chosen by hand; a
   list's `regions` block) and orders and families chosen by hand (`PackTaxa`, any name list but

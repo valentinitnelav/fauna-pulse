@@ -87,6 +87,29 @@ class IdentificationChoice {
 
   final _regions = <String, PackRegions?>{};
 
+  /// Round 379: the list made for the chosen model that holds the most names GBIF lists for
+  /// [country], with that number; null when the chosen list holds as many or more. A country
+  /// near a continent border has most of its names in the neighbouring continent's list (in
+  /// the Asia list Indonesia has 4,665 names, in the Oceania list 2,191). Read from the header
+  /// map as it is, without decoding every list's country lists.
+  ({File file, int names})? listWithMoreNamesOf(String country) {
+    int namesIn(File p) {
+      final regions = headers[p.path]?['regions'];
+      final countries = regions is Map ? regions['countries'] : null;
+      final entry = countries is Map ? countries[country] : null;
+      final n = entry is Map ? entry['names'] : null;
+      return n is int ? n : 0;
+    }
+
+    final chosen = pack == null ? 0 : namesIn(pack!);
+    ({File file, int names})? best;
+    for (final p in modelPacks) {
+      final n = namesIn(p);
+      if (n > chosen && n > (best?.names ?? 0)) best = (file: p, names: n);
+    }
+    return best;
+  }
+
   /// Round 377: the chosen name list's orders and families (null for a class list).
   PackTaxa? get packTaxa {
     final taxa = packHeader?[kPackTaxaKey];

@@ -1063,7 +1063,8 @@ has under 5,000 names. A choice made by hand (one country or several) is used as
 amber line warns when the countries' list has under 5,000 names, counted before the orders and
 families narrow it (GBIF holds few records from there, so species that live there are probably
 missing and the model then has to pick a wrong name), or when the name list holds under 80 %
-of a chosen country's own GBIF list (it was made for another region). Both numbers are the
+of a chosen country's own GBIF list (it was made for another region; for one country it then
+names a list on the phone that holds more of that country's names). Both numbers are the
 developers' judgement, not fitted values. Few names in a ticked order or family give no such
 warning: they say nothing about the records of a country.
 

@@ -61,6 +61,34 @@ void main() {
     expect(IdentificationChoice.fromFiles([lonely], [europe], headers).anyUsable, isFalse);
   });
 
+  test('round 379: the list made for the model that holds the most names of a country', () {
+    Map<String, dynamic> withNames(String id, Map<String, int> names) => {
+      'model_id': 'bioclip-2',
+      'pack_id': id,
+      'regions': {
+        'countries': {for (final e in names.entries) e.key: {'rows': '', 'names': e.value, 'names_in_country': 5523}},
+      },
+    };
+    final asia = File('/x/packs/asia_insects.fpack'), oceania = File('/x/packs/oceania_insects.fpack');
+    final c = IdentificationChoice.fromFiles(
+      [bioclip, dct],
+      [oceania, asia, europe, dctList],
+      {
+        ...headers,
+        oceania.path: withNames('oceania', {'ID': 2191, 'AU': 9000}),
+        asia.path: withNames('asia', {'ID': 4665}),
+        europe.path: withNames('europe', {'DE': 16770}),
+      },
+      modelName: 'bioclip-2_image_fp16_4d.tflite',
+      packName: 'oceania_insects.fpack',
+    );
+    expect(c.listWithMoreNamesOf('ID'), (file: asia, names: 4665));
+    expect(c.listWithMoreNamesOf('AU'), isNull, reason: 'the chosen list holds the most');
+    expect(c.listWithMoreNamesOf('BR'), isNull, reason: 'no list holds a name of it');
+    c.selectModel(dct);
+    expect(c.listWithMoreNamesOf('ID'), isNull, reason: 'only the lists made for the chosen model');
+  });
+
   test('a model change picks a fitting list and keeps a fitting choice', () {
     final c = choice(model: 'bioclip-2_image_fp16_4d.tflite', pack: 'world_insects.fpack');
     c.selectModel(dct);
