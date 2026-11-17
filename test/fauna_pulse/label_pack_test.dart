@@ -80,6 +80,21 @@ void main() {
       expect((await LabelPack.readHeader(File('test/fauna_pulse/fixtures/tiny_classes.fpack'))).containsKey(kPackTaxaKey), isFalse);
     });
 
+    test('round 379: a listing keeps the header per file until the file changes', () async {
+      final dir = Directory.systemTemp.createTempSync('fp_listing');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/list.fpack')..writeAsBytesSync(File('test/fauna_pulse/fixtures/tiny_pack_regions.fpack').readAsBytesSync());
+      final first = await LabelPack.listingHeader(file);
+      expect(identical(await LabelPack.listingHeader(file), first), isTrue, reason: 'not read again');
+      expect(() => first['rows'] = 0, throwsUnsupportedError, reason: 'shared, so read-only');
+      // Another list under the same name (a new download): read again.
+      file.writeAsBytesSync(File('test/fauna_pulse/fixtures/tiny_pack.fpack').readAsBytesSync());
+      final second = await LabelPack.listingHeader(file);
+      expect(identical(second, first), isFalse);
+      expect(second['pack_id'], (await LabelPack.readHeader(file))['pack_id']);
+      expect(second.containsKey('regions'), isFalse);
+    });
+
     test('labels of a wrong shape: the header is read, without orders and families', () async {
       final bytes = _packWith([
         ['Animalia', 'Arthropoda', 'Insecta', 'Diptera', 'Syrphidae', 'Genus', 'species', ''],

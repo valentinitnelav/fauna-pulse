@@ -585,6 +585,31 @@ class LabelPack {
     return Isolate.run(() => _readHeaderSync(File(path)));
   }
 
+  /// [readHeader] for the pages that list the name lists on the phone (Identify organisms, the
+  /// Find screens' "Also identify them", Download & import models), kept per file while the
+  /// app runs (round 379). Those pages read every list again each time they open, and with
+  /// eight BioCLIP 2 lists that took 0.3 to 0.4 s per list on a Xiaomi 11T Pro. A file whose
+  /// size or modification time changed (a new download under the same name) is read again.
+  /// The map is shared: callers must not change it (its top level is read-only). Import and
+  /// download checks call [readHeader], which always reads the file.
+  static Future<Map<String, dynamic>> listingHeader(File file) async {
+    final stat = await file.stat();
+    final cached = _listingCache[file.path];
+    if (cached != null && cached.size == stat.size && cached.modified == stat.modified) {
+      return cached.header;
+    }
+    final header = Map<String, dynamic>.unmodifiable(await readHeader(file));
+    _listingCache.remove(file.path);
+    // A few dozen lists at most on a phone; the oldest entries go first (files deleted since).
+    while (_listingCache.length >= 32) {
+      _listingCache.remove(_listingCache.keys.first);
+    }
+    _listingCache[file.path] = (size: stat.size, modified: stat.modified, header: header);
+    return header;
+  }
+
+  static final _listingCache = <String, ({int size, DateTime modified, Map<String, dynamic> header})>{};
+
   static Map<String, dynamic> _readHeaderSync(File file) {
     final map = _decodeHeaderSync(file);
     final labels = map.remove('labels'); // keep listings light

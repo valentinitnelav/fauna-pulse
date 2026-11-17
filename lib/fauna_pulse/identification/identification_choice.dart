@@ -170,7 +170,7 @@ class IdentificationChoice {
     final headers = <String, Map<String, dynamic>>{};
     for (final p in packs) {
       try {
-        headers[p.path] = await LabelPack.readHeader(p);
+        headers[p.path] = await LabelPack.listingHeader(p);
       } catch (e) {
         logSwallowed('identify_pack_header', e);
       }

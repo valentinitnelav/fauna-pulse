@@ -10500,3 +10500,7 @@ Asked: add the six published continent lists, measure the North America list on 
 weigh the ways to a world list. Open: the world list (owner's plan: load only the names on
 offer, after a check on expert-named photos); a cache for name list headers.
 
+## Round 380 (2026-11-17): name list headers are kept while the app runs
+Asked: remove the repeated reading of every name list's header when a page lists them. Not
+measured on a phone yet (unit tests only).
+

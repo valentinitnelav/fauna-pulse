@@ -236,7 +236,7 @@ class ModelsInventory {
     final headers = <String, Map<String, dynamic>>{};
     for (final f in nameLists) {
       try {
-        headers[f.path] = await LabelPack.readHeader(f);
+        headers[f.path] = await LabelPack.listingHeader(f);
       } catch (e) {
         logSwallowed('models_pack_header', e);
       }

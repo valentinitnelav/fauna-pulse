@@ -303,7 +303,9 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   rule). Which names a run uses is decided in one place, `nameListForSettings`
   (`name_list_region.dart`), for the scoring and the Identify page; the results record it
   (`name_list`, `name_list_countries`, `name_list_taxa`). `LabelPack.readHeader` leaves out the
-  names and gives the page their orders and families under `kPackTaxaKey`. The page "Names to
+  names and gives the page their orders and families under `kPackTaxaKey`; the pages that list
+  name lists use `listingHeader` (kept per file while the app runs), import and download checks
+  `readHeader` (always reads the file). The page "Names to
   choose from" (`name_list_names_screen.dart`) lists the rows of `NameListChoice.rowBits`,
   read without the vectors (`readNameListNames`).
 - **The session's country** comes from its position and `assets/country_borders.json`
