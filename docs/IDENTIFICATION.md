@@ -514,7 +514,7 @@ view. A small window then offers:
 - **Search the web**: FaunaPulse hands the name to the phone's own web search, so the search
   app or browser you use on the phone opens with the results (the phone may ask once which
   app to use). FaunaPulse names no search engine and sends nothing itself. Only on a phone
-  where no app answers, the search opens in the browser on DuckDuckGo. It needs internet.
+  where no app answers, the search opens on Google in the default browser. It needs internet.
   Photos of the species beside your crops are a quick check of an identification.
 - **Copy the name**, to paste it into another app.
 

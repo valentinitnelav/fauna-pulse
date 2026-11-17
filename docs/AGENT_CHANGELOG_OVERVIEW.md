@@ -129,8 +129,8 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
 - **A listed name of an organism can be looked up:** `showNameActions` (web search, copy) on a
   tap, or on a long press where a tap already opens the next view (then the view shows
   `kHoldNameHint`). `searchTheWeb` sends Android's own web-search request (native `webSearch`),
-  so the app names no search engine (owner's decision; a DuckDuckGo address only when no app
-  answers).
+  so the app names no search engine (owner's decision; a Google address in the default browser only
+  when no app answers).
 - **One unit per sentence:** two sizes in one sentence share the larger one's unit
   (`formatBytes(unitOf:)`, `freeStorageClause`, `formatMegabytes`).
 - **An empty chart keeps its card** and says why it is empty (a hidden chart looks removed).

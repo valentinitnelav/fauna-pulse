@@ -1,0 +1,6 @@
+Version 0.12.0-beta.1
+- Name lists for every continent (BioCLIP 2 and 2.5); the app suggests the one for your country.
+- Identify organisms can choose among the species of your country and its neighbours, of countries you tick, or of chosen orders and families.
+- A page shows the names a run chooses from; search the web for a name or copy it.
+- New app icon; name lists open faster.
+Full details: see CHANGELOG.md on the project's GitHub page.

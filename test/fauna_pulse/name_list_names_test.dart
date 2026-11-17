@@ -170,7 +170,7 @@ void main() {
     test('no app of the phone answers: the search opens as a web address', () async {
       phone(searchAnswer: false);
       await searchTheWeb('Bombus terrestris');
-      expect(opened, ['https://duckduckgo.com/?q=Bombus+terrestris']);
+      expect(opened, ['https://www.google.com/search?q=Bombus+terrestris']);
     });
   });
 

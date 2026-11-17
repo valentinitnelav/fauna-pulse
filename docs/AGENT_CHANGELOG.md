@@ -10513,3 +10513,7 @@ the big session with BioCLIP 2.5 crops (not embedded: about 14 h on the CPU).
 ## Round 382 (2026-11-17): the home tap follows the user's country; type to find a country
 Asked: the switch on a tap on Home takes the name list of the user's country; every country list
 lets the user type to find a country. Open: the Identify device check was changed, not run.
+
+## Round 383 (2026-11-17): version 0.12.0-beta.1 prepared
+Asked: check what is missing for a release and prepare it; say "not tested on tablets" instead of "not supported" (Play lists tablets); the web search falls back to Google, not DuckDuckGo. Open: tag, GitHub pre-release, Zenodo DOI, Play upload with the new icon.
+

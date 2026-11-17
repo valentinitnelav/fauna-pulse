@@ -23,15 +23,15 @@ const _channel = MethodChannel('faunapulse/keepalive');
 
 /// Searches the web for [query] with Android's own web-search request (native `webSearch`):
 /// the phone opens the search app or browser its user chose, so FaunaPulse names no search
-/// engine. Only when no app answers, the search opens as a DuckDuckGo address in the browser
-/// (a web address has to name a search engine; this one does not follow its users).
+/// engine. Only when no app answers, the search opens as a Google address in the default browser
+/// (a web address has to name a search engine; Google is the one most users know).
 Future<void> searchTheWeb(String query) async {
   try {
     if (await _channel.invokeMethod<bool>('webSearch', {'query': query}) == true) return;
   } catch (e) {
     logSwallowed('web_search', e);
   }
-  await openExternalLink(Uri.https('duckduckgo.com', '/', {'q': query}).toString(), 'web_search');
+  await openExternalLink(Uri.https('www.google.com', '/search', {'q': query}).toString(), 'web_search');
 }
 
 TextStyle _linkStyle(double fontSize) => TextStyle(

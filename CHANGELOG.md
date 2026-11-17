@@ -6,6 +6,38 @@ and `0.8.0-alpha.1`, then beta from `0.9.0-beta.1`) and the GitHub release is ma
 pre-release.
 -->
 
+## 0.12.0-beta.1 (2026-11-17)
+
+Name lists for every continent, and identification that chooses among the species of your
+country.
+
+- **Name lists for every continent.** BioCLIP 2 and BioCLIP 2.5 now offer a list of flies,
+  bees and wasps, beetles, butterflies and moths for each of Europe, North America (with
+  Central America and the Caribbean), South America, Africa, Asia and Oceania. The page
+  *What do you want to watch?* suggests the list for where you are: from your last session's
+  position, or from the country of the mobile network or SIM card, and you can choose another
+  country there (type to find it). The Europe lists are new versions.
+  A list you already downloaded keeps working.
+- **Names of one country.** These lists know which species GBIF records in each country. On
+  *Identify organisms*, the new row *Names from* chooses among the species of the session's
+  country and its neighbours (the default), the country only, countries you tick, or the whole
+  list. The country is found from the session's position on the phone, without internet; you
+  can change it. *Orders and families* narrows the names further. Both choices are saved with
+  the results, so a run can be repeated.
+- **See the names a run chooses from.** A page lists them with a search box, from *Identify
+  organisms* and from a name list's card. Tap a name there, or hold a name in the
+  identification results, to search the web for it or to copy it. Nothing is searched unless
+  you choose it.
+- **GBIF keys in the results.** The track ID table of an identification gets each species'
+  GBIF key, and the shown name's key, as two new columns at the end.
+- Pages that list name lists open faster: each list's header is read once while the app runs,
+  and not on the screen's thread.
+- **New app icon** on one flat colour.
+- The identification guide says what was checked on pollinator photos.
+- **Privacy policy:** says how the country is found (on the phone) and that a web search of a
+  name happens only when you choose it.
+- FaunaPulse is made for smartphones; it has not been tested on tablets.
+
 ## 0.11.0-beta.1 (2026-11-12)
 
 Faster AI on the phone's processor, a list of the frame rates each camera offers, and more

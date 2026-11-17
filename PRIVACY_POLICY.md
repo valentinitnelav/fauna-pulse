@@ -80,13 +80,15 @@ web search of taxa names):
    built-in list of models, which points to the project's model pages on Hugging Face
    (huggingface.co) or to the project's GitHub releases.
 2. You paste an HTTPS link into **Download from a link**, and the app fetches that file.
-3. On a taxa name you long press (on the identification results screens), or a tap
-   (on a name list screen associated with BioCLIP classifiers). It opens a small window where
-   "Search the web" is an option, but it will not search the web automatically.
-   It gives you the option to further search the web for the taxonomic name.
+3. You choose **Search the web** for a species or group name. A long press on a name in the
+   identification results, or a tap on a name in a name list's list of names, opens a small
+   window that offers it; nothing is searched unless you tap it. The app then hands only that
+   name to the search app or browser chosen on your phone (or, if none answers, opens a
+   Google search for it in your default browser); that app's or site's own privacy policy
+   applies to the search.
 
-Both are file downloads only. Nothing about you, your sessions, your photos or your
-location is sent anywhere in the process. As with any download, the server that holds the
+The downloads send nothing about you, your sessions, your photos or your location, and neither
+does a web search beyond the name you chose. As with any download, the server that holds the
 file (Hugging Face, GitHub or the site of a link you entered) sees your phone's internet
 address and the request; their own privacy policies apply to that.
 

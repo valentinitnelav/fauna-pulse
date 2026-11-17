@@ -93,8 +93,8 @@ the FaunaLapse app and the Camtrap DP standard for camera-trap data.
   animal. A phone held in the hand keeps the motion gate awake all the time and blurs the saved
   photos. Use a tripod, a clamp or a stake with a phone holder, and check that it does not move
   in wind.
-- **Use a smartphone, upright (portrait).** FaunaPulse is made for smartphones; tablets are not
-  supported. The screen is locked upright, so the mount must hold the phone upright (for a
+- **Use a smartphone, upright (portrait).** FaunaPulse is made for smartphones; it has not
+  been tested on tablets. The screen is locked upright, so the mount must hold the phone upright (for a
   sideways mount, see the folded block below).
 - **Distance to the flower.** There is no single correct distance: let the readout on the
   screen decide. Move the phone closer until the region of interest covers the flower *and* the
