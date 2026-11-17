@@ -10517,3 +10517,6 @@ lets the user type to find a country. Open: the Identify device check was change
 ## Round 383 (2026-11-17): version 0.12.0-beta.1 prepared
 Asked: check what is missing for a release and prepare it; say "not tested on tablets" instead of "not supported" (Play lists tablets); the web search falls back to Google, not DuckDuckGo. Open: tag, GitHub pre-release, Zenodo DOI, Play upload with the new icon.
 
+## Round 384 (2026-11-17): the country box empties on a tap
+Asked: fix the country box found in the release check (typed letters mixed into the chosen text). Open: a tap outside the box leaves typed text until focus moves (DropdownMenu has no hook).
+

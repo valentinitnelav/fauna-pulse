@@ -174,6 +174,22 @@ void main() {
     expect(prefs.nameListCountry, 'IS');
   });
 
+  testWidgets('a tap empties the country box, so typed letters do not mix into the choice', (tester) async {
+    final prefs = IdentifyPrefs(nameListScope: kScopeCountry);
+    await pump(tester, prefs, sessionCountry: 'DE');
+    final box = find.descendant(of: find.byKey(const ValueKey('name list country  false')), matching: find.byType(TextField));
+    String text() => tester.widget<TextField>(box).controller!.text;
+    expect(text(), 'Where the session was recorded (Germany)');
+    await tester.tap(box);
+    await tester.pumpAndSettle();
+    expect(text(), isEmpty, reason: 'typing starts in an empty box (it mixed into the text on a phone)');
+    // Left without a choice: the choice shows again and nothing is saved.
+    FocusManager.instance.primaryFocus!.unfocus();
+    await tester.pumpAndSettle();
+    expect(text(), 'Where the session was recorded (Germany)');
+    expect(prefs.nameListCountry, isNot('IS'));
+  });
+
   testWidgets('a name list made for another region: the coverage warning', (tester) async {
     await pump(tester, IdentifyPrefs(nameListCountry: 'US'));
     expect(find.textContaining('⚠ This name list holds only 14 of 100 species that GBIF lists for United States'), findsOneWidget);

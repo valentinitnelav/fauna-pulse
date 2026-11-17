@@ -6,13 +6,17 @@
 // Built on Flutter's DropdownMenu: the field takes text, and the menu shows only the countries
 // that match it (matchesSearch: no case, no accents, other names such as "Turkey" or "UK").
 // The filter starts with the first typed letter, so a tap on the field still lists them all.
+// The field empties when it gets focus and shows the choice again
+// when left without a new one: DropdownMenu keeps the chosen entry's text in the field, so the
+// first letters typed mixed into it ("Where the session waGerms recorded") and nothing matched.
+// Selecting all text on focus was not used: the tap that gives focus then places the cursor.
 
 import 'package:flutter/material.dart';
 
 import '../identification/country_names.dart';
 import 'multi_pick_dialog.dart' show matchesSearch;
 
-class CountryField extends StatelessWidget {
+class CountryField extends StatefulWidget {
   /// The chosen value (a country code, or one of [extra]'s values).
   final String? value;
 
@@ -42,15 +46,56 @@ class CountryField extends StatelessWidget {
   });
 
   @override
+  State<CountryField> createState() => _CountryFieldState();
+}
+
+class _CountryFieldState extends State<CountryField> {
+  final _text = TextEditingController();
+  final _focus = FocusNode();
+
+  String? get _chosenText {
+    final v = widget.value;
+    if (v == null) return null;
+    for (final (ev, t) in widget.extra) {
+      if (ev == v) return t;
+    }
+    return widget.codes.contains(v) ? widget.labelOf(v) : null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (_focus.hasFocus) {
+        _text.clear();
+      } else if (_text.text != (_chosenText ?? '')) {
+        // Left without choosing: show the choice again (a choice rebuilds the field anyway).
+        _text.text = _chosenText ?? '';
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final w = widget;
+    final codes = w.codes, extra = w.extra, labelOf = w.labelOf, value = w.value, onChanged = w.onChanged;
     final search = {for (final c in codes) c: countrySearchText(c), for (final (v, t) in extra) v: t};
     return DropdownMenu<String>(
       // A new value (chosen elsewhere, or by the page) shows its text.
       key: ValueKey('country field $value ${onChanged == null}'),
+      controller: _text,
+      focusNode: _focus,
       initialSelection: value,
       enabled: onChanged != null,
-      label: Text(label),
-      helperText: helperText,
+      label: Text(w.label),
+      helperText: w.helperText,
       expandedInsets: EdgeInsets.zero,
       menuHeight: 320,
       // Phones open the keyboard only on a tap when this is on; typing is the point here.
