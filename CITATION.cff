@@ -71,6 +71,9 @@ identifiers:
     value: "10.5281/zenodo.22309221"
     description: "Concept DOI: all versions of FaunaPulse (resolves to the newest release)"
   - type: doi
+    value: "10.5281/zenodo.24317874"
+    description: "Version DOI: FaunaPulse v0.12.0-beta.1"
+  - type: doi
     value: "10.5281/zenodo.24154057"
     description: "Version DOI: FaunaPulse v0.11.0-beta.1"    
   - type: doi
