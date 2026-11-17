@@ -11,6 +11,7 @@
 
 import 'dart:io';
 
+import 'package:fauna_pulse/fauna_pulse/identification/name_list_for_country.dart';
 import 'package:fauna_pulse/fauna_pulse/capture/crop_export.dart' show kHideCropPositionNotePrefKey;
 import 'package:fauna_pulse/fauna_pulse/logging/past_sessions.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_downloads.dart';
@@ -62,6 +63,8 @@ Future<void> _pumpHome(
         loadDownloads: () async => _downloads,
         modelFiles: () async => files,
         modelChoice: (_) async => current,
+        watchCountry: () async => null,
+        countryTable: () async => const NameListCountries({}),
         saveChoice: ({detector, idModel, nameList}) async {
           current = (detector: detector, idModel: idModel, nameList: nameList);
           saved?.add(current);

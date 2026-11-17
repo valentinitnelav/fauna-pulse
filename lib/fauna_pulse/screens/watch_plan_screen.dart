@@ -41,19 +41,27 @@
 // detection model was on the phone; the download was the identification
 // model): each file in the box has a green tick when it is on the phone, or
 // the download icon and its size.
+// Round 381 (owner): the suggested name list fits the user's country
+// (identification/name_list_for_country.dart: the guess and the rule); a
+// country box in "Suggested AI models" shows where the country came from and
+// lets the user choose another one.
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart' show formatBytes;
 import '../models/model_downloads.dart';
 import '../models/models_on_phone.dart';
+import '../identification/country_names.dart';
 import '../identification/identification_store.dart' show stemOf;
+import '../identification/name_list_for_country.dart';
 import '../widgets/download_files_dialog.dart';
 import '../widgets/setting_help.dart' show helperTextStyle;
 import '../widgets/watch_tiles.dart';
 import '../widgets/home_button.dart';
 import '../widgets/model_kind_panel.dart';
+import 'identification_choice_fields.dart' show thousands;
 import 'models_screen.dart';
 
 /// What a tap on [use] switches to: the models used last for it ([last]) if
@@ -94,6 +102,10 @@ class WatchPlanScreen extends StatefulWidget {
   /// them instead of the suggestions (null: open with the suggestions).
   final Future<ModelChoice> Function(Set<String> onPhone)? inUse;
 
+  /// The user's country and the names per country of the name lists (tests give their own).
+  final Future<UserCountry?> Function() country;
+  final Future<NameListCountries> Function() countryTable;
+
   const WatchPlanScreen({
     super.key,
     required this.use,
@@ -101,6 +113,8 @@ class WatchPlanScreen extends StatefulWidget {
     this.download = downloadCatalogueFileForReal,
     this.saveChoice = useModels,
     this.inUse,
+    this.country = guessUserCountry,
+    this.countryTable = NameListCountries.load,
   });
 
   @override
@@ -113,6 +127,12 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
 
   ModelFilesOnPhone? _onPhone;
 
+  UserCountry? _country;
+  NameListCountries _table = const NameListCountries({});
+
+  /// [WatchPlanScreen.use] with the name lists that fit [_country].
+  late WatchUse _use = widget.use;
+
   /// The chosen detection model file; the first suggestion is chosen for the
   /// user.
   late String _find = _defaultFind;
@@ -122,8 +142,8 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
   late (String, String)? _name = _defaultName;
   bool _busy = false;
 
-  String get _defaultFind => widget.use.find.first.file!.name;
-  (String, String)? get _defaultName => widget.use.name.isEmpty ? null : _names(widget.use.name.first);
+  String get _defaultFind => _use.find.first.file!.name;
+  (String, String)? get _defaultName => _use.name.isEmpty ? null : _names(_use.name.first);
   bool get _isDefault => _find == _defaultFind && _name == _defaultName;
 
   static (String, String) _names(NamingDownload n) => (n.$1.file!.name, n.$2.file.name);
@@ -137,15 +157,38 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
   Future<void> _reload({bool first = false}) async {
     final names = await widget.onPhone();
     final inUse = first ? await widget.inUse?.call(names.all) : null;
+    final table = first ? await widget.countryTable() : null;
+    final country = first ? await widget.country() : null;
     if (!mounted) return;
     setState(() {
       _onPhone = names;
+      if (first) {
+        _table = table!;
+        _country = country;
+        _use = useForCountry(widget.use, country?.code, _table);
+        _name = _defaultName;
+      }
       if (inUse != null) {
         _find = inUse.detector ?? _find;
         final (idModel: m, nameList: l, detector: _) = inUse;
         _name = m != null && l != null ? (m, l) : null;
       }
     });
+  }
+
+  /// The user chose [code]: saved for the next visit; a suggested name list follows it.
+  Future<void> _setCountry(String code) async {
+    final wasDefault = _name == _defaultName;
+    setState(() {
+      _country = (code: code, source: CountrySource.chosen);
+      _use = useForCountry(widget.use, code, _table);
+      if (wasDefault) _name = _defaultName;
+    });
+    try {
+      await (await SharedPreferences.getInstance()).setString(kWatchCountryPref, code);
+    } catch (e) {
+      logSwallowed('watch_country_save', e);
+    }
   }
 
   void _backToSuggestions() => setState(() {
@@ -156,20 +199,20 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
   bool _has(DownloadFile f) => _onPhone?.has(f.name) ?? false;
 
   /// The chosen suggestions; null for a file the phone had already.
-  ModelDownload? get _findOffer => widget.use.find.where((d) => d.file!.name == _find).firstOrNull;
-  NamingDownload? get _nameOffer => widget.use.name.where((n) => _names(n) == _name).firstOrNull;
+  ModelDownload? get _findOffer => _use.find.where((d) => d.file!.name == _find).firstOrNull;
+  NamingDownload? get _nameOffer => _use.name.where((n) => _names(n) == _name).firstOrNull;
 
   /// The other files on the phone, to choose them too.
   List<String> get _otherDetectors => [
     for (final f in _onPhone!.detectors.toList()..sort())
-      if (!widget.use.find.any((d) => d.file!.name == f)) f,
+      if (!_use.find.any((d) => d.file!.name == f)) f,
   ];
   List<(String, String)> get _otherNamings => [
     for (final p in _onPhone!.namings)
-      if (!widget.use.name.any((n) => _names(n) == p)) p,
+      if (!_use.name.any((n) => _names(n) == p)) p,
   ];
 
-  bool get _namingOffered => widget.use.name.isNotEmpty || _otherNamings.isNotEmpty;
+  bool get _namingOffered => _use.name.isNotEmpty || _otherNamings.isNotEmpty;
 
   /// The chosen file names.
   List<String> get _chosen => [_find, if (_name case (final m, final l)?) ...[m, l]];
@@ -314,6 +357,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
                     : [(m, [m, l])],
               (final m, final l) => [(m, [m]), ('with $l', [l])],
             }),
+          if (_countryMatters) _countryBox(),
           const SizedBox(height: 10),
           _boxNote(),
           if (!_isDefault)
@@ -325,6 +369,62 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
                 child: const Text('Back to the suggested models'),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  /// Whether a suggested name list has country lists (not the mammals and birds list).
+  bool get _countryMatters => widget.use.name.any((n) => _table.lists.containsKey(n.$2.file.name));
+
+  static const _countrySourceNote = {
+    CountrySource.chosen: 'Your choice.',
+    CountrySource.lastSession: 'Where your last session was recorded.',
+    CountrySource.network: 'From the mobile network the phone is on.',
+    CountrySource.sim: "From the phone's SIM card.",
+  };
+
+  /// The country the suggested name list is made for, where that country came from, and how
+  /// many of its species the list holds (and a list near a continent border that holds almost
+  /// as many).
+  Widget _countryBox() {
+    final country = _country;
+    final codes = _table.countries.toList()..sort((a, b) => countryName(a).compareTo(countryName(b)));
+    final fit = country == null || widget.use.name.isEmpty
+        ? const <(NamingDownload, int)>[]
+        : listsForCountry(widget.use.name.first, country.code, _table);
+    final notes = [
+      if (country == null) 'Choose it to get the name list made for your part of the world.',
+      if (country != null) _countrySourceNote[country.source]!,
+      if (fit.isNotEmpty)
+        'The suggested name list holds ${thousands(fit.first.$2)} species that GBIF lists for ${countryName(country!.code)}.',
+      if (fit.length > 1)
+        '${fit[1].$1.$2.file.name} holds almost as many (${thousands(fit[1].$2)}): it is under "Choose other models".',
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DropdownButtonFormField<String>(
+            key: ValueKey('watch country ${country?.code}'),
+            initialValue: country != null && codes.contains(country.code) ? country.code : '',
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Your country (for the name list)'),
+            items: [
+              if (country == null || !codes.contains(country.code))
+                const DropdownMenuItem(value: '', child: Text('Not known', overflow: TextOverflow.ellipsis)),
+              for (final c in codes)
+                DropdownMenuItem(value: c, child: Text(countryName(c), overflow: TextOverflow.ellipsis)),
+            ],
+            onChanged: _busy
+                ? null
+                : (v) {
+                    if (v != null && v.isNotEmpty) _setCountry(v);
+                  },
+          ),
+          const SizedBox(height: 4),
+          Text(notes.join(' '), style: helperTextStyle),
         ],
       ),
     );
@@ -398,7 +498,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
   /// Every suggestion of this answer and every other model on the phone, to
   /// choose another one.
   Widget _otherModels() {
-    final use = widget.use;
+    final use = _use;
     final otherDetectors = _otherDetectors;
     final otherNamings = _otherNamings;
     return Theme(

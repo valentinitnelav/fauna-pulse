@@ -26,6 +26,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.provider.Settings
+import android.telephony.TelephonyManager
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.core.content.ContextCompat
@@ -349,6 +350,7 @@ class MainActivity : FlutterFragmentActivity() {
                     "openPhoneSettings" ->
                         result.success(openPhoneSettings(call.argument<String>("page") ?: ""))
                     "webSearch" -> result.success(webSearch(call.argument<String>("query") ?: ""))
+                    "phoneCountry" -> result.success(phoneCountry())
                     else -> result.notImplemented()
                 }
             }
@@ -410,6 +412,17 @@ class MainActivity : FlutterFragmentActivity() {
         true
     } catch (e: Exception) {
         false
+    }
+
+    /// Round 381: the country of the mobile network the phone is on now, and the country of its
+    /// SIM card (two-letter codes, lower case; empty when unknown: no SIM, airplane mode, a
+    /// tablet). Android gives both without any permission and without GPS. The "What do you want
+    /// to watch?" page uses them to suggest the name list for where the user is.
+    private fun phoneCountry(): Map<String, String> = try {
+        val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        mapOf("network" to (tm?.networkCountryIso ?: ""), "sim" to (tm?.simCountryIso ?: ""))
+    } catch (e: Exception) {
+        emptyMap()
     }
 
     private fun openPhoneSettings(page: String): Boolean {

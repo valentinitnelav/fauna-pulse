@@ -12,9 +12,11 @@
 // answer switches to; each answer remembers its own models. Round 287: the
 // fold's two parts in their own colours, radio buttons beside the file names.
 // Round 314: a tick or the download size beside each chosen file.
+// Round 381: the suggested name list fits the user's country, which can be changed on the page.
 
 import 'dart:io';
 
+import 'package:fauna_pulse/fauna_pulse/identification/name_list_for_country.dart';
 import 'package:fauna_pulse/fauna_pulse/logging/device_storage.dart' show formatBytes;
 import 'package:fauna_pulse/fauna_pulse/models/model_choice_keys.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_downloads.dart';
@@ -27,6 +29,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 final _downloads = ModelDownloads.parse(File('assets/model_downloads.json').readAsStringSync());
 WatchUse _use(String id) => _downloads.uses.firstWhere((u) => u.id == id);
+final _table = NameListCountries.parse(File(kNameListCountriesAsset).readAsStringSync());
 
 class _Calls {
   final downloaded = <(String, bool)>[];
@@ -43,6 +46,7 @@ Future<void> _pump(
   ModelFilesOnPhone onPhone,
   _Calls calls, {
   ModelChoice? inUse,
+  UserCountry? country,
 }) async {
   tester.view.physicalSize = const Size(360, 1400);
   tester.view.devicePixelRatio = 1;
@@ -65,6 +69,8 @@ Future<void> _pump(
                     },
                     saveChoice: ({detector, idModel, nameList}) async => calls.saved.add((detector, idModel, nameList)),
                     inUse: inUse == null ? null : (_) async => inUse,
+                    country: () async => country,
+                    countryTable: () async => _table,
                   ),
                 ),
               ),
@@ -418,5 +424,57 @@ void main() {
     expect(c.nameList, 'bioclip-2_mammals-birds-world_v1.fpack');
     c = await currentModelChoice({'bioclip-2_224_fp16.tflite'});
     expect((c.idModel, c.nameList), (null, null), reason: 'the list was deleted');
+  });
+
+  group('the name list for the user\'s country (r381)', () {
+    const nothing = ModelFilesOnPhone(detectors: {}, idModels: {}, nameLists: {});
+    Finder countryBox() => find.byWidgetPredicate((w) => w is DropdownButtonFormField<String>);
+
+    testWidgets('a country from the mobile network suggests its list; another country chosen by hand', (tester) async {
+      final calls = _Calls();
+      await _pump(tester, _use('pollinators'), nothing, calls, country: (code: 'US', source: CountrySource.network));
+      expect(find.text('with bioclip-2_pollinator-orders-north-america_v1.fpack'), findsOneWidget);
+      expect(find.textContaining('From the mobile network the phone is on.'), findsOneWidget);
+      expect(find.textContaining('holds 38,286 species that GBIF lists for'), findsOneWidget);
+      expect(find.text('Suggested AI models'), findsOneWidget);
+
+      await _tap(tester, countryBox());
+      // The open menu shows the countries near the chosen one.
+      await _tap(tester, find.text('United Kingdom').last);
+      expect(find.text('with bioclip-2_pollinator-orders-europe_v4.fpack'), findsOneWidget);
+      expect(find.text('with bioclip-2_pollinator-orders-north-america_v1.fpack'), findsNothing);
+      expect(find.textContaining('Your choice.'), findsOneWidget);
+      expect(find.text('Suggested AI models'), findsOneWidget, reason: 'the suggestion followed the country');
+      expect((await SharedPreferences.getInstance()).getString(kWatchCountryPref), 'GB');
+
+      await _tap(tester, find.textContaining('Download and use'));
+      await _tap(tester, _inDialog('Download'));
+      expect(calls.saved.single.$3, 'bioclip-2_pollinator-orders-europe_v4.fpack');
+    });
+
+    testWidgets('near a continent border: the other list is named and offered in the fold', (tester) async {
+      await _pump(tester, _use('pollinators'), nothing, _Calls(), country: (code: 'TR', source: CountrySource.lastSession));
+      expect(find.text('with bioclip-2_pollinator-orders-asia_v1.fpack'), findsOneWidget);
+      expect(find.textContaining('Where your last session was recorded.'), findsOneWidget);
+      expect(
+        find.textContaining('bioclip-2_pollinator-orders-europe_v4.fpack holds almost as many (3,666)'),
+        findsOneWidget,
+      );
+      await _tap(tester, find.text('Choose other models'));
+      expect(find.text('with bioclip-2_pollinator-orders-asia_v1.fpack'), findsNWidgets(2), reason: 'box and fold');
+      expect(find.text('with bioclip-2_pollinator-orders-europe_v4.fpack'), findsOneWidget, reason: 'in the fold');
+    });
+
+    testWidgets('no country known: Europe as the catalogue says, and a question', (tester) async {
+      await _pump(tester, _use('pollinators'), nothing, _Calls());
+      expect(find.text('with bioclip-2_pollinator-orders-europe_v4.fpack'), findsOneWidget);
+      expect(find.text('Not known'), findsOneWidget);
+      expect(find.textContaining('Choose it to get the name list made for your part of the world.'), findsOneWidget);
+    });
+
+    testWidgets('no country box for a list without country lists (mammals and birds)', (tester) async {
+      await _pump(tester, _use('mammals_birds'), nothing, _Calls(), country: (code: 'US', source: CountrySource.sim));
+      expect(countryBox(), findsNothing);
+    });
   });
 }

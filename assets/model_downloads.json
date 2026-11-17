@@ -296,14 +296,74 @@
       "name_lists": [
         {
           "kind": "label_pack",
-          "title": "Flies, bees and wasps, beetles, butterflies and moths of Europe (34,392 names)",
-          "licence": "CC0-1.0 (made from the TreeOfLife-200M species data)",
+          "title": "Flies, bees and wasps, beetles, butterflies and moths of Europe, with country lists (35,021 names)",
+          "licence": "CC0-1.0 (made from the TreeOfLife-200M species data); GBIF keys from the Catalogue of Life, CC BY 4.0",
           "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
           "file": {
-            "name": "bioclip-2.5_pollinator-orders-europe_v2.fpack",
-            "url": "https://huggingface.co/Valen-Peregrine/bioclip-2.5-tflite/resolve/2f54024dda4e8731bc1f54e7969fefeb63446634/bioclip-2.5_pollinator-orders-europe_v2.fpack",
-            "bytes": 73672276,
-            "sha256": "e36b815a9da1a2d6d2d2c911128517f53365638e76036cd5ae343daeaa5cac9a"
+            "name": "bioclip-2.5_pollinator-orders-europe_v3.fpack",
+            "url": "https://huggingface.co/Valen-Peregrine/bioclip-2.5-tflite/resolve/40b7b0f0abd3dc536c2759e44780d20030c98747/bioclip-2.5_pollinator-orders-europe_v3.fpack",
+            "bytes": 77535834,
+            "sha256": "d66394b559f50452f63fa767beae2a53e7076e92874df223f0f644ceb3583db8"
+          }
+        },
+        {
+          "kind": "label_pack",
+          "title": "Flies, bees and wasps, beetles, butterflies and moths of North America, Central America and the Caribbean, with country lists (56,401 names)",
+          "licence": "CC0-1.0 (made from the TreeOfLife-200M species data); GBIF keys from the Catalogue of Life, CC BY 4.0",
+          "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
+          "file": {
+            "name": "bioclip-2.5_pollinator-orders-north-america_v1.fpack",
+            "url": "https://huggingface.co/Valen-Peregrine/bioclip-2.5-tflite/resolve/40b7b0f0abd3dc536c2759e44780d20030c98747/bioclip-2.5_pollinator-orders-north-america_v1.fpack",
+            "bytes": 124743399,
+            "sha256": "99acc8fed18d1530ece8a7ead20d185f8ea9b92dfbf9bd9eef339f9cf8dbf512"
+          }
+        },
+        {
+          "kind": "label_pack",
+          "title": "Flies, bees and wasps, beetles, butterflies and moths of South America, with country lists (23,122 names)",
+          "licence": "CC0-1.0 (made from the TreeOfLife-200M species data); GBIF keys from the Catalogue of Life, CC BY 4.0",
+          "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
+          "file": {
+            "name": "bioclip-2.5_pollinator-orders-south-america_v1.fpack",
+            "url": "https://huggingface.co/Valen-Peregrine/bioclip-2.5-tflite/resolve/40b7b0f0abd3dc536c2759e44780d20030c98747/bioclip-2.5_pollinator-orders-south-america_v1.fpack",
+            "bytes": 51125932,
+            "sha256": "fd1ce36a7c428038fc7ffc10860ac370f9860b2860c2b9997da6862f7f50443d"
+          }
+        },
+        {
+          "kind": "label_pack",
+          "title": "Flies, bees and wasps, beetles, butterflies and moths of Africa, with country lists (21,765 names)",
+          "licence": "CC0-1.0 (made from the TreeOfLife-200M species data); GBIF keys from the Catalogue of Life, CC BY 4.0",
+          "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
+          "file": {
+            "name": "bioclip-2.5_pollinator-orders-africa_v1.fpack",
+            "url": "https://huggingface.co/Valen-Peregrine/bioclip-2.5-tflite/resolve/40b7b0f0abd3dc536c2759e44780d20030c98747/bioclip-2.5_pollinator-orders-africa_v1.fpack",
+            "bytes": 48147470,
+            "sha256": "d1488612264c3e09605f925d1bb8c6a9c3a40aceea4176ef4e8f87e842057769"
+          }
+        },
+        {
+          "kind": "label_pack",
+          "title": "Flies, bees and wasps, beetles, butterflies and moths of Asia, with country lists (37,202 names)",
+          "licence": "CC0-1.0 (made from the TreeOfLife-200M species data); GBIF keys from the Catalogue of Life, CC BY 4.0",
+          "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
+          "file": {
+            "name": "bioclip-2.5_pollinator-orders-asia_v1.fpack",
+            "url": "https://huggingface.co/Valen-Peregrine/bioclip-2.5-tflite/resolve/40b7b0f0abd3dc536c2759e44780d20030c98747/bioclip-2.5_pollinator-orders-asia_v1.fpack",
+            "bytes": 82295748,
+            "sha256": "0f4ab8da8273bb0a1cb7caede38dabadfca740043d8f779e4bb0abdd4fdb02b9"
+          }
+        },
+        {
+          "kind": "label_pack",
+          "title": "Flies, bees and wasps, beetles, butterflies and moths of Oceania, with country lists (22,995 names)",
+          "licence": "CC0-1.0 (made from the TreeOfLife-200M species data); GBIF keys from the Catalogue of Life, CC BY 4.0",
+          "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
+          "file": {
+            "name": "bioclip-2.5_pollinator-orders-oceania_v1.fpack",
+            "url": "https://huggingface.co/Valen-Peregrine/bioclip-2.5-tflite/resolve/40b7b0f0abd3dc536c2759e44780d20030c98747/bioclip-2.5_pollinator-orders-oceania_v1.fpack",
+            "bytes": 50874981,
+            "sha256": "daa4e9321e5703664b2622e7d6ec59df49afde01086cd71964dcea663d5f5ab8"
           }
         }
       ],
@@ -320,6 +380,19 @@
             "url": "https://huggingface.co/Valen-Peregrine/bioclip-2.5-tflite/resolve/dd1f5b7259ce3ee2d3aef89c200dde96745f3e85/bioclip-2.5_pollinator-orders-europe_v1.fpack"
           },
           "note": "Replaced by version 2 (below). Results made with this list stay as they are."
+        },
+        {
+          "kind": "label_pack",
+          "title": "Flies, bees and wasps, beetles, butterflies and moths of Europe (34,392 names)",
+          "licence": "CC0-1.0 (made from the TreeOfLife-200M species data)",
+          "source": "https://huggingface.co/datasets/imageomics/TreeOfLife-200M",
+          "file": {
+            "name": "bioclip-2.5_pollinator-orders-europe_v2.fpack",
+            "url": "https://huggingface.co/Valen-Peregrine/bioclip-2.5-tflite/resolve/2f54024dda4e8731bc1f54e7969fefeb63446634/bioclip-2.5_pollinator-orders-europe_v2.fpack",
+            "bytes": 73672276,
+            "sha256": "e36b815a9da1a2d6d2d2c911128517f53365638e76036cd5ae343daeaa5cac9a"
+          },
+          "note": "Replaced by version 3, which holds the names the BioCLIP 2 list wrote differently and can narrow the names to one country. Results made with this list stay as they are."
         },
         {
           "kind": "label_pack",

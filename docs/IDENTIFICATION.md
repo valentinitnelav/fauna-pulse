@@ -53,9 +53,17 @@ model. The name list holds the names the model may choose from.
 Other suggestions, and the other models already on the phone, are under **Choose other models**.
 If you choose **Not now** under **To name them**, the animals are found and counted, not named.
 
+**Your country.** For pollinators and insects on a flat surface, the page suggests the name list
+that holds the most species of your country (one list per continent, see below). It takes the
+country from where your last session was recorded, else from the mobile network the phone is on,
+else from its SIM card; it asks for no permission. **Your country (for the name list)** shows it
+and where it came from; choose another country there (the app remembers it). Near the border of
+two continents a second list can hold almost as many species (Turkey: Asia and Europe): the page
+names it, and it is under **Choose other models**. When no country is known, it suggests Europe.
+
 | Your answer | Identification model and name list |
 |---|---|
-| **Pollinators on flowers** | BioCLIP 2 with *Flies, bees and wasps, beetles, butterflies and moths of Europe* (or the insectDCT classifier) |
+| **Pollinators on flowers** | BioCLIP 2 with *Flies, bees and wasps, beetles, butterflies and moths* of your continent (or the insectDCT classifier) |
 | **Insects on a flat surface** | the same as for pollinators |
 | **Mammals and birds** | BioCLIP 2 with *Mammals and birds of the world* |
 
@@ -83,10 +91,9 @@ or insectDCT).
 ### The name lists
 
 | Name list | For model | Names | Size |
-| *Flies, bees and wasps, beetles, butterflies and moths of Europe, with country lists* | BioCLIP 2 | 34,978 | 60 MB |
-| *Flies, bees and wasps, beetles, butterflies and moths of Europe* | BioCLIP 2 | 34,978 | 57 MB |
+| *Flies, bees and wasps, beetles, butterflies and moths of Europe, with country lists*, and one such list for each other continent | BioCLIP 2 | 22,358 to 56,451 (Europe 35,018) | 38 to 96 MB |
+| The same six lists | BioCLIP 2.5 | 21,765 to 56,401 (Europe 35,021) | 48 to 125 MB |
 | *Mammals and birds of the world* | BioCLIP 2 | 17,130 | 28 MB |
-| *Flies, bees and wasps, beetles, butterflies and moths of Europe* | BioCLIP 2.5 | 34,392 | 74 MB |
 | *Its 104 classes* (a class list) | insectDCT classifier | 104 | 14 kB |
 
 A model can identify only with a name list made for it:
@@ -102,12 +109,13 @@ Information Facility, gbif.org) has records of in which country. With such a lis
 choose among the names of one country or of several
 ([Names to choose from](#names-to-choose-from)). Every name list can be narrowed to some of its
 orders and families there.
-The BioCLIP 2 lists of the four pollinator orders carry them: one list per continent (Europe,
+The BioCLIP 2 and BioCLIP 2.5 lists of the four pollinator orders carry them: one list per continent (Europe,
 North America with Central America and the Caribbean, South America, Africa, Asia, Oceania;
 the continents as GBIF draws them), each with the species that have at least 3 GBIF records
-there. Europe is version 4 (`bioclip-2_pollinator-orders-europe_v4.fpack`, made from newer GBIF
-data than version 3). A phone that has an older version keeps using it; **Download & import
-models** offers the newest. The BioCLIP 2.5 lists have no country lists yet.
+there. For BioCLIP 2, Europe is version 4 (`bioclip-2_pollinator-orders-europe_v4.fpack`, made
+from newer GBIF data than version 3); for BioCLIP 2.5 it is version 3, which also holds the 586
+names that version 2 lost because it was matched to the BioCLIP 2 names. A phone that has an
+older version keeps using it; **Download & import models** offers the newest.
 A country near the border of two continents has many of its species only in the neighbouring
 continent's list (Indonesia: 4,665 names in the Asia list, 2,191 in the Oceania list).
 

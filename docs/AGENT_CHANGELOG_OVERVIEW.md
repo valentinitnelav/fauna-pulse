@@ -74,7 +74,7 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
 
 Settings outside `SessionConfig` are shared preferences: Find in photos `analysis_*` (its
 tracker = the camera's), Find in videos `video_analysis_*` (own tracker values, never touching the
-camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_choice_<id>`.
+camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_choice_<id>`, `watch_country`.
 
 ## Key invariants
 
@@ -289,8 +289,7 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   neighbours). `LabelPack` keeps them in typed fields, not in `header`; a damaged block is left
   out, never an error. Scoring workers get `LabelPack.forWorker()` (an isolate message copies
   what it carries, once per worker). A published name list is never changed: a fix is a new
-  version. BioCLIP 2's pollinator lists (one per continent, Europe suggested) carry both
-  blocks. No world list is offered: its 193,000 names do not fit a phone's memory with this
+  version. The BioCLIP 2 and 2.5 pollinator lists (one per continent) carry both blocks. No world list is offered: its 193,000 names do not fit a phone's memory with this
   scoring (owner's plan: load only the names on offer, after a check on expert-named photos).
 - **A choice of names narrows only what is shown** (each crop's candidates, the ladder, the
   identified rank, the best view): countries (one, with its neighbours, or chosen by hand; a
@@ -355,7 +354,9 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   are renamed at app start).
 - The "What do you want to watch?" pages (`watch_plan_screen.dart`) choose a detector and a
   naming per answer; saving is `useModels`. A model needs a catalogue entry only to be offered or
-  suggested; any model on the phone can be chosen everywhere.
+  suggested; any model on the phone can be chosen everywhere. The suggested name list follows the
+  user's country (`name_list_for_country.dart`); its numbers are in `assets/name_list_countries.json`,
+  written by `update_catalogue.py --countries`, never by hand.
 - **Downloads:** a file already being written is refused (`_activeDownloadTargets`); leftover
   `.part` files are deleted at app start; full storage ends a download with plain words, never a
   hang.

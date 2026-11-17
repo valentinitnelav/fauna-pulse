@@ -51,6 +51,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../identification/name_list_for_country.dart';
 import '../capture/crop_export.dart' show kHideCropPositionNotePrefKey;
 import '../identification/identification_store.dart' show stemOf;
 import '../logging/app_error_hooks.dart';
@@ -105,6 +106,11 @@ class HomeScreen extends StatefulWidget {
   /// their own.
   final UseModels saveChoice;
 
+  /// The user's country and the names per country of the name lists, for the "watch" pages
+  /// (round 381); tests give their own.
+  final Future<UserCountry?> Function() watchCountry;
+  final Future<NameListCountries> Function() countryTable;
+
   const HomeScreen({
     super.key,
     this.scan = scanPastSessionsList,
@@ -114,6 +120,8 @@ class HomeScreen extends StatefulWidget {
     this.modelFiles = ModelFilesOnPhone.load,
     this.modelChoice = currentModelChoice,
     this.saveChoice = useModels,
+    this.watchCountry = guessUserCountry,
+    this.countryTable = NameListCountries.load,
   });
 
   @override
@@ -277,6 +285,8 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
           use: use,
           onPhone: widget.modelFiles,
           saveChoice: widget.saveChoice,
+          country: widget.watchCountry,
+          countryTable: widget.countryTable,
           // The answer in use opens with the models in use now.
           inUse: use.id == _watchUse ? widget.modelChoice : null,
         ),

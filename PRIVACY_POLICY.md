@@ -59,6 +59,11 @@ and cannot control whether you enable Google's system backup.
 | Prevent sleeping | Keeps long field sessions running instead of being suspended by the system |
 | Start after reboot, network state | Added by a library that LiteRT (the on-device AI engine) uses to plan background work. FaunaPulse itself starts nothing after a reboot and does not use the network-state permission |
 
+To suggest the name list made for your part of the world, the page "What do you want to watch?"
+reads the country of the mobile network and of the SIM card (a two-letter code that Android
+gives without any permission), or takes it from your last session's position. It stays on the
+phone; only a country you choose there is saved, and only on the phone.
+
 For reliable unattended sessions, FaunaPulse can open Android's general battery
 settings. You choose there whether to allow unrestricted operation. The app does
 not request the restricted direct battery-exemption permission.

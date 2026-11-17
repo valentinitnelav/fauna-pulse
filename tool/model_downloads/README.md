@@ -105,6 +105,21 @@ In the code, "pack" means such a file of either kind.
   (logged), and an answer with no detection model left is skipped. Change the suggestions here,
   without new code.
 
+## Names per country (`assets/name_list_countries.json`, round 381)
+
+The *What do you want to watch?* pages suggest, before anything is downloaded, the name list
+that holds the most names of the user's country (`identification/name_list_for_country.dart`).
+The numbers come from a second file, so this list stays short and easy to edit by hand:
+`{"format": 1, "lists": {"<file name>": {"<country code>": <names>, …}}}`, one line per offered
+label pack that has country lists: how many of its names GBIF lists in each country (the
+pack header's `regions.countries.<code>.names`). Never edit it by hand; write it from the local
+packs:
+`python tool/model_downloads/update_catalogue.py --countries <packs…>` (`--check` only reports).
+It takes only packs whose size and checksum match this list, drops the lists no longer offered
+and keeps the numbers of the lists not given. A test (`name_list_for_country_test.dart`) fails
+when an offered list "with country lists" is missing from it. fauna-pulse-models'
+`publish_hf.py` reads only the `file` entries of this list, not this second file.
+
 ## When weights change
 
 1. Re-export, then refresh the sizes and checksums from the local files:
@@ -121,7 +136,8 @@ In the code, "pack" means such a file of either kind.
    run `--urls` again, so old and new app versions both keep working.
 4. A new version of a label pack (`…_v2.fpack`): add its entry to `name_lists` by hand (the
    file `name` is enough), move the old version to `former_name_lists` with a `note`, and
-   change the `uses` that suggest it; then `--urls` fills in the link, size and checksum.
+   change the `uses` that suggest it; then `--urls` fills in the link, size and checksum. A
+   label pack with country lists also goes into the names per country (`--countries`, above).
 
 ## Where the files are (round 314)
 

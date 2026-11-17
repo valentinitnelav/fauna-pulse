@@ -153,7 +153,9 @@ use your own videos** and **Find and name the animals** lead through the app.
 1. **Get the AI models at home, on Wi-Fi** (they are large). On **Home**, step 1 (**AI
    models**) asks **What do you want to watch?** Tap an answer: its page shows how to set up the
    phone and the **Suggested AI models** for it. **Download and use (…)** downloads them and
-   sets them up (it reads **Use these** when the files are already on the phone). It opens the
+   sets them up (it reads **Use these** when the files are already on the phone). For naming
+   insects it suggests the name list made for your country (taken from your last session, the
+   mobile network or the SIM card; change it under **Your country (for the name list)**). It opens the
    **Download the chosen models** window, which checks the free storage first (see the folded
    block below). When the models of an answer are already on the phone, tapping its tile
    switches to them at once.

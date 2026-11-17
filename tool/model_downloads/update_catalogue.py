@@ -36,6 +36,16 @@ list (rebuilt under the new name, so other bytes). Anything else is reported
 
 Round 322: a new label pack version is added by hand (its "name" in "name_lists", the old
 version moved to "former_name_lists"), then --urls fills in its link, size and checksum.
+
+Round 381: --countries writes assets/name_list_countries.json from local label packs:
+
+    python tool/model_downloads/update_catalogue.py --countries ~/fauna-pulse-models/.../*.fpack
+
+For every offered label pack with country lists (its header's regions.countries), the number
+of its names that GBIF lists in each country. The "What do you want to watch?" page suggests,
+before anything is downloaded, the list that holds the most names of the user's country. Only
+packs whose size and checksum match the catalogue are taken (so the table describes the files
+users get); a list no longer offered leaves the table; lists not given keep their numbers.
 """
 
 import argparse
@@ -43,10 +53,12 @@ import hashlib
 import json
 import os
 import re
+import struct
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CATALOGUE = os.path.normpath(os.path.join(HERE, "..", "..", "assets", "model_downloads.json"))
+COUNTRIES = os.path.normpath(os.path.join(HERE, "..", "..", "assets", "name_list_countries.json"))
 
 
 def sha256_of(path):
@@ -176,6 +188,58 @@ def take_published(catalogue, path, check):
     return changes, problems
 
 
+def pack_header(path):
+    """The JSON header of an .fpack: 4 bytes "FPK1", its length (uint32, little-endian), the text
+    (fauna-pulse-models' bioclip_export/fpack.py)."""
+    with open(path, "rb") as f:
+        if f.read(4) != b"FPK1":
+            raise ValueError(f"{path}: not an .fpack file")
+        (n,) = struct.unpack("<I", f.read(4))
+        return json.loads(f.read(n))
+
+
+def write_countries(catalogue, paths, out_path, check):
+    """--countries (round 381): names per country of each offered label pack, from its header."""
+    offered = {lst["file"]["name"]: lst["file"] for e in catalogue.get("models", [])
+               for lst in e.get("name_lists", []) if lst.get("kind") == "label_pack"}
+    old = {}
+    if os.path.exists(out_path):
+        with open(out_path, encoding="utf-8") as f:
+            old = json.load(f).get("lists", {})
+    lists = {k: v for k, v in old.items() if k in offered}
+    for gone in sorted(set(old) - set(lists)):
+        print(f"left out (no longer offered): {gone}")
+    for path in paths:
+        name = os.path.basename(path)
+        want = offered.get(name)
+        if want is None:
+            print(f"skipped (not an offered label pack): {name}")
+            continue
+        if os.path.getsize(path) != want.get("bytes") or sha256_of(path) != want.get("sha256"):
+            print(f"PROBLEM: {name} differs from the catalogue's file (size or checksum)")
+            return 1
+        countries = pack_header(path).get("regions", {}).get("countries", {})
+        if not countries:
+            print(f"skipped (no country lists): {name}")
+            continue
+        lists[name] = {c: countries[c]["names"] for c in sorted(countries) if countries[c].get("names")}
+        print(f"read: {name} ({len(lists[name])} countries)")
+    # One line per list keeps the file short and its diffs readable.
+    body = ",\n".join(f"    {json.dumps(k)}: {json.dumps(lists[k], separators=(',', ':'))}" for k in sorted(lists))
+    text = f'{{\n  "format": 1,\n  "lists": {{\n{body}\n  }}\n}}\n'
+    current = open(out_path, encoding="utf-8").read() if os.path.exists(out_path) else ""
+    if text == current:
+        print("nothing to change")
+        return 0
+    if check:
+        print(f"differs: {out_path}")
+        return 1
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(text)
+    print(f"wrote {out_path}")
+    return 0
+
+
 def write_catalogue(catalogue, path):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(catalogue, f, indent=2, ensure_ascii=False)
@@ -190,7 +254,10 @@ def main():
     ap.add_argument("--names", action="store_true", help="only check the names against the naming rule")
     ap.add_argument("--urls", metavar="PUBLISHED_JSON",
                     help="take names and pinned links from fauna-pulse-models' publish/published.json")
+    ap.add_argument("--countries", action="store_true",
+                    help="write the names per country of the given label packs to name_list_countries.json")
     ap.add_argument("--catalogue", default=CATALOGUE)
+    ap.add_argument("--countries-file", default=COUNTRIES)
     args = ap.parse_args()
     if not args.files and not args.urls:
         ap.error("give model files, or --urls PUBLISHED_JSON")
@@ -199,6 +266,8 @@ def main():
         catalogue = json.load(f)
     if args.names:
         return check_names(catalogue, args.files)
+    if args.countries:
+        return write_countries(catalogue, args.files, args.countries_file, args.check)
     if args.urls:
         changes, problems = take_published(catalogue, args.urls, args.check)
         if changes and not args.check:

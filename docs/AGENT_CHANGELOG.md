@@ -10504,3 +10504,8 @@ offer, after a check on expert-named photos); a cache for name list headers.
 Asked: remove the repeated reading of every name list's header when a page lists them. Not
 measured on a phone yet (unit tests only).
 
+
+## Round 381 (2026-11-17): BioCLIP 2.5 continent lists; the name list suggested for the user's country
+Asked: offer the six BioCLIP 2.5 lists (Europe v3 replaces v2, owner) and suggest the list for
+where the user is (owner chose: guess from last session, network, SIM, and a country box). Open:
+the big session with BioCLIP 2.5 crops (not embedded: about 14 h on the CPU).
