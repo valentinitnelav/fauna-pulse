@@ -13,6 +13,10 @@
 // A tap outside the field and its menu takes the focus away (so the choice shows again and the
 // keyboard closes): on phones Flutter's text fields keep the focus on such a tap. The TapRegion
 // shares the menu's group (its MenuController), so a tap on a menu entry counts as inside.
+// The field rebuilds when the keyboard opens or closes: Flutter's menu places itself again only
+// when the field moves or its entries change, not when the keyboard comes up after it opened, so
+// on a Redmi Note 9S (field low on the page) the matching countries stayed under the keyboard.
+// The rebuild re-places it above the field.
 
 import 'package:flutter/material.dart';
 
@@ -52,7 +56,7 @@ class CountryField extends StatefulWidget {
   State<CountryField> createState() => _CountryFieldState();
 }
 
-class _CountryFieldState extends State<CountryField> {
+class _CountryFieldState extends State<CountryField> with WidgetsBindingObserver {
   final _text = TextEditingController();
   final _focus = FocusNode();
   final _menu = MenuController();
@@ -69,6 +73,7 @@ class _CountryFieldState extends State<CountryField> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _focus.addListener(() {
       if (_focus.hasFocus) {
         _text.clear();
@@ -80,7 +85,14 @@ class _CountryFieldState extends State<CountryField> {
   }
 
   @override
+  void didChangeMetrics() {
+    // The keyboard opened or closed: the menu must be placed again (see the top of the file).
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _focus.dispose();
     _text.dispose();
     super.dispose();

@@ -194,6 +194,32 @@ void main() {
     expect(prefs.nameListCountry, isNot('IS'));
   });
 
+  testWidgets('the country list opens above the keyboard', (tester) async {
+    // The menu did not move when the keyboard came up after it opened, so on a Redmi Note 9S
+    // (box low on the page) the matching countries stayed under the keyboard.
+    tester.view.physicalSize = const Size(360, 780);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Column(children: [
+          const SizedBox(height: 350),
+          CountryField(value: 'DE', codes: const ['AT', 'BE', 'DE', 'FR', 'IT'], label: 'Country', onChanged: (_) {}),
+        ]),
+      ),
+    ));
+    // As on the phone: the menu is open before the keyboard comes up.
+    await tester.tap(find.byType(TextField));
+    await tester.pumpAndSettle();
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pumpAndSettle();
+    final entries = find.byType(MenuItemButton).hitTestable();
+    expect(entries, findsWidgets);
+    for (final e in entries.evaluate()) {
+      expect(tester.getRect(find.byWidget(e.widget)).bottom, lessThanOrEqualTo(780 - 300));
+    }
+  });
+
   testWidgets('a name list made for another region: the coverage warning', (tester) async {
     await pump(tester, IdentifyPrefs(nameListCountry: 'US'));
     expect(find.textContaining('⚠ This name list holds only 14 of 100 species that GBIF lists for United States'), findsOneWidget);

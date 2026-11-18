@@ -10523,3 +10523,6 @@ Asked: fix the country box found in the release check (typed letters mixed into 
 ## Round 385 (2026-11-17): a tap outside the country box ends the typing
 Asked: fix what round 384 left open (on a phone, typed text stayed in the country box after a tap elsewhere).
 
+## Round 386 (2026-11-17): the country list opens above the keyboard
+Asked: check round 385 on a phone. Found on the Redmi Note 9S: the matching countries opened under the keyboard. Not checked on a phone: the box on Identify organisms (same widget), the Samsung.
+
