@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../identification/name_list_names.dart';
 import '../logging/app_error_hooks.dart';
+import '../models/list_search.dart';
 import '../widgets/home_button.dart';
 import '../widgets/name_actions.dart';
 import '../widgets/setting_help.dart';
@@ -76,8 +77,7 @@ class _NameListNamesScreenState extends State<NameListNamesScreen> {
 
   void _filter() {
     final all = _names?.names ?? const <NameEntry>[];
-    final query = _search.text.trim().toLowerCase();
-    _shown = query.isEmpty ? all : [for (final n in all) if (n.search.contains(query)) n];
+    _shown = searchList(all, _search.text, (n) => n.search);
   }
 
   @override

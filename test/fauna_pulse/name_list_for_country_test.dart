@@ -5,7 +5,7 @@ import 'dart:io';
 
 import 'package:fauna_pulse/fauna_pulse/identification/country_names.dart';
 import 'package:fauna_pulse/fauna_pulse/identification/name_list_for_country.dart';
-import 'package:fauna_pulse/fauna_pulse/widgets/multi_pick_dialog.dart' show matchesSearch;
+import 'package:fauna_pulse/fauna_pulse/models/list_search.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_downloads.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -75,7 +75,7 @@ void main() {
   });
 
   test('a country search ignores case and accents and knows other names (r382)', () {
-    bool finds(String code, String query) => matchesSearch(countrySearchText(code), query);
+    bool finds(String code, String query) => searchRank(foldForSearch(countrySearchText(code)), foldForSearch(query)) != null;
     expect(finds('TR', 'turk'), isTrue);
     expect(finds('TR', 'Turkey'), isTrue);
     expect(finds('CI', 'cote'), isTrue);
@@ -84,5 +84,20 @@ void main() {
     expect(finds('US', 'USA'), isTrue);
     expect(finds('AX', 'aland'), isTrue);
     expect(finds('DE', 'france'), isFalse);
+  });
+
+  test('round 387: a search lists the best matches first, and still every match', () {
+    List<String> found(String query) =>
+        searchList(const ['DZ', 'DE', 'NE', 'NG', 'IT', 'MR', 'GB', 'TR'], query, (c) => foldForSearch(countrySearchText(c)));
+    // Algeria, Niger and Nigeria hold "ger" inside a word: after Germany (Done picks the first).
+    expect(found('Ger'), ['DE', 'DZ', 'NE', 'NG']);
+    expect(found('ita').first, 'IT');
+    // A later word, or another name, before a match inside a word.
+    expect(searchRank('apis mellifera\napidae · western honey bee', 'bee'), 1);
+    expect(searchRank('apis\napidae · bumblebee', 'bee'), 2);
+    expect(searchRank('germany', 'ger'), 0);
+    expect(searchRank('germany', 'fra'), isNull);
+    expect(found('turkey'), ['TR']);
+    expect(found('  '), hasLength(8), reason: 'nothing typed: the whole list, in its order');
   });
 }

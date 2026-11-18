@@ -220,6 +220,116 @@ void main() {
     }
   });
 
+  group('round 387: the box on a page that keeps it after a pick', () {
+    // As on "What do you want to watch?": the page passes the new value to the same widget
+    // (Identify organisms builds a new one). Opened from a first page, so Back can leave it.
+    String value = '';
+    // What the page's own Back guard heard (Identify organisms asks there before it stops a run).
+    final refused = <bool>[];
+    Future<Finder> open(WidgetTester tester) async {
+      value = '';
+      refused.clear();
+      tester.view.physicalSize = const Size(360, 780);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        theme: ThemeData.dark(useMaterial3: true),
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => PopScope(
+                onPopInvokedWithResult: (didPop, _) {
+                  if (!didPop) refused.add(true);
+                },
+                child: Scaffold(
+                body: StatefulBuilder(
+                  builder: (context, setState) => Column(children: [
+                    const SizedBox(height: 300),
+                    CountryField(
+                      value: value,
+                      codes: const ['DZ', 'DE', 'IT', 'NE', 'TR'],
+                      label: 'Your country',
+                      extra: [if (value.isEmpty) ('', 'Not known')],
+                      onChanged: (v) => setState(() => value = v),
+                    ),
+                  ]),
+                ),
+                ),
+              ),
+            )),
+            child: const Text('open'),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      return find.descendant(of: find.byType(CountryField), matching: find.byType(TextField));
+    }
+
+    bool focused() => FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<CountryField>() != null;
+
+    testWidgets('a pick takes the focus away, so the next tap empties the box again', (tester) async {
+      final box = await open(tester);
+      String text() => tester.widget<TextField>(box).controller!.text;
+      await tester.tap(box);
+      await tester.pumpAndSettle();
+      await tester.enterText(box, 'Ita');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Italy').last);
+      await tester.pumpAndSettle();
+      expect(value, 'IT');
+      expect(focused(), isFalse, reason: 'on a Samsung M12 the box kept the focus after a pick');
+      expect(text(), 'Italy');
+      await tester.tap(box);
+      await tester.pumpAndSettle();
+      expect(text(), isEmpty, reason: 'typed letters went after "Germany" ("GermanyFra")');
+    });
+
+    testWidgets('Done picks the best match, also one found by another name', (tester) async {
+      final box = await open(tester);
+      await tester.tap(box);
+      await tester.pumpAndSettle();
+      await tester.enterText(box, 'Ger');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(value, 'DE', reason: 'Algeria came first, alphabetically');
+      await tester.tap(box);
+      await tester.pumpAndSettle();
+      await tester.enterText(box, 'Turkey');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(value, 'TR');
+    });
+
+    testWidgets('Back closes the list first, as a tap outside does', (tester) async {
+      final box = await open(tester);
+      await tester.tap(box);
+      await tester.pumpAndSettle();
+      await tester.enterText(box, 'Ita');
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(CountryField), findsOneWidget, reason: 'the page stays');
+      expect(find.byType(MenuItemButton).hitTestable(), findsNothing);
+      expect(focused(), isFalse);
+      expect(tester.widget<TextField>(box).controller!.text, 'Not known');
+      expect(value, isEmpty);
+      expect(refused, isEmpty, reason: 'Identify organisms asked to stop a run that was not running');
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(CountryField), findsNothing);
+    });
+
+    testWidgets('drawn like the other dropdowns: an underline, no frame', (tester) async {
+      final box = await open(tester);
+      final decorator = find.descendant(of: find.byType(CountryField), matching: find.byType(InputDecorator));
+      expect(tester.widget<InputDecorator>(decorator.first).decoration.border, isNot(isA<OutlineInputBorder>()));
+      expect(box, findsOneWidget);
+    });
+  });
+
   testWidgets('a name list made for another region: the coverage warning', (tester) async {
     await pump(tester, IdentifyPrefs(nameListCountry: 'US'));
     expect(find.textContaining('⚠ This name list holds only 14 of 100 species that GBIF lists for United States'), findsOneWidget);

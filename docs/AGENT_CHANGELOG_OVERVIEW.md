@@ -42,7 +42,8 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
   tracker builder for camera and videos). Model files: `model_catalog.dart`,
   `model_file_kind.dart` (kind from the tensor shapes; the export's task word refuses segment, pose, OBB and classify files: the app runs plain detection only, the plugin's native code for the other tasks is gone), `model_file_security.dart`
   (`isSupportedModelFileName`, the one format filter; intake checks), `model_import.dart`, `file_download.dart`,
-  `model_downloads.dart` (reader of the download list), `models_on_phone.dart`.
+  `model_downloads.dart` (reader of the download list), `models_on_phone.dart`. `list_search.dart`:
+  the one search rule (and order of matches) of every search box over a list.
   `field_notes.dart` and `phone_state.dart` use FaunaLapse's keys; `deviceNameOf` must give the
   same name as fauna-pulse-export (shared cases in `test/fauna_pulse/fixtures/device_name_cases.json`).
 - `session/`: live recording (`frame_processor.dart` per-frame mapping and tracking,

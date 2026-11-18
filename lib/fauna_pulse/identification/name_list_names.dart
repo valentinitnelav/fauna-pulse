@@ -10,6 +10,7 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import '../models/list_search.dart';
 import 'label_pack.dart';
 
 /// One name as the page shows it.
@@ -21,7 +22,7 @@ class NameEntry {
   /// "Apidae, Hymenoptera · Buff-tailed bumblebee", "Family of Hymenoptera".
   final String detail;
 
-  /// What the search box looks in: [name] and [detail] in lower case.
+  /// What the search box looks in: [name] and [detail] through foldForSearch.
   final String search;
 
   const NameEntry(this.name, this.detail, this.search);
@@ -66,7 +67,7 @@ NameListNames nameEntriesOf(List<LabelRow> rows, {Uint8List? rowBits}) {
       if (own == 6) above else if (above.isEmpty) rank else '$rank of $above',
       if (row.common.isNotEmpty) row.common,
     ].where((s) => s.isNotEmpty).join(' · ');
-    names.add(NameEntry(name, detail, '$name\n$detail'.toLowerCase()));
+    names.add(NameEntry(name, detail, foldForSearch('$name\n$detail')));
   }
   names.sort((a, b) => a.search.compareTo(b.search));
   return NameListNames(names, none);

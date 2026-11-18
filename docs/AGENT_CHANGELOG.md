@@ -10526,3 +10526,6 @@ Asked: fix what round 384 left open (on a phone, typed text stayed in the countr
 ## Round 386 (2026-11-17): the country list opens above the keyboard
 Asked: check round 385 on a phone. Found on the Redmi Note 9S: the matching countries opened under the keyboard. Not checked on a phone: the box on Identify organisms (same widget), the Samsung.
 
+## Round 387 (2026-11-18): the country box behaves the same on every screen
+Asked: check rounds 385 and 386 on the Samsung M12, then fix what was found and keep search boxes consistent across screens. Open: the session list's search keeps its own order and has no accent folding.
+

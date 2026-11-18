@@ -326,7 +326,8 @@ is used when it is:
 **Show these names**, under that line, opens a page with exactly these names: every name of the
 list, or only the ones your countries and groups leave. They are in alphabetical order, each
 with its family, its order and, when the list has one, its common name. The search box looks
-in all of these, so typing a family shows its names. Tap a name to search the web for it or to
+in all of these, so typing a family shows its names; names that start with the typed letters
+come first. Tap a name to search the web for it or to
 copy it ([Looking up a name](#looking-up-a-name)). The same page, with every name of a list,
 opens from the name list's ⓘ card on **Download & import models** (**Show the names**).
 

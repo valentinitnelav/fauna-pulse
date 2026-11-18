@@ -4,7 +4,8 @@
 // window for several countries (multi_pick_dialog.dart) searches the same way.
 //
 // Built on Flutter's DropdownMenu: the field takes text, and the menu shows only the countries
-// that match it (matchesSearch: no case, no accents, other names such as "Turkey" or "UK").
+// that match it, best matches first (models/list_search.dart: no case, no accents, other names
+// such as "Turkey" or "UK"). The first entry is highlighted, so the keyboard's Done key picks it.
 // The filter starts with the first typed letter, so a tap on the field still lists them all.
 // The field empties when it gets focus and shows the choice again
 // when left without a new one: DropdownMenu keeps the chosen entry's text in the field, so the
@@ -17,11 +18,20 @@
 // when the field moves or its entries change, not when the keyboard comes up after it opened, so
 // on a Redmi Note 9S (field low on the page) the matching countries stayed under the keyboard.
 // The rebuild re-places it above the field.
+// Round 387 (Samsung M12): a pick takes the focus away too. Without that, the field kept it on a
+// page that keeps this widget after a pick ("What do you want to watch?"), so the next tap neither
+// emptied the field nor scrolled it above the keyboard; on Identify organisms the page rebuilds
+// the widget after a pick, which dropped the focus there. Back with the field focused does what a
+// tap outside does (Back closes the menus of the other dropdowns too; before, it left the page).
+// It is an entry in the page's local history, as Flutter's drawers use, not a PopScope: a PopScope
+// that refuses Back makes every PopScope of the page hear "Back refused", and Identify organisms
+// then asked whether to stop an identification that was not running (Redmi Note 9S).
+// The field is drawn like the app's other dropdowns (an underline): DropdownMenu draws a frame.
 
 import 'package:flutter/material.dart';
 
 import '../identification/country_names.dart';
-import 'multi_pick_dialog.dart' show matchesSearch;
+import '../models/list_search.dart';
 
 class CountryField extends StatefulWidget {
   /// The chosen value (a country code, or one of [extra]'s values).
@@ -61,6 +71,14 @@ class _CountryFieldState extends State<CountryField> with WidgetsBindingObserver
   final _focus = FocusNode();
   final _menu = MenuController();
 
+  /// Set by a pick until the focus has gone (Flutter moves the focus a moment later): the field
+  /// then keeps the picked entry's text.
+  bool _picked = false;
+
+  /// While the field has the focus: Back removes this entry (and so leaves the field) instead
+  /// of leaving the page.
+  LocalHistoryEntry? _backEntry;
+
   String? get _chosenText {
     final v = widget.value;
     if (v == null) return null;
@@ -77,11 +95,30 @@ class _CountryFieldState extends State<CountryField> with WidgetsBindingObserver
     _focus.addListener(() {
       if (_focus.hasFocus) {
         _text.clear();
-      } else if (_text.text != (_chosenText ?? '')) {
-        // Left without choosing: show the choice again (a choice rebuilds the field anyway).
-        _text.text = _chosenText ?? '';
+        if (_backEntry == null) {
+          final entry = _backEntry = LocalHistoryEntry(
+            impliesAppBarDismissal: false,
+            onRemove: () {
+              _backEntry = null;
+              _menu.close();
+              _focus.unfocus();
+            },
+          );
+          ModalRoute.of(context)?.addLocalHistoryEntry(entry);
+        }
+      } else {
+        _dropBackEntry();
+        // Left without choosing: show the choice again.
+        if (!_picked && _text.text != (_chosenText ?? '')) _text.text = _chosenText ?? '';
       }
+      _picked = false;
     });
+  }
+
+  void _dropBackEntry() {
+    final entry = _backEntry;
+    _backEntry = null;
+    entry?.remove();
   }
 
   @override
@@ -92,6 +129,7 @@ class _CountryFieldState extends State<CountryField> with WidgetsBindingObserver
 
   @override
   void dispose() {
+    _dropBackEntry();
     WidgetsBinding.instance.removeObserver(this);
     _focus.dispose();
     _text.dispose();
@@ -102,36 +140,46 @@ class _CountryFieldState extends State<CountryField> with WidgetsBindingObserver
   Widget build(BuildContext context) {
     final w = widget;
     final codes = w.codes, extra = w.extra, labelOf = w.labelOf, value = w.value, onChanged = w.onChanged;
-    final search = {for (final c in codes) c: countrySearchText(c), for (final (v, t) in extra) v: t};
+    final search = {
+      for (final c in codes) c: foldForSearch(countrySearchText(c)),
+      for (final (v, t) in extra) v: foldForSearch(t),
+    };
     return TapRegion(
       groupId: _menu,
       onTapOutside: (_) {
         if (_focus.hasFocus) _focus.unfocus();
       },
       child: DropdownMenu<String>(
-      // A new value (chosen elsewhere, or by the page) shows its text.
-      key: ValueKey('country field $value ${onChanged == null}'),
-      controller: _text,
-      focusNode: _focus,
-      menuController: _menu,
-      initialSelection: value,
-      enabled: onChanged != null,
-      label: Text(w.label),
-      helperText: w.helperText,
-      expandedInsets: EdgeInsets.zero,
-      menuHeight: 320,
-      // Phones open the keyboard only on a tap when this is on; typing is the point here.
-      requestFocusOnTap: true,
-      enableFilter: true,
-      filterCallback: (entries, filter) => [for (final e in entries) if (matchesSearch(search[e.value] ?? e.label, filter)) e],
-      trailingIcon: const Icon(Icons.arrow_drop_down),
-      dropdownMenuEntries: [
-        for (final (v, t) in extra) DropdownMenuEntry(value: v, label: t),
-        for (final c in codes) DropdownMenuEntry(value: c, label: labelOf(c)),
-      ],
-      onSelected: (v) {
-        if (v != null) onChanged?.call(v);
-      },
+        // A new value (chosen elsewhere, or by the page) shows its text.
+        key: ValueKey('country field $value ${onChanged == null}'),
+        controller: _text,
+        focusNode: _focus,
+        menuController: _menu,
+        initialSelection: value,
+        enabled: onChanged != null,
+        label: Text(w.label),
+        helperText: w.helperText,
+        expandedInsets: EdgeInsets.zero,
+        inputDecorationTheme: Theme.of(context).inputDecorationTheme,
+        menuHeight: 320,
+        // Phones open the keyboard only on a tap when this is on; typing is the point here.
+        requestFocusOnTap: true,
+        enableFilter: true,
+        filterCallback: (entries, filter) =>
+            searchList(entries, filter, (e) => search[e.value] ?? foldForSearch(e.label)),
+        // Flutter's default highlights the first label that holds the text, which misses a
+        // country found by another name ("Turkey") and is not the best match.
+        searchCallback: (entries, filter) => filter.trim().isEmpty || entries.isEmpty ? null : 0,
+        trailingIcon: const Icon(Icons.arrow_drop_down),
+        dropdownMenuEntries: [
+          for (final (v, t) in extra) DropdownMenuEntry(value: v, label: t),
+          for (final c in codes) DropdownMenuEntry(value: c, label: labelOf(c)),
+        ],
+        onSelected: (v) {
+          _picked = v != null && _focus.hasFocus;
+          _focus.unfocus();
+          if (v != null) onChanged?.call(v);
+        },
       ),
     );
   }
