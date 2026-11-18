@@ -183,9 +183,13 @@ void main() {
     await tester.tap(box);
     await tester.pumpAndSettle();
     expect(text(), isEmpty, reason: 'typing starts in an empty box (it mixed into the text on a phone)');
-    // Left without a choice: the choice shows again and nothing is saved.
-    FocusManager.instance.primaryFocus!.unfocus();
+    // Typed, then a tap outside the box and its menu without a choice: the box loses the focus
+    // (phones keep it by default), the choice shows again and nothing is saved.
+    await tester.enterText(box, 'ICE');
     await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(350, 770));
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<CountryField>(), isNull);
     expect(text(), 'Where the session was recorded (Germany)');
     expect(prefs.nameListCountry, isNot('IS'));
   });

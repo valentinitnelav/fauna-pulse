@@ -10520,3 +10520,6 @@ Asked: check what is missing for a release and prepare it; say "not tested on ta
 ## Round 384 (2026-11-17): the country box empties on a tap
 Asked: fix the country box found in the release check (typed letters mixed into the chosen text). Open: a tap outside the box leaves typed text until focus moves (DropdownMenu has no hook).
 
+## Round 385 (2026-11-17): a tap outside the country box ends the typing
+Asked: fix what round 384 left open (on a phone, typed text stayed in the country box after a tap elsewhere).
+

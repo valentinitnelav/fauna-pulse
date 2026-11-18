@@ -10,6 +10,9 @@
 // when left without a new one: DropdownMenu keeps the chosen entry's text in the field, so the
 // first letters typed mixed into it ("Where the session waGerms recorded") and nothing matched.
 // Selecting all text on focus was not used: the tap that gives focus then places the cursor.
+// A tap outside the field and its menu takes the focus away (so the choice shows again and the
+// keyboard closes): on phones Flutter's text fields keep the focus on such a tap. The TapRegion
+// shares the menu's group (its MenuController), so a tap on a menu entry counts as inside.
 
 import 'package:flutter/material.dart';
 
@@ -52,6 +55,7 @@ class CountryField extends StatefulWidget {
 class _CountryFieldState extends State<CountryField> {
   final _text = TextEditingController();
   final _focus = FocusNode();
+  final _menu = MenuController();
 
   String? get _chosenText {
     final v = widget.value;
@@ -87,11 +91,17 @@ class _CountryFieldState extends State<CountryField> {
     final w = widget;
     final codes = w.codes, extra = w.extra, labelOf = w.labelOf, value = w.value, onChanged = w.onChanged;
     final search = {for (final c in codes) c: countrySearchText(c), for (final (v, t) in extra) v: t};
-    return DropdownMenu<String>(
+    return TapRegion(
+      groupId: _menu,
+      onTapOutside: (_) {
+        if (_focus.hasFocus) _focus.unfocus();
+      },
+      child: DropdownMenu<String>(
       // A new value (chosen elsewhere, or by the page) shows its text.
       key: ValueKey('country field $value ${onChanged == null}'),
       controller: _text,
       focusNode: _focus,
+      menuController: _menu,
       initialSelection: value,
       enabled: onChanged != null,
       label: Text(w.label),
@@ -110,6 +120,7 @@ class _CountryFieldState extends State<CountryField> {
       onSelected: (v) {
         if (v != null) onChanged?.call(v);
       },
+      ),
     );
   }
 }
