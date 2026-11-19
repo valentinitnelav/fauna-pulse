@@ -245,7 +245,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('name list countries')));
     await tester.pumpAndSettle();
     final small = regions.countries.keys.contains(_small) ? _small : regions.countries.keys.last;
-    await tester.enterText(find.byType(TextField), countryName(small));
+    // The window's search box, not the page's country box (also a text box).
+    final windowSearch = find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField));
+    await tester.enterText(windowSearch, countryName(small));
     await tester.pumpAndSettle();
     _log('SHOT country_lists_window');
     await tester.pump(const Duration(seconds: 6));
@@ -259,6 +261,8 @@ void main() {
     for (final w in tester.widgetList<Text>(find.textContaining('⚠'))) {
       _log('PAGE ${w.data}');
     }
+    // Round 388: no limit for a "short" list; the sentence says how to get more names.
+    expect(tester.widget<Text>(used).data, contains('For more names, tick more countries'));
     final saved = await IdentifyPrefs.load();
     expect(saved.nameListChosenCountries, [small], reason: 'the ticked countries are saved at once');
     expect(saved.nameListCountry, code, reason: 'the single country keeps its value');
@@ -280,7 +284,7 @@ void main() {
     await tester.pumpAndSettle();
     _log('SHOT taxa_window');
     await tester.pump(const Duration(seconds: 6));
-    await tester.enterText(find.byType(TextField), taxa.first);
+    await tester.enterText(windowSearch, taxa.first);
     await tester.pumpAndSettle();
     _log('PAGE window entry: ${[for (final w in tester.widgetList<Text>(find.descendant(of: find.byType(CheckboxListTile), matching: find.byType(Text)))) w.data]}');
     _log('SHOT taxa_window_search');

@@ -375,8 +375,8 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     );
   }
 
-  /// Whether a suggested name list has country lists (not the mammals and birds list).
-  bool get _countryMatters => widget.use.name.any((n) => _table.lists.containsKey(n.$2.file.name));
+  /// Whether a country can change a suggested name list (not for the one mammals and birds list).
+  bool get _countryMatters => widget.use.name.any((n) => countryPicksList(n, _table));
 
   static const _countrySourceNote = {
     CountrySource.chosen: 'Your choice.',

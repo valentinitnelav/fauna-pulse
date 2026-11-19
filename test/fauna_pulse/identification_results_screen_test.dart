@@ -97,6 +97,9 @@ void main() {
     await show({'countries': [], 'taxa': [], 'names': 34978, 'scope': 'country', 'country': 'MT', 'whole_list_reason': 'no_common_names'});
     expect(find.text('Orders and families'), findsNothing);
     expect(find.text('the whole name list (no name of the chosen orders and families is listed for the chosen countries)'), findsOneWidget);
+    // Results made before round 388, when the default avoided country lists with few names.
+    await show({'countries': [], 'taxa': [], 'names': 23255, 'scope': 'neighbours', 'country': 'NZ', 'whole_list_reason': 'short_list'});
+    expect(find.text('the whole name list (chosen automatically for New Zealand and its neighbours)'), findsOneWidget);
   });
 
   testWidgets('results table: no overflow on a 360-px phone, last row above the bar', (tester) async {

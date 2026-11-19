@@ -10529,3 +10529,6 @@ Asked: check round 385 on a phone. Found on the Redmi Note 9S: the matching coun
 ## Round 387 (2026-11-18): the country box behaves the same on every screen
 Asked: check rounds 385 and 386 on the Samsung M12, then fix what was found and keep search boxes consistent across screens. Open: the session list's search keeps its own order and has no accent folding.
 
+## Round 388 (2026-11-19): mammals and birds v4 with country lists
+Asked: v4 in the catalogue in place of v2, clearer short-list messages (the owner chose no limit at all), the outdated device check fixed and run on the Redmi Note 9S. Open: people named Homo sapiens, to check with a session that has people in it.
+

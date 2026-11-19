@@ -732,7 +732,8 @@ class _IdentificationResultsScreenState extends State<IdentificationResultsScree
     final wholeReason = switch (nameList['whole_list_reason']) {
       kWholeNoCountry => byHand ? 'no country was chosen' : 'the session\'s country is not known',
       kWholeNotInList => 'the list has no names for ${byHand ? 'the chosen countries' : countryName('${nameList['country']}')}',
-      kWholeShortList => 'few GBIF records from ${countryName('${nameList['country']}')} and its neighbours',
+      // Results made before round 388 only (the default then avoided country lists under 5,000 names).
+      kWholeShortList => 'chosen automatically for ${countryName('${nameList['country']}')} and its neighbours',
       kWholeNoCommonNames => 'no name of the chosen orders and families is listed for the chosen countries',
       _ => null,
     };

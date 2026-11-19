@@ -1058,15 +1058,14 @@ names were used (**Names from** and **Orders and families** on the results scree
 | **Orders and families** | All | A window with a search box that lists the orders of the name list with their families. The model then chooses only among the names of the ticked orders and families (an order stands for all its families); nothing ticked = all. It only takes names away. Together with countries, a name must be listed for the countries and belong to a ticked group; when no name is in both, neither choice is used. Every animal is then named within the ticked groups, also an animal of another group. A name the list uses only down to the family stays with its family; a name without an order or a family in the list belongs to no group and is not on offer once groups are ticked. Names of another name list are kept but not used. |
 
 The whole list is used, with the reason on the screen, when the session's country is not known
-(no position, or one far from land), when the name list has no names for the country, and when both settings are at their defaults and the country with its neighbours
-has under 5,000 names. A choice made by hand (one country or several) is used as it is. An
-amber line warns when the countries' list has under 5,000 names, counted before the orders and
-families narrow it (GBIF holds few records from there, so species that live there are probably
-missing and the model then has to pick a wrong name), or when the name list holds under 80 %
-of a chosen country's own GBIF list (it was made for another region; for one country it then
-names a list on the phone that holds more of that country's names). Both numbers are the
-developers' judgement, not fitted values. Few names in a ticked order or family give no such
-warning: they say nothing about the records of a country.
+(no position, or one far from land) and when the name list has no names for the country. With
+countries, the line under the boxes gives the number of names and how to get more (more
+countries, or **The whole name list**: the continent for the insect lists, the world for mammals
+and birds); there is no limit below which a list counts as too small, because a number of names
+cannot tell a country where few species live from one where few were recorded. An amber line
+warns when the name list holds under 80 % of a chosen country's own GBIF list (it was made for
+another region; for one country it then names a list on the phone that holds more of that
+country's names). That number is the developers' judgement, not a fitted value.
 
 The share of the "none of these" entries, the crops' weights and the joining of track IDs are
 computed over the whole name list, so they do not change with any of these settings; the names

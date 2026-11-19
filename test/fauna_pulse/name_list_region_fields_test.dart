@@ -1,6 +1,6 @@
 // Round 373: "Names to choose from" on Identify organisms (name_list_region_fields.dart) on a
 // 360-px phone: each control changes one stored setting, the page says which names a run will
-// use and why, and warns about a short list or a list made for another region. Round 376:
+// use and why (with how to get more names), and warns about a list made for another region. Round 376:
 // countries chosen by hand in a window with a search box. Round 377: orders and families
 // chosen by hand, in the same kind of window with the families under their order. Round 378:
 // "Show these names" hands over the names a run would choose from, to be listed.
@@ -30,6 +30,11 @@ String _bits(int from, int to) {
 
 /// The search box of the window (the country box on the page is a text field too, r382).
 final _windowSearch = find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField));
+
+// The hint after the sentence, for each "Names from" choice (shown for every country list).
+const _moreNeighbours = ' For more names, tick more countries under "Countries I choose", or choose "The whole name list".';
+const _moreCountry = ' For more names, choose "The country and its neighbours" or "The whole name list".';
+const _moreChosen = ' For more names, tick more countries or choose "The whole name list".';
 
 void main() {
   // Germany 6,000 names with Austria next to it; Iceland 100 names and no neighbour; the pack
@@ -129,7 +134,7 @@ void main() {
     final prefs = IdentifyPrefs();
     await pump(tester, prefs, sessionCountry: 'DE');
     expect(find.text('Where the session was recorded (Germany)'), findsOneWidget);
-    expect(find.text('A run chooses among the 6,000 names of Germany and its neighbour (of 7,994 in the list).'), findsOneWidget);
+    expect(find.text('A run chooses among the 6,000 names of Germany and its neighbour (of 7,994 in the list).$_moreNeighbours'), findsOneWidget);
     expect(find.textContaining('⚠'), findsNothing);
   });
 
@@ -139,15 +144,14 @@ void main() {
     await choose(tester, 'name list scope', 'The country only');
     expect(prefs.nameListScope, kScopeCountry);
     expect(prefs.nameListCountry, '');
-    expect(find.text('A run chooses among the 6,000 names of Germany only (of 7,994 in the list).'), findsOneWidget);
+    expect(find.text('A run chooses among the 6,000 names of Germany only (of 7,994 in the list).$_moreCountry'), findsOneWidget);
 
     await choose(tester, 'name list country  false', 'Iceland (100 names)');
     expect(prefs.nameListCountry, 'IS');
     expect(prefs.nameListScope, kScopeCountry);
-    expect(find.text('A run chooses among the 100 names of Iceland only (of 7,994 in the list).'), findsOneWidget);
-    // A short list chosen by hand is kept, with a warning that names the safer choices.
-    expect(find.textContaining('⚠ Only 100 names. GBIF holds few records from Iceland'), findsOneWidget);
-    expect(find.textContaining('"The country and its neighbours" or "The whole name list" is safer.'), findsOneWidget);
+    expect(find.text('A run chooses among the 100 names of Iceland only (of 7,994 in the list).$_moreCountry'), findsOneWidget);
+    // However few names: no warning, the hint says how to get more (round 388).
+    expect(find.textContaining('⚠'), findsNothing);
 
     // The whole list: the country box is greyed and keeps its value (no second setting is written).
     await choose(tester, 'name list scope', 'The whole name list');
@@ -332,8 +336,7 @@ void main() {
 
   testWidgets('a name list made for another region: the coverage warning', (tester) async {
     await pump(tester, IdentifyPrefs(nameListCountry: 'US'));
-    expect(find.textContaining('⚠ This name list holds only 14 of 100 species that GBIF lists for United States'), findsOneWidget);
-    expect(find.textContaining('Only 5,500 names'), findsNothing);
+    expect(find.textContaining('⚠ This name list holds 14 of 100 species that GBIF lists for United States'), findsOneWidget);
     expect(find.textContaining('Download & import models offers name lists for other parts of the world.'), findsOneWidget);
   });
 
@@ -353,12 +356,9 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the default never uses a short list: the whole list and the reason', (tester) async {
+  testWidgets('the default uses the country list however few names it has, with the hint', (tester) async {
     await pump(tester, IdentifyPrefs(), sessionCountry: 'IS');
-    expect(
-      find.textContaining('GBIF holds few records from Iceland and its neighbours (a short list misses many species), so a run chooses among all 7,994 names.'),
-      findsOneWidget,
-    );
+    expect(find.text('A run chooses among the 100 names of Iceland only (of 7,994 in the list).$_moreNeighbours'), findsOneWidget);
     expect(find.textContaining('⚠'), findsNothing);
   });
 
@@ -408,7 +408,7 @@ void main() {
       expect(prefs.nameListChosenCountries, ['AT', 'IS']);
       expect(prefs.nameListScope, kScopeCountries);
       expect(find.text('Austria, Iceland'), findsOneWidget);
-      expect(find.text('A run chooses among the 5,300 names of Austria and Iceland (of 7,994 in the list).'), findsOneWidget);
+      expect(find.text('A run chooses among the 5,300 names of Austria and Iceland (of 7,994 in the list).$_moreChosen'), findsOneWidget);
       expect(find.textContaining('⚠'), findsNothing);
 
       // Cancel and the X change nothing; the window opens with the saved countries ticked.
@@ -427,16 +427,14 @@ void main() {
       expect(prefs.nameListChosenCountries, ['AT', 'IS']);
     });
 
-    testWidgets('a short list and a list made for another region are warned about, as for one country', (tester) async {
+    testWidgets('few names: no warning; a list made for another region is warned about, as for one country', (tester) async {
       await pump(tester, IdentifyPrefs(nameListScope: kScopeCountries, nameListChosenCountries: ['GS', 'IS']));
-      expect(find.text('A run chooses among the 150 names of South Georgia and the South Sandwich Islands and Iceland (of 7,994 in the list).'), findsOneWidget);
-      expect(find.textContaining('⚠ Only 150 names. GBIF holds few records from these countries'), findsOneWidget);
-      expect(find.textContaining('More countries, or "The whole name list", is safer.'), findsOneWidget);
+      expect(find.text('A run chooses among the 150 names of South Georgia and the South Sandwich Islands and Iceland (of 7,994 in the list).$_moreChosen'), findsOneWidget);
+      expect(find.textContaining('⚠'), findsNothing);
       expect(tester.takeException(), isNull);
 
       await pump(tester, IdentifyPrefs(nameListScope: kScopeCountries, nameListChosenCountries: ['DE', 'US']));
-      expect(find.textContaining('Only '), findsNothing);
-      expect(find.textContaining('⚠ This name list holds only 14 of 100 species that GBIF lists for United States'), findsOneWidget);
+      expect(find.textContaining('⚠ This name list holds 14 of 100 species that GBIF lists for United States'), findsOneWidget);
     });
 
     testWidgets('chosen countries this name list does not know are not used and not shown', (tester) async {
@@ -445,7 +443,7 @@ void main() {
       expect(find.text('This name list has no names for the chosen countries, so a run chooses among all 7,994 names.'), findsOneWidget);
       await pump(tester, IdentifyPrefs(nameListScope: kScopeCountries, nameListChosenCountries: ['DE', 'XX']));
       expect(find.text('Germany'), findsOneWidget);
-      expect(find.text('A run chooses among the 6,000 names of Germany only (of 7,994 in the list).'), findsOneWidget);
+      expect(find.text('A run chooses among the 6,000 names of Germany only (of 7,994 in the list).$_moreChosen'), findsOneWidget);
     });
 
     testWidgets('the window fits a 360-px phone with the keyboard open', (tester) async {
@@ -474,7 +472,7 @@ void main() {
       final prefs = IdentifyPrefs();
       await pump(tester, prefs, sessionCountry: 'DE', taxa: groups);
       expect(find.text('All'), findsOneWidget);
-      expect(find.text('A run chooses among the 6,000 names of Germany and its neighbour (of 7,994 in the list).'), findsOneWidget);
+      expect(find.text('A run chooses among the 6,000 names of Germany and its neighbour (of 7,994 in the list).$_moreNeighbours'), findsOneWidget);
       expect(find.textContaining('⚠'), findsNothing);
 
       // Each entry with its number of names among the countries' names (rows 0 .. 5,999).
@@ -499,7 +497,7 @@ void main() {
       expect(prefs.nameListChosenTaxa, ['Apidae', 'Diptera']);
       expect(prefs.nameListScope, kScopeNeighbours, reason: 'the countries keep their settings');
       expect(find.text('Apidae, Diptera'), findsOneWidget);
-      expect(find.text('A run chooses among the 5,100 names of Apidae and Diptera listed for Germany and its neighbour (of 7,994 in the list).'), findsOneWidget);
+      expect(find.text('A run chooses among the 5,100 names of Apidae and Diptera listed for Germany and its neighbour (of 7,994 in the list).$_moreNeighbours'), findsOneWidget);
       expect(
         find.text('⚠ Every animal will be named as one of Apidae and Diptera. This forces the model to pick a name from these groups, even for an animal of another group.'),
         findsOneWidget,
@@ -555,14 +553,11 @@ void main() {
       expect(find.textContaining('Every animal'), findsNothing);
     });
 
-    testWidgets('a short country list is judged before the orders and families', (tester) async {
+    testWidgets('countries with orders and families: the hint follows "Names from"', (tester) async {
       await pump(tester, IdentifyPrefs(nameListCountry: 'IS', nameListChosenTaxa: ['Formicidae']), taxa: groups);
-      expect(find.text('A run chooses among the 100 names of Formicidae listed for Iceland only (of 7,994 in the list).'), findsOneWidget);
-      expect(find.textContaining('⚠ Only 100 names in all orders and families. GBIF holds few records from Iceland'), findsOneWidget);
-      // Few names of a family in a well recorded country are no reason to warn.
+      expect(find.text('A run chooses among the 100 names of Formicidae listed for Iceland only (of 7,994 in the list).$_moreNeighbours'), findsOneWidget);
       await pump(tester, IdentifyPrefs(nameListCountry: 'DE', nameListScope: kScopeCountry, nameListChosenTaxa: ['Syrphidae']), taxa: groups);
-      expect(find.text('A run chooses among the 50 names of Syrphidae listed for Germany only (of 7,994 in the list).'), findsOneWidget);
-      expect(find.textContaining('Only '), findsNothing);
+      expect(find.text('A run chooses among the 50 names of Syrphidae listed for Germany only (of 7,994 in the list).$_moreCountry'), findsOneWidget);
       // Where the whole list is used for a reason, the orders and families still narrow.
       await pump(tester, IdentifyPrefs(nameListChosenTaxa: ['Apidae']), taxa: groups);
       expect(

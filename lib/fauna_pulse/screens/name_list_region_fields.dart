@@ -94,9 +94,10 @@ class NameListRegionFields extends StatelessWidget {
       'have few records. With "Countries I choose" you tick any countries yourself, for '
       'example for a region that lies in several countries; their names are put together. '
       'The lists follow where people observe and upload: they are dense in '
-      'Europe and North America and thin in much of the tropics, Africa and Asia. When unsure, '
-      'use the neighbours or the whole name list. Whether a country list names insects better than '
-      'the whole list is not tested yet.';
+      'Europe and North America and thin in much of the tropics, Africa and Asia. The model '
+      'chooses among the names on offer, so an animal whose name is not among them gets the most '
+      'similar name that is. When unsure, use the neighbours or the whole name list. Whether a '
+      'country list names animals better than the whole list is not tested yet.';
   static const _taxaHelp =
       'With "Orders and families" the model chooses only among the names of the groups you tick, '
       'for example bees and hoverflies: whole orders or single families, the ones this name list '
@@ -154,19 +155,6 @@ class NameListRegionFields extends StatelessWidget {
               icon: const Icon(Icons.list, size: 18),
               label: const Text('Show these names'),
             ),
-          ),
-        if (choice.shortList)
-          _warning(
-            'Only ${thousands(choice.countryNames)} names${choice.taxa.isEmpty ? '' : ' in all orders and families'}. '
-            'GBIF holds few records from '
-            '${choice.countries.length == 1 ? countryName(choice.countries.first) : 'these countries'}, so species that '
-            'live there are probably missing from this list, and the model then has to pick a wrong name. '
-            '${switch (prefs.nameListScope) {
-              kScopeCountry => '"The country and its neighbours" or "The whole name list" is',
-              kScopeCountries => 'More countries, or "The whole name list", is',
-              _ => '"The whole name list" is',
-            }} '
-            'safer.',
           ),
         if (choice.lowCoverage) _warning(_lowCoverage(choice.lowCoverageCountries)),
         if (choice.taxa.isNotEmpty)
@@ -300,12 +288,12 @@ class NameListRegionFields extends StatelessWidget {
       // Round 379: the lists for the other continents; the one on the phone that holds the most
       // names of that country, or where to get one.
       final better = listWithMoreNamesOf?.call(low.first);
-      return 'This name list holds only ${share(low.first)} species that GBIF lists for ${countryName(low.first)}: it was '
+      return 'This name list holds ${share(low.first)} species that GBIF lists for ${countryName(low.first)}: it was '
           'made for another region, so many species of that country cannot be named with it. '
           '${better == null ? 'Download & import models offers name lists for other parts of the world.' : 'The name list ${better.file} on this phone holds ${thousands(better.names)} of them: choose it under "Name list" above.'}';
     }
     final named = [for (final c in low.take(4)) '${countryName(c)} (${share(c)})'].join(', ');
-    return 'This name list holds only a part of the species that GBIF lists for $named'
+    return 'This name list holds part of the species that GBIF lists for $named'
         '${low.length > 4 ? ' and ${low.length - 4} more of the chosen countries' : ''}: it was made for another '
         'region, so many species of these countries cannot be named with it.';
   }
@@ -323,10 +311,18 @@ class NameListRegionFields extends StatelessWidget {
   }
 
   /// One sentence on the names a run will choose from. Every form holds "run chooses among"
-  /// (the device check finds the sentence by it).
+  /// (the device check finds the sentence by it). With countries, also how to get more names:
+  /// shown for every country list, as there is no limit for a "short" one (name_list_region.dart).
   static String _used(NameListChoice c, String all) {
     final names = _namesInWords(c, all);
-    if (c.countries.isNotEmpty) return 'A run chooses among $names.';
+    if (c.countries.isNotEmpty) {
+      final more = switch (c.scope) {
+        kScopeCountry => 'choose "The country and its neighbours" or "The whole name list"',
+        kScopeCountries => 'tick more countries or choose "The whole name list"',
+        _ => 'tick more countries under "Countries I choose", or choose "The whole name list"',
+      };
+      return 'A run chooses among $names. For more names, $more.';
+    }
     // No country narrows: every name, or those of the chosen orders and families.
     final country = c.country == null ? null : countryName(c.country!);
     if (c.wholeListReason == kWholeNoCommonNames) {
@@ -343,9 +339,6 @@ class NameListRegionFields extends StatelessWidget {
         'The country of this session is not known (it has no position, or one far from land), so a run '
             'chooses among $names. Choose a country above to narrow them.',
       kWholeNotInList => 'This name list has no names for $country, so a run chooses among $names.',
-      kWholeShortList =>
-        'GBIF holds few records from $country and its neighbours (a short list misses many species), so a run '
-            'chooses among $names. To use the short list anyway, choose $country above.',
       _ => 'A run chooses among $names.',
     };
   }

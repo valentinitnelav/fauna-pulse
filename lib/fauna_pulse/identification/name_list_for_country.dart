@@ -6,8 +6,11 @@
 // update_catalogue.py --countries writes it from the lists' headers (`regions.countries.<code>
 // .names`), so it never drifts from the files users download.
 //
-// Rule: the list of the same model that holds the most names of the country. Continents are
-// GBIF's, a practical cut: a country near a border can have almost as many names in the
+// Rule: the list of the same model and the same organisms that holds the most names of the
+// country. The organisms are the catalogue title's words before " of " ("Mammals and birds of
+// the world", "Flies, ... and moths of Asia"): without that, the mammals and birds answer would
+// suggest an insect list, which holds more names of most countries. Continents are GBIF's, a
+// practical cut: a country near a border can have almost as many names in the
 // neighbouring continent's list (Turkey: Asia 3,941, Europe 3,628 with BioCLIP 2.5). Such a
 // list (at least [kCloseShare] of the best) is offered too, right after it.
 //
@@ -49,7 +52,7 @@ class NameListCountries {
   const NameListCountries(this.lists);
 
   /// How many names of [list] GBIF lists in [country]; null when the table does not know
-  /// [list] (a list without country lists, such as the mammals and birds list).
+  /// [list] (a list without country lists, such as a class list).
   int? namesIn(String list, String country) => lists[list] == null ? null : lists[list]![country] ?? 0;
 
   /// The country codes of the table, for a country choice.
@@ -75,21 +78,35 @@ class NameListCountries {
   }
 }
 
-/// The best list of [n]'s model for [country], and a close second, with their names in it.
+/// The best list of [n]'s model and organisms for [country], and a close second, with their
+/// names in it.
 /// Empty when [n]'s list has no country lists.
 List<(NamingDownload, int)> listsForCountry(NamingDownload n, String country, NameListCountries table) {
   if (table.namesIn(n.$2.file.name, country) == null) return const [];
+  final organisms = listOrganisms(n.$2);
   final ranked = [
     for (final l in n.$1.nameLists)
-      if (table.namesIn(l.file.name, country) case final names?) ((n.$1, l), names),
+      if (listOrganisms(l) == organisms)
+        if (table.namesIn(l.file.name, country) case final names?) ((n.$1, l), names),
   ]..sort((a, b) => b.$2.compareTo(a.$2));
   if (ranked.isEmpty) return const [];
   return [ranked.first, if (ranked.length > 1 && ranked[1].$2 >= kCloseShare * ranked.first.$2) ranked[1]];
 }
 
-/// [use] with each suggested name list replaced by the list of the same model that holds the
-/// most names of [country], and a close second inserted after it. Unchanged without a country
-/// or for lists without country lists.
+/// The organisms a name list holds: its title before " of " (see the file header).
+String listOrganisms(NameListDownload l) => l.title.split(' of ').first;
+
+/// Whether a country can change [n]'s suggestion: [n]'s model has another list of the same
+/// organisms with country lists. The mammals and birds list has country lists but is one list
+/// for the whole world, so the page asks for no country there.
+bool countryPicksList(NamingDownload n, NameListCountries table) {
+  final organisms = listOrganisms(n.$2);
+  return n.$1.nameLists.where((l) => listOrganisms(l) == organisms && table.lists.containsKey(l.file.name)).length > 1;
+}
+
+/// [use] with each suggested name list replaced by the list of the same model and organisms
+/// that holds the most names of [country], and a close second inserted after it. Unchanged
+/// without a country or for lists without country lists.
 WatchUse useForCountry(WatchUse use, String? country, NameListCountries table) {
   if (country == null) return use;
   final name = <NamingDownload>[];

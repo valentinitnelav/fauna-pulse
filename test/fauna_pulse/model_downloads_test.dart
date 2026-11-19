@@ -43,6 +43,7 @@ void main() {
       'bioclip-2_pollinator-orders-europe_v3.fpack',
       'bioclip-2_flower-visitors-32fam_v1.fpack',
       'bioclip-2_mammals-birds-world_v1.fpack',
+      'bioclip-2_mammals-birds-world_v2.fpack', // round 388: replaced by v4 (country lists)
       'bioclip-2.5_pollinator-orders-europe_v1.fpack',
       'bioclip-2.5_pollinator-orders-europe_v2.fpack',
       'bioclip-2.5_flower-visitors-32fam_v1.fpack',

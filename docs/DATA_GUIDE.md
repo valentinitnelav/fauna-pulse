@@ -1560,9 +1560,10 @@ Counts for the app:
   `country` with `country_from_session` (false = chosen by hand) and `country_coverage` (the
   share of that country's own GBIF list that the name list holds), and `whole_list_reason` when
   a choice was asked for but not used: `no_country` (the session's country is not known, or no
-  country was chosen), `not_in_list` (the name list has no names for it), `short_list` (with
-  both country settings at their defaults, the country and its neighbours have under 5,000
-  names; these three are about the countries, the orders and families still narrow) or
+  country was chosen), `not_in_list` (the name list has no names for it), `short_list` (only in results made
+  with version 0.12.0-beta.1 or earlier: with both country settings at their defaults, the country and its
+  neighbours had under 5,000 names; these three are about the countries, the orders and
+  families still narrow) or
   `no_common_names` (no name is both listed for the countries and in a chosen order or family:
   the whole list was used). The run's `settings` hold what was asked for (`name_list_scope`,
   `name_list_country`: empty = the session's country; `name_list_chosen_countries`: the

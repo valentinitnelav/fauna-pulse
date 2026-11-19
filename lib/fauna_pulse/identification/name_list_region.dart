@@ -29,22 +29,22 @@ const kScopeCountries = 'countries'; // round 376: any set of countries, chosen 
 const kScopeAll = 'all';
 const kNameListScopes = [kScopeNeighbours, kScopeCountry, kScopeCountries, kScopeAll];
 
-/// A list with fewer names than this is called short. A country's list is short when few
-/// records of it reached GBIF (Romania 3,775 names of the four orders of the Europe list,
-/// Germany 16,770), and then the species in front of the camera is often missing from it, so
-/// the model has to pick a wrong name. Maintainer's choice (2026-11-15), a judgement: no data
-/// yet on how the answers get worse as a list gets shorter.
-const kShortNameList = 5000;
+// No limit for a "short" country list (round 388; until then the default used the whole list
+// below 5,000 names): a number of names cannot tell a country where few species live (an
+// island) from one where few were recorded, and it differs between groups of organisms. The
+// page shows how many names a run chooses among and how to get more, and the user decides.
 
 /// Below this share of a country's own GBIF list, the name list was made for another region
 /// (the Europe list holds 13 % of the species listed for the United States); every country
-/// of Europe is above it (lowest: Turkey, 86 %). Same status as [kShortNameList].
+/// of Europe is above it (lowest: Turkey, 86 %). Maintainer's choice (2026-11-15), a judgement.
 const kLowCountryCoverage = 0.8;
 
 /// Why a run uses the whole list although a country list was asked for.
 const kWholeNoCountry = 'no_country'; // no position, or not on land, and no country chosen
 const kWholeNotInList = 'not_in_list'; // the name list has no names for that country (or those)
-const kWholeShortList = 'short_list'; // the default choice would be a short list
+// Only in results made before round 388: the default used the whole list for a country with
+// its neighbours under 5,000 names. Kept to read those results.
+const kWholeShortList = 'short_list';
 // Round 377: no name is both listed for the countries and in a chosen order or family. Then
 // neither choice is used (there would be nothing to answer with).
 const kWholeNoCommonNames = 'no_common_names';
@@ -62,11 +62,8 @@ class NameListChoice {
   /// The rows on offer ([PackRegions.rowBits]); null = the whole list.
   final Uint8List? rowBits;
 
-  /// Names on offer (without the "none of these" entries, which are always on offer), and
-  /// the names of [countries] before the orders and families narrowed them (the same number
-  /// when [taxa] is empty).
+  /// Names on offer (without the "none of these" entries, which are always on offer).
   final int names;
-  final int countryNames;
 
   /// The settings as asked, and the country they led to (null when none was found).
   final String scope;
@@ -91,21 +88,15 @@ class NameListChoice {
     this.taxa = const [],
     required this.rowBits,
     required this.names,
-    int? countryNames,
     required this.scope,
     this.country,
     this.fromSession = false,
     this.wholeListReason,
     this.coverage,
     this.lowCoverageCountries = const [],
-  }) : countryNames = countryNames ?? names;
+  });
 
   bool get narrowed => rowBits != null;
-
-  /// The countries' list has few names (see [kShortNameList]): the page warns. Judged before
-  /// the orders and families narrow it: few names in a chosen family say nothing about how
-  /// well GBIF covers the countries.
-  bool get shortList => countries.isNotEmpty && countryNames < kShortNameList;
 
   bool get lowCoverage => lowCoverageCountries.isNotEmpty;
 
@@ -169,10 +160,8 @@ List<String> chosenTaxaOf(Map<String, dynamic> settings) {
 /// [sessionCountry], which is null when the session has no usable position) and
 /// [chosenCountries] (read only with "countries chosen by hand").
 ///
-/// The whole list is used when it is asked for, when no country is known or chosen, when the
-/// pack has no names for the country, and when nothing was chosen by hand (the default
-/// "country and its neighbours" of the session's country) and that list is short. A choice
-/// made by hand is kept also when short; the page then warns.
+/// The whole list is used when it is asked for, when no country is known or chosen, and when
+/// the pack has no names for the country.
 ///
 /// [chosenTaxa] (order and family names of [taxa], the pack's own; null: a class list) then
 /// narrow those names further, or the whole list when no country narrows. Names the pack does
@@ -203,7 +192,6 @@ NameListChoice resolveNameList(
     taxa: none ? const [] : used,
     rowBits: none ? null : bits,
     names: none ? packNames : names,
-    countryNames: none ? packNames : place.names,
     scope: scope,
     country: place.country,
     fromSession: place.fromSession,
@@ -261,9 +249,6 @@ NameListChoice _countryChoice(
   final names = PackRegions.countRows(bits);
   final coverage = own.coverage;
   if (names == 0) return whole(reason: kWholeNotInList, used: code, fromSession: !byHand, coverage: coverage);
-  if (!byHand && scope == kScopeNeighbours && names < kShortNameList) {
-    return whole(reason: kWholeShortList, used: code, fromSession: true, coverage: coverage);
-  }
   return NameListChoice(
     countries: codes,
     rowBits: bits,

@@ -1126,10 +1126,11 @@ void main() {
     expect(fixedPart(), whole);
     expect(headlines(), ['Apis mellifera', 'Apis mellifera']);
     expect(summary['name_list'], {'countries': ['BB'], 'taxa': [], 'names': 1, 'scope': kScopeCountry, 'country': 'BB', 'country_from_session': true, 'country_coverage': 1.0});
-    // The default choice (the country and its neighbours) never uses a short list: here every
-    // list is short, so the whole list is used and the reason and the country are kept.
+    // The default choice (the country and its neighbours) uses the session's country however few
+    // names it has (no limit since round 388): the same names as CC chosen by hand.
     summary = await fromSession(kScopeNeighbours, 'CC');
-    expect(summary['name_list'], {'countries': [], 'taxa': [], 'names': 4, 'scope': kScopeNeighbours, 'country': 'CC', 'country_from_session': true, 'whole_list_reason': kWholeShortList, 'country_coverage': 1.0});
+    expect(fixedPart(), whole);
+    expect(summary['name_list'], {'countries': ['CC', 'BB'], 'taxa': [], 'names': 3, 'scope': kScopeNeighbours, 'country': 'CC', 'country_from_session': true, 'country_coverage': 1.0});
     expect(headlines(), ['Eristalis tenax', 'Apis mellifera']);
     summary = await fromSession(kScopeNeighbours, null);
     expect(summary['name_list'], containsPair('whole_list_reason', kWholeNoCountry));

@@ -40,7 +40,9 @@
 //              the ones made of digits only.
 //   "regions": countries[code] = {rows: base64 of ceil(rows / 8) bytes, bit i = row i, least
 //              significant bit first; names; names_in_country}, the names GBIF lists in that
-//              country, and neighbours[code] = [codes]. Sink rows are never set.
+//              country, and neighbours[code] = [codes]. Sink rows are never set. A
+//              short_list_names field (mammals and birds v4) is not read: the app has no
+//              short-list limit (the page shows the number of names instead).
 // Idea of narrowing the names to a region: BioCLIP's documentation ("Geo-Restricted Taxon List
 // Predictions", Imageomics). The lists and the key table are built as in insect-detect-post
 // (Sittinger 2026) from GBIF.org records; the pack's own source notes name the query date.

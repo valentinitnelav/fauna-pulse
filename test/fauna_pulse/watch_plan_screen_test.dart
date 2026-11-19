@@ -110,7 +110,7 @@ void main() {
     expect(_use('flat_surface').find.map((d) => d.id), ['flatbug-n', 'flatbug-s', 'insectdct-v8s']);
     final (model, list) = _use('mammals_birds').name.single;
     expect(model.id, 'bioclip-2');
-    expect(list.file.name, 'bioclip-2_mammals-birds-world_v2.fpack');
+    expect(list.file.name, 'bioclip-2_mammals-birds-world_v4.fpack');
     expect(list.file.bytes, greaterThan(0));
     expect(list.file.sha256, matches(RegExp(r'^[0-9a-f]{64}$')));
     for (final u in _downloads.uses) {
@@ -227,7 +227,7 @@ void main() {
     await _pump(tester, _use('mammals_birds'), const ModelFilesOnPhone(), _Calls());
     expect(find.text('mdv6-yolov10c_256_w8a32.tflite'), findsOneWidget);
     expect(find.text('bioclip-2_224_fp16.tflite'), findsOneWidget);
-    expect(find.text('with bioclip-2_mammals-birds-world_v2.fpack'), findsOneWidget);
+    expect(find.text('with bioclip-2_mammals-birds-world_v4.fpack'), findsOneWidget);
     expect(find.text('A large download: use Wi-Fi.'), findsOneWidget, reason: 'BioCLIP 2 is over 600 MB');
   });
 
@@ -478,7 +478,7 @@ void main() {
       expect(find.textContaining('Choose it to get the name list made for your part of the world.'), findsOneWidget);
     });
 
-    testWidgets('no country box for a list without country lists (mammals and birds)', (tester) async {
+    testWidgets('no country box where a country cannot change the list (mammals and birds: one world list)', (tester) async {
       await _pump(tester, _use('mammals_birds'), nothing, _Calls(), country: (code: 'US', source: CountrySource.sim));
       expect(countryBox(), findsNothing);
     });

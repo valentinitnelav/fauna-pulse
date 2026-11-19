@@ -93,7 +93,7 @@ or insectDCT).
 | Name list | For model | Names | Size |
 | *Flies, bees and wasps, beetles, butterflies and moths of Europe, with country lists*, and one such list for each other continent | BioCLIP 2 | 22,358 to 56,451 (Europe 35,018) | 38 to 96 MB |
 | The same six lists | BioCLIP 2.5 | 21,765 to 56,401 (Europe 35,021) | 48 to 125 MB |
-| *Mammals and birds of the world* | BioCLIP 2 | 17,130 | 28 MB |
+| *Mammals and birds of the world, with country lists* | BioCLIP 2 | 15,326 | 26 MB |
 | *Its 104 classes* (a class list) | insectDCT classifier | 104 | 14 kB |
 
 A model can identify only with a name list made for it:
@@ -315,13 +315,17 @@ small island counts for the nearest country within 25 km. The box shows the coun
 choose another one if it is not the one you want. Disputed areas follow the borders as they
 are on the ground (the Natural Earth map), which is not always where GBIF files its records.
 
-A line under the boxes says how many names a run will choose from, and why the whole list
-is used when it is:
+A line under the boxes says how many names a run will choose from. With countries it also says
+how to get more names: tick more countries, or choose **The whole name list** (the continent for
+the insect lists, the world for mammals and birds). The model chooses among the names on offer,
+so an animal whose name is not among them gets the most similar name that is. There is no limit
+below which a country's list counts as too small: a number of names cannot tell a country where
+few species live (a small island) from one where few were recorded, so you decide. The line
+also says why the whole list is used when it is:
 
 - the session's country is not known: it has no position (most imported videos), or the
   position is far from land;
-- the name list has no names for the country;
-- with both boxes at their defaults, the country and its neighbours have under 5,000 names.
+- the name list has no names for the country.
 
 **Show these names**, under that line, opens a page with exactly these names: every name of the
 list, or only the ones your countries and groups leave. They are in alphabetical order, each
@@ -331,16 +335,10 @@ come first. Tap a name to search the web for it or to
 copy it ([Looking up a name](#looking-up-a-name)). The same page, with every name of a list,
 opens from the name list's ⓘ card on **Download & import models** (**Show the names**).
 
-A country, "The country only" or countries chosen by hand are used as they are. An amber line
-then warns when:
-
-- the countries' list has under 5,000 names (counted before **Orders and families** narrows
-  it): GBIF holds few records from there, so species that live there are probably missing, and
-  the model then has to pick a wrong name;
-- the name list holds under 80 % of the country's own GBIF list: it was made for another region
-  (with **Countries I choose**, each such country is named). For one country, the warning also
-  names the list on the phone that holds more of that country's names, or says that **Download
-  & import models** offers lists for other parts of the world.
+An amber line warns when the name list holds under 80 % of the country's own GBIF list: it was
+made for another region (with **Countries I choose**, each such country is named). For one
+country, the warning also names the list on the phone that holds more of that country's names,
+or says that **Download & import models** offers lists for other parts of the world.
 
 **Orders and families** lists the orders of the name list, each with its families under it.
 Tick whole orders, single families, or both (an order stands for all its families); nothing
@@ -908,8 +906,9 @@ overall result. A full report is in preparation.
   a session made from the photos above (2,301 track IDs: 1,276 insects and 1,025 squares without
   an insect): with the names of Germany and its neighbours (28,276 of 34,978) the shown name
   changed for 95 track IDs (76 of them reached a deeper rank, 19 a less deep one), and with the
-  310 names of Malta alone for 1,514 (791 deeper). So a short list changes most answers and
-  pushes them to deeper ranks, which is why the app warns about it. The share of "none of
+  310 names of Malta alone for 1,514 (791 deeper). So a list with few names changes most answers and
+  pushes them to deeper ranks, which is why the page shows the number of names and how to get
+  more. The share of "none of
   these", the weights, the "no organism" flags and the joined track IDs were the same for every
   choice, as designed.
 - **Orders and families chosen by hand: not tested either.** The choice follows the same rule

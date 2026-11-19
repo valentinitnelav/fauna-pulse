@@ -56,7 +56,6 @@ void main() {
       expect(c.names, _rows - 6);
       expect(c.wholeListReason, isNull);
       expect(c.label, 'all');
-      expect(c.shortList, isFalse);
     }
   });
 
@@ -72,10 +71,9 @@ void main() {
     expect(big.countries, ['BG']);
     expect(big.names, 6000);
     expect(big.fromSession, isTrue);
-    expect(big.shortList, isFalse);
     expect(big.coverage, 1);
     expect(PackRegions.countRows(big.rowBits!), 6000);
-    // A small country next to a well recorded one: together they are long enough. A neighbour
+    // A small country next to a well recorded one: the neighbour's names are added. A neighbour
     // the pack has no list for (ZZ) adds nothing.
     final small = choose(session: 'SM');
     expect(small.countries, ['SM', 'NR']);
@@ -92,31 +90,38 @@ void main() {
     });
   });
 
-  test('the default never picks a short list: the whole list is used and the reason kept', () {
+  test('the default uses the country list however few names it has (no limit since round 388)', () {
     final c = choose(session: 'AL');
-    expect(c.narrowed, isFalse);
-    expect(c.wholeListReason, kWholeShortList);
-    expect(c.country, 'AL');
+    expect(c.countries, ['AL']);
+    expect(c.names, 100);
     expect(c.fromSession, isTrue);
-    expect(c.names, _rows - 6);
-    expect(c.label, 'all');
+    expect(c.wholeListReason, isNull);
   });
 
-  test('a choice made by hand is kept also when the list is short; the page warns', () {
+  test('a choice made by hand: the country, or the country only', () {
     // The country chosen by hand.
     final byHand = choose(country: 'AL', session: 'BG');
     expect(byHand.countries, ['AL']);
     expect(byHand.names, 100);
     expect(byHand.fromSession, isFalse);
-    expect(byHand.shortList, isTrue);
     expect(byHand.wholeListReason, isNull);
     // "The country only" chosen by hand, for the session's country.
     final only = choose(scope: kScopeCountry, session: 'SM');
     expect(only.countries, ['SM']);
     expect(only.names, 100);
-    expect(only.shortList, isTrue);
     expect(only.fromSession, isTrue);
-    expect(kShortNameList, 5000);
+  });
+
+  test('a pack\'s short_list_names field (mammals and birds v4) is not read and costs nothing', () {
+    final block = {
+      'countries': {
+        'AL': {'rows': _bits(7000, 7100), 'names': 100, 'names_in_country': 104},
+      },
+      'short_list_names': 300,
+    };
+    final r = PackRegions.tryParse(block, _rows)!;
+    expect(r.countries.keys, ['AL']);
+    expect(resolveNameList(r, packNames: _rows - 6, scope: kScopeNeighbours, country: '', sessionCountry: 'AL').countries, ['AL']);
   });
 
   test('a country the name list has no names for', () {
@@ -131,7 +136,6 @@ void main() {
     final far = choose(country: 'FR');
     expect(far.coverage, 0.5);
     expect(far.lowCoverage, isTrue);
-    expect(far.shortList, isFalse);
     expect(choose(country: 'NR').lowCoverage, isFalse); // 5,200 of 5,300
     expect(kLowCountryCoverage, 0.8);
   });
@@ -152,12 +156,11 @@ void main() {
       expect(byHand(['NR']).rowBits, choose(scope: kScopeCountry, country: 'NR').rowBits);
     });
 
-    test('kept also when short, with the warning; no neighbours are added', () {
+    test('no neighbours are added', () {
       final c = byHand(['SM']);
       expect(c.countries, ['SM'], reason: 'SM\'s neighbour NR is not added');
-      expect(c.shortList, isTrue);
+      expect(c.names, 100);
       expect(c.wholeListReason, isNull);
-      expect(byHand(['SM', 'NR']).shortList, isFalse); // 5,300 names together
     });
 
     test('nothing chosen, or only countries the name list does not know: the whole list and why', () {
@@ -229,12 +232,10 @@ void main() {
       final c = pick(['Syrphidae', 'Hymenoptera']);
       expect(c.taxa, ['Hymenoptera', 'Syrphidae'], reason: 'alphabetical, whatever the order of the choice');
       expect(c.names, 50 + 2994);
-      expect(c.countryNames, _rows - 6);
       expect(c.narrowed, isTrue);
       expect(c.countries, isEmpty);
       expect(c.label, 'all');
       expect(c.taxaLabel, 'Hymenoptera+Syrphidae');
-      expect(c.shortList, isFalse, reason: 'few names of a family say nothing about a country\'s records');
       expect(c.toJson(), {'countries': [], 'taxa': ['Hymenoptera', 'Syrphidae'], 'names': 3044, 'scope': kScopeAll});
       // A family of a chosen order adds nothing.
       expect(pick(['Hymenoptera', 'Apidae']).names, 2994);
@@ -247,25 +248,20 @@ void main() {
       expect(c.countries, ['BG']);
       expect(c.taxa, ['Hymenoptera']);
       expect(c.names, 1000);
-      expect(c.countryNames, 6000);
-      expect(c.shortList, isFalse, reason: 'the country\'s own list is long enough');
       expect(c.toJson(), {'countries': ['BG'], 'taxa': ['Hymenoptera'], 'names': 1000, 'scope': kScopeCountry, 'country': 'BG', 'country_from_session': false, 'country_coverage': 1.0});
-      // A short country list stays short, and is judged before the orders and families.
       final small = pick(['Syrphidae'], scope: kScopeCountries, countries: ['SM']);
       expect(small.names, 50);
-      expect(small.countryNames, 100);
-      expect(small.shortList, isTrue);
       // The warning about a list made for another region stays the countries'.
       expect(pick(['Diptera'], scope: kScopeCountry, country: 'FR').lowCoverageCountries, ['FR']);
     });
 
-    test('the default never picks a short country list; the orders and families still narrow', () {
-      final c = pick(['Apidae'], scope: kScopeNeighbours, session: 'AL');
-      expect(c.wholeListReason, kWholeShortList);
-      expect(c.countries, isEmpty);
+    test('the default (the session\'s country and its neighbours) with orders and families: both narrow', () {
+      // SM with its neighbour NR lists the rows 0 .. 5,299, so all of Apidae.
+      final c = pick(['Apidae'], scope: kScopeNeighbours, session: 'SM');
+      expect(c.wholeListReason, isNull);
+      expect(c.countries, ['SM', 'NR']);
       expect(c.taxa, ['Apidae']);
       expect(c.names, 100);
-      expect(c.narrowed, isTrue);
     });
 
     test('no name in both choices: neither is used, with the reason', () {
@@ -279,7 +275,6 @@ void main() {
       expect(c.taxa, isEmpty);
       expect(c.label, 'all');
       expect(c.taxaLabel, 'all');
-      expect(c.shortList, isFalse);
     });
 
     test('names this name list does not have are left out; a class list has no such choice', () {

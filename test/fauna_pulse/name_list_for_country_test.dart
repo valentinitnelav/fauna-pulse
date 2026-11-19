@@ -44,7 +44,25 @@ void main() {
         'bioclip-2_pollinator-orders-asia_v1.fpack');
     // No country, or a list without country lists: as the catalogue says.
     expect(_lists(useForCountry(_use('pollinators'), null, _table)), _lists(_use('pollinators')));
-    expect(_lists(useForCountry(_use('mammals_birds'), 'US', _table)), ['bioclip-2_mammals-birds-world_v2.fpack']);
+  });
+
+  test('only lists of the same organisms compete', () {
+    // The insect lists hold more names of most countries than the mammals and birds list.
+    for (final country in ['DE', 'US', 'KE', 'FJ']) {
+      expect(_lists(useForCountry(_use('mammals_birds'), country, _table)), ['bioclip-2_mammals-birds-world_v4.fpack'], reason: country);
+    }
+    // And the reverse: an island where birds are better recorded than insects.
+    final pollinators = [for (final c in _table.countries) _lists(useForCountry(_use('pollinators'), c, _table)).first];
+    expect(pollinators.where((l) => l.contains('mammals')), isEmpty);
+    // Every list with country lists has a title "<organisms> of <region>".
+    for (final m in _downloads.identification) {
+      for (final l in m.nameLists) {
+        if (_table.lists.containsKey(l.file.name)) expect(l.title, contains(' of '), reason: l.file.name);
+      }
+    }
+    expect(listOrganisms(_use('mammals_birds').name.first.$2), 'Mammals and birds');
+    expect(countryPicksList(_use('mammals_birds').name.first, _table), isFalse, reason: 'one list for the world');
+    expect(countryPicksList(_use('pollinators').name.first, _table), isTrue);
   });
 
   test('near a continent border a list with almost as many names comes right after the best', () {

@@ -34,7 +34,7 @@ On Home, tap **AI models** at the bottom (screen *Download & import models*) and
 - **insectDCT detector** (19 MB): finds insects on flowers. For the bee video.
 - **MegaDetector V6** (2.5 MB): finds mammals and birds. For the deer video.
 - **BioCLIP 2** (609 MB), with the name lists *Flies, bees and wasps, beetles, butterflies and
-  moths of Europe* (57 MB) and *Mammals and birds of the world* (28 MB).
+  moths of Europe* (57 MB) and *Mammals and birds of the world* (26 MB).
 
 BioCLIP 2 is large: use Wi-Fi. After this, FaunaPulse needs no internet.
 
