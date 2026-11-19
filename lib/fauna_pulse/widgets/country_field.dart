@@ -14,10 +14,10 @@
 // A tap outside the field and its menu takes the focus away (so the choice shows again and the
 // keyboard closes): on phones Flutter's text fields keep the focus on such a tap. The TapRegion
 // shares the menu's group (its MenuController), so a tap on a menu entry counts as inside.
-// The field rebuilds when the keyboard opens or closes: Flutter's menu places itself again only
-// when the field moves or its entries change, not when the keyboard comes up after it opened, so
-// on a Redmi Note 9S (field low on the page) the matching countries stayed under the keyboard.
-// The rebuild re-places it above the field.
+// Flutter's menu places itself again only when the field moves or its rows are replaced, not
+// when the keyboard comes up after it opened, so on a Redmi Note 9S (field low on the page) the
+// matching countries stayed under the keyboard. So once the keyboard has stopped moving, an open
+// menu gets its entries as a new list, which replaces its rows and places it above the field.
 // Round 387 (Samsung M12): a pick takes the focus away too. Without that, the field kept it on a
 // page that keeps this widget after a pick ("What do you want to watch?"), so the next tap neither
 // emptied the field nor scrolled it above the keyboard; on Identify organisms the page rebuilds
@@ -27,7 +27,15 @@
 // that refuses Back makes every PopScope of the page hear "Back refused", and Identify organisms
 // then asked whether to stop an identification that was not running (Redmi Note 9S).
 // The field is drawn like the app's other dropdowns (an underline): DropdownMenu draws a frame.
+// Round 389: the entries are made once, and a new list goes to the menu only that one time after
+// the keyboard moved. DropdownMenu builds a row for every entry, not only the visible ones, and a
+// new list makes it replace all of them; until then that happened at every build, also at every
+// frame of the keyboard's slide, and the first tap on the field froze a debug build for more than
+// a second on a Xiaomi 11T Pro (a profile build, as fast as the app on Google Play: 0.8 s).
 
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../identification/country_names.dart';
@@ -42,9 +50,6 @@ class CountryField extends StatefulWidget {
 
   /// Entries before the countries (value, text), for example "Where the session was recorded".
   final List<(String, String)> extra;
-
-  /// How a country is shown in the list (its name by default).
-  final String Function(String code) labelOf;
   final String label;
   final String? helperText;
 
@@ -58,7 +63,6 @@ class CountryField extends StatefulWidget {
     required this.label,
     required this.onChanged,
     this.extra = const [],
-    this.labelOf = countryName,
     this.helperText,
   });
 
@@ -79,18 +83,44 @@ class _CountryFieldState extends State<CountryField> with WidgetsBindingObserver
   /// of leaving the page.
   LocalHistoryEntry? _backEntry;
 
+  /// The menu's entries and their folded search texts, made again only when the countries or
+  /// the extra entries change (see the top of the file).
+  late List<DropdownMenuEntry<String>> _entries;
+  late Map<String, String> _search;
+
+  /// Runs once the keyboard has stopped moving (see the top of the file).
+  Timer? _keyboardMoved;
+
+  void _makeEntries() {
+    _entries = [
+      for (final (v, t) in widget.extra) DropdownMenuEntry(value: v, label: t),
+      for (final c in widget.codes) DropdownMenuEntry(value: c, label: countryName(c)),
+    ];
+    _search = {
+      for (final c in widget.codes) c: foldForSearch(countrySearchText(c)),
+      for (final (v, t) in widget.extra) v: foldForSearch(t),
+    };
+  }
+
+  @override
+  void didUpdateWidget(CountryField old) {
+    super.didUpdateWidget(old);
+    if (!listEquals(old.codes, widget.codes) || !listEquals(old.extra, widget.extra)) _makeEntries();
+  }
+
   String? get _chosenText {
     final v = widget.value;
     if (v == null) return null;
     for (final (ev, t) in widget.extra) {
       if (ev == v) return t;
     }
-    return widget.codes.contains(v) ? widget.labelOf(v) : null;
+    return widget.codes.contains(v) ? countryName(v) : null;
   }
 
   @override
   void initState() {
     super.initState();
+    _makeEntries();
     WidgetsBinding.instance.addObserver(this);
     _focus.addListener(() {
       if (_focus.hasFocus) {
@@ -123,12 +153,16 @@ class _CountryFieldState extends State<CountryField> with WidgetsBindingObserver
 
   @override
   void didChangeMetrics() {
-    // The keyboard opened or closed: the menu must be placed again (see the top of the file).
-    if (mounted) setState(() {});
+    // Called at every frame of the keyboard's slide: wait until it has stopped.
+    _keyboardMoved?.cancel();
+    _keyboardMoved = Timer(const Duration(milliseconds: 150), () {
+      if (mounted && _menu.isOpen) setState(() => _entries = [..._entries]);
+    });
   }
 
   @override
   void dispose() {
+    _keyboardMoved?.cancel();
     _dropBackEntry();
     WidgetsBinding.instance.removeObserver(this);
     _focus.dispose();
@@ -139,11 +173,7 @@ class _CountryFieldState extends State<CountryField> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     final w = widget;
-    final codes = w.codes, extra = w.extra, labelOf = w.labelOf, value = w.value, onChanged = w.onChanged;
-    final search = {
-      for (final c in codes) c: foldForSearch(countrySearchText(c)),
-      for (final (v, t) in extra) v: foldForSearch(t),
-    };
+    final value = w.value, onChanged = w.onChanged, search = _search;
     return TapRegion(
       groupId: _menu,
       onTapOutside: (_) {
@@ -171,10 +201,7 @@ class _CountryFieldState extends State<CountryField> with WidgetsBindingObserver
         // country found by another name ("Turkey") and is not the best match.
         searchCallback: (entries, filter) => filter.trim().isEmpty || entries.isEmpty ? null : 0,
         trailingIcon: const Icon(Icons.arrow_drop_down),
-        dropdownMenuEntries: [
-          for (final (v, t) in extra) DropdownMenuEntry(value: v, label: t),
-          for (final c in codes) DropdownMenuEntry(value: c, label: labelOf(c)),
-        ],
+        dropdownMenuEntries: _entries,
         onSelected: (v) {
           _picked = v != null && _focus.hasFocus;
           _focus.unfocus();

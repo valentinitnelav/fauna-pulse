@@ -125,9 +125,23 @@ void main() {
     // The open country list, with a very long country name, fits too.
     await tester.tap(find.byKey(const ValueKey('name list country  false')));
     await tester.pumpAndSettle();
-    expect(find.text('Germany (6,000 names)'), findsOneWidget);
+    // Names only (round 389): the one number of names is in the line under the boxes.
+    expect(find.text('Germany'), findsOneWidget);
+    expect(find.textContaining('names)'), findsNothing);
     expect(find.textContaining('South Georgia and the South Sandwich Islands'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the country box keeps its entries when the page is drawn again (r389)', (tester) async {
+    final prefs = IdentifyPrefs();
+    await pump(tester, prefs, sessionCountry: 'DE');
+    List<DropdownMenuEntry<String>> entries() => tester.widget<DropdownMenu<String>>(find.byType(DropdownMenu<String>)).dropdownMenuEntries;
+    final before = entries();
+    expect(before.map((e) => e.label), containsAll(['Where the session was recorded (Germany)', 'Austria', 'Germany', 'Iceland']));
+    await choose(tester, 'name list scope', 'The country only');
+    expect(find.textContaining('names of Germany only'), findsOneWidget);
+    // A new list of entries makes the menu replace every row (a freeze on the first tap).
+    expect(identical(entries(), before), isTrue);
   });
 
   testWidgets('the session\'s country with its neighbours is used by default', (tester) async {
@@ -146,8 +160,9 @@ void main() {
     expect(prefs.nameListCountry, '');
     expect(find.text('A run chooses among the 6,000 names of Germany only (of 7,994 in the list).$_moreCountry'), findsOneWidget);
 
-    await choose(tester, 'name list country  false', 'Iceland (100 names)');
+    await choose(tester, 'name list country  false', 'Iceland');
     expect(prefs.nameListCountry, 'IS');
+    expect(find.textContaining('(100 names)'), findsNothing, reason: 'the chosen country shows by name only');
     expect(prefs.nameListScope, kScopeCountry);
     expect(find.text('A run chooses among the 100 names of Iceland only (of 7,994 in the list).$_moreCountry'), findsOneWidget);
     // However few names: no warning, the hint says how to get more (round 388).
@@ -171,9 +186,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(box, 'ICE');
     await tester.pumpAndSettle();
-    expect(find.text('Iceland (100 names)'), findsWidgets);
-    expect(find.text('Austria (5,200 names)'), findsNothing);
-    await tester.tap(find.text('Iceland (100 names)').last);
+    expect(find.text('Iceland'), findsWidgets);
+    expect(find.text('Austria'), findsNothing);
+    await tester.tap(find.text('Iceland').last);
     await tester.pumpAndSettle();
     expect(prefs.nameListCountry, 'IS');
   });
@@ -216,6 +231,9 @@ void main() {
     await tester.tap(find.byType(TextField));
     await tester.pumpAndSettle();
     tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pumpAndSettle();
+    // Placed again once the keyboard has stopped moving (r389), not at every frame of its slide.
+    await tester.pump(const Duration(milliseconds: 200));
     await tester.pumpAndSettle();
     final entries = find.byType(MenuItemButton).hitTestable();
     expect(entries, findsWidgets);
@@ -379,19 +397,20 @@ void main() {
       expect(find.text('No country is chosen yet, so a run chooses among all 7,994 names. Tap "Countries" above to choose.'), findsOneWidget);
       expect(find.byType(CountryField), findsNothing, reason: 'the single-country box is replaced');
 
-      // Every country of the list is offered, by name with its number of names.
+      // Every country of the list is offered, by name, with its number of names under it (r389).
       await openWindow(tester);
       expect(find.widgetWithText(AlertDialog, 'Countries'), findsOneWidget);
       expect(find.text('0 ticked'), findsOneWidget);
-      expect(find.text('Austria (5,200 names)'), findsOneWidget);
+      expect(find.text('Austria'), findsOneWidget);
+      expect(find.text('5,200 names'), findsOneWidget);
       expect(find.textContaining('South Georgia and the South Sandwich Islands'), findsOneWidget);
       expect(tester.takeException(), isNull);
       // The search narrows the entries, whatever the case of the letters.
       await tester.enterText(_windowSearch, 'LAND');
       await tester.pump();
-      expect(find.text('Iceland (100 names)'), findsOneWidget);
-      expect(find.text('Austria (5,200 names)'), findsNothing);
-      await tester.tap(find.text('Iceland (100 names)'));
+      expect(find.text('Iceland'), findsOneWidget);
+      expect(find.text('Austria'), findsNothing);
+      await tester.tap(find.text('Iceland'));
       await tester.pump();
       expect(find.text('1 ticked'), findsOneWidget);
       await tester.enterText(_windowSearch, 'xyz');
@@ -399,7 +418,7 @@ void main() {
       expect(find.text('Nothing found.'), findsOneWidget);
       await tester.tap(find.byTooltip('Clear the search'));
       await tester.pump();
-      await tester.tap(find.text('Austria (5,200 names)'));
+      await tester.tap(find.text('Austria'));
       await tester.pump();
       expect(find.text('2 ticked'), findsOneWidget);
       expect(prefs.nameListChosenCountries, isEmpty, reason: 'nothing is saved before "Use these"');
@@ -421,7 +440,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(prefs.nameListChosenCountries, ['AT', 'IS']);
       await openWindow(tester);
-      await tester.tap(find.text('Germany (6,000 names)'));
+      await tester.tap(find.text('Germany'));
       await tester.tap(find.byTooltip('Close'));
       await tester.pumpAndSettle();
       expect(prefs.nameListChosenCountries, ['AT', 'IS']);

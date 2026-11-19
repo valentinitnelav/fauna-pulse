@@ -297,8 +297,8 @@ only some groups, **Orders and families** leaves only their names:
 | Control | Default | Choices |
 |---|---|---|
 | **Names from** | The country and its neighbours | **The country and its neighbours**, **The country only**, **Countries I choose**, **The whole name list** |
-| **Country** | Where the session was recorded | or one country chosen by hand (listed with its number of names; typing narrows the list) |
-| **Countries** (with **Countries I choose**) | none | any countries of the name list, ticked in a window with a search box |
+| **Country** | Where the session was recorded | or one country chosen by hand (listed by name; typing narrows the list) |
+| **Countries** (with **Countries I choose**) | none | any countries of the name list, ticked in a window with a search box (each with its number of names) |
 | **Orders and families** | All | any orders and families of the name list, ticked in a window with a search box |
 
 The first three show only for a name list with country lists; **Orders and families** shows

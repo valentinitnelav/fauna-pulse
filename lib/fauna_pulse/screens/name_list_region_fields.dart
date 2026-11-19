@@ -209,7 +209,6 @@ class NameListRegionFields extends StatelessWidget {
   /// "Names from" and the country, or the countries chosen by hand.
   List<Widget> _countryBoxes(BuildContext context, PackRegions regions) {
     final codes = regions.countries.keys.toList()..sort((a, b) => countryName(a).compareTo(countryName(b)));
-    String withNames(String c) => '${countryName(c)} (${thousands(PackRegions.countRows(regions.countries[c]!.bits))} names)';
     final wholeList = prefs.nameListScope == kScopeAll;
     final byHand = prefs.nameListScope == kScopeCountries;
     // The chosen countries this list knows, by name (the others add nothing to a run).
@@ -241,7 +240,18 @@ class NameListRegionFields extends StatelessWidget {
               context,
               title: 'Countries',
               searchHint: 'Search a country',
-              items: [for (final c in codes) PickItem(c, withNames(c), searchText: countrySearchText(c))],
+              // Round 389: the number of names on a second line, as in "Orders and families". The
+              // country box has none: one number for a run (the line under the boxes) is clearer
+              // than a country's own number next to it, which with its neighbours is not that of a run.
+              items: [
+                for (final c in codes)
+                  PickItem(
+                    c,
+                    countryName(c),
+                    detail: '${thousands(PackRegions.countRows(regions.countries[c]!.bits))} names',
+                    searchText: countrySearchText(c),
+                  ),
+              ],
               chosen: prefs.nameListChosenCountries,
             );
             // Saved in the order of the codes: the same set is always the same saved value.
@@ -263,7 +273,6 @@ class NameListRegionFields extends StatelessWidget {
           key: ValueKey('name list country ${prefs.nameListCountry} $wholeList'),
           value: regions.countries.containsKey(prefs.nameListCountry) ? prefs.nameListCountry : '',
           codes: codes,
-          labelOf: withNames,
           label: 'Country',
           helperText: wholeList ? 'Not used with the whole name list.' : null,
           extra: [

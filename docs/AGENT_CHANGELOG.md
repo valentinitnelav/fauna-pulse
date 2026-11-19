@@ -1,18 +1,16 @@
-# FaunaPulse (renamed from "Pollinator Monitor") — Building a Field Ecology Tool on the Ultralytics YOLO Flutter Plugin
+# FaunaPulse - Building a Field Ecology Tool on the Ultralytics YOLO Flutter Plugin
 
-> **For the current state at a glance, read [`AGENT_CHANGELOG_OVERVIEW.md`](AGENT_CHANGELOG_OVERVIEW.md)
-> first** (a short living snapshot: current defaults, file map, key invariants, device
-> quirks). **This** file is the full append-only history — open it when you need the
-> round-by-round narrative or the rationale behind a past decision.
+**For the current state at a glance, read [`AGENT_CHANGELOG_OVERVIEW.md`](AGENT_CHANGELOG_OVERVIEW.md)**
+(a snapshot: current defaults, file map, key invariants, device quirks).
+**This** file is the full append-only history — open it only when you need the
+round-by-round narrative or the rationale behind a past decision.
 
 This document records, transparently and in full, how the **FaunaPulse**
 Android application was built on top of the open-source
 [`ultralytics/yolo-flutter-app`](https://github.com/ultralytics/ultralytics-yolo-flutter)
-plugin, using **Claude Code** (Anthropic's agentic coding assistant) driven by a
-field ecologist with statistical/R/Python experience but no prior app-development
-background.
+plugin, using **Claude Code** (Anthropic's agentic coding assistant).
 
-Important note on app name: Initially this app was called "Pollinator Monitor" and it was
+Initially this app was called "Pollinator Monitor" and it was
 renamed to FaunaPulse on 2026-07-14. The older name was not changed everywhere in this 
 file so that the history of changes stays unaltered.
 
@@ -10531,4 +10529,7 @@ Asked: check rounds 385 and 386 on the Samsung M12, then fix what was found and 
 
 ## Round 388 (2026-11-19): mammals and birds v4 with country lists
 Asked: v4 in the catalogue in place of v2, clearer short-list messages (the owner chose no limit at all), the outdated device check fixed and run on the Redmi Note 9S. Open: people named Homo sapiens, to check with a session that has people in it.
+
+## Round 389 (2026-11-19): country box by name only, and a faster first tap
+Asked: no number of names next to the chosen country (one number on the page, in the line under the boxes), and why searching countries was slow on the Xiaomi 11T Pro. Open: the menu still builds all 250 rows at its first opening (about 0.45 s on a Samsung M12); a lazily built list needs a new country box.
 

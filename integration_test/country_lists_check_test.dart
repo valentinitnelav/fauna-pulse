@@ -220,8 +220,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(field, countryName(code));
     await tester.pumpAndSettle();
-    final item = find.textContaining(RegExp('^${RegExp.escape(countryName(code))} \\('));
-    await tester.tap(item.last);
+    // The entry of the open list (round 389: names only, as in the box itself).
+    final item = find.descendant(of: find.byType(MenuItemButton), matching: find.text(countryName(code)));
+    await tester.tap(item.first);
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(used, 80, scrollable: list);
     await tester.pump(const Duration(milliseconds: 500));
@@ -251,7 +252,7 @@ void main() {
     await tester.pumpAndSettle();
     _log('SHOT country_lists_window');
     await tester.pump(const Duration(seconds: 6));
-    await tester.tap(find.textContaining(RegExp('^${RegExp.escape(countryName(small))} \\(')).first);
+    await tester.tap(find.widgetWithText(CheckboxListTile, countryName(small)).first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Use these'));
     await tester.pumpAndSettle();
