@@ -10543,3 +10543,8 @@ Asked: follow the owner's new rule from fauna-pulse-models (speeds only as measu
 phones) in the model notes, with no numbers on screen. Open: the MegaDetector card edits in
 fauna-pulse-models are not committed there yet.
 
+## Round 392 (2026-11-20): detection models grouped by model
+Asked: after seeing rounds 390 and 391 on a phone, keep "Choose other models" short (no sentence
+on speed, insectDCT not read as a flat-bug file) and group the detection models by model on
+Download & import models.
+

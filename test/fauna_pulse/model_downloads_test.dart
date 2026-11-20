@@ -55,8 +55,8 @@ void main() {
     for (final d in c.detectorOffers.where((d) => d.id.startsWith('mdv6'))) {
       expect(d.fileNote, isNotNull, reason: d.file!.name);
     }
-    // Families (round 390): the watch page shows a family's purpose once, from its first file,
-    // so the models of one family must share it.
+    // Families (round 390): Download & import models shows a family's purpose once, under its
+    // heading (round 392), so the models of one family must share it.
     expect({for (final d in c.detectorOffers) d.id: d.family}, {
       'mdv6-yolov10c': 'MegaDetector V6',
       'mdv6-yolov10e': 'MegaDetector V6',

@@ -350,7 +350,8 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   only by `_unpack` (never package:archive's `ZipDecoder`). `.fpack` headers are checked before
   `jsonDecode`.
 - **Download & import models** (`models_screen.dart`) is the only place to import, download and
-  delete model files and name lists; one list per kind, by file name (`fileNameOrder`).
+  delete model files and name lists; one list per kind, by file name (`fileNameOrder`), the
+  detectors under the heading of their model (`ModelDownload.groupName`).
 - Renaming a published model file needs a line in `kFormerModelNames` (files and saved choices
   are renamed at app start).
 - The "What do you want to watch?" pages (`watch_plan_screen.dart`) choose a detector and a

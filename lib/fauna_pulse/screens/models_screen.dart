@@ -88,6 +88,15 @@
 // Round 324 (owner): the same link on the cards of detection and
 // identification models, on the phone or to download, as their last row; it
 // and the link to all models show a name, not the address.
+//
+// Round 392 (owner, after the four MegaDetector V6 files of round 390 came in):
+// the detection models are grouped by model. Each family (MegaDetector V6,
+// flat-bug) or model alone (insectDCT detector) has a heading with its purpose
+// once, and its files follow by file name, each with its own short note; files
+// the app's list does not know come last. The headings are the same as in the
+// fold of the "What do you want to watch?" pages, which leaves the purpose out
+// and sends here for the details. Identification models were already grouped
+// (a model with its name lists under it).
 
 import 'dart:io';
 
@@ -937,7 +946,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
     if (d != null) ...[
       ('Model', d.title),
       ('Use', d.purpose),
-      if ((d.file?.name == fileName ? d.noteOfFile : d.note) case final note?) ('Note', note),
+      if (_noteFor(d, fileName) case final note?) ('Note', note),
     ],
   ];
 
@@ -948,6 +957,17 @@ class _ModelsScreenState extends State<ModelsScreen> {
   /// compare and stays.
   static T? _sameFile<T>(T? listed, DownloadFile? file, String fileName, int? size) =>
       file != null && file.name == fileName && size != null && size != file.bytes ? null : listed;
+
+  /// The note of [d] for the file [fileName]: the note of that very file, or the model's note
+  /// for another file of the model (found by its name's first part).
+  static String? _noteFor(ModelDownload d, String fileName) => d.file?.name == fileName ? d.noteOfFile : d.note;
+
+  /// The detection model of the app's list that the phone's detector [m] belongs to, if its
+  /// details can be shown for it (see [_sameFile]).
+  static ModelDownload? _listedDetector(ModelEntry m, ModelsInventory inv) {
+    final listed = inv.downloads.modelFor(m.name);
+    return _sameFile(listed, listed?.file, m.name, inv.sizes[m.id]);
+  }
 
   static const _otherFileNote = (
     'Note',
@@ -1169,18 +1189,16 @@ class _ModelsScreenState extends State<ModelsScreen> {
     for (final (_, r) in rows..sort((a, b) => fileNameOrder(a.$1, b.$1))) ...r,
   ];
 
-  Widget _detectorTile(ModelEntry m, ModelsInventory inv) {
+  Widget _detectorTile(ModelEntry m, ModelsInventory inv, ModelDownload? listed) {
     final wrong = inv.wrongKind[m.id];
     final task = inv.unsupportedTask[m.id];
-    // A file the list no longer offers shows its note under its name, as a former name list does.
-    final listed = inv.downloads.modelFor(m.name);
-    final former = _sameFile(listed, listed?.file, m.name, inv.sizes[m.id]);
     return _tile(
       kDetectionIcon,
       m.name,
       () => _detectorCard(m, inv),
       path: m.source == ModelSource.imported ? m.id : null,
-      note: former != null && former.former && former.file!.name == m.name ? former.noteOfFile : null,
+      // The same note as the file to download (round 392); for a file no longer offered, why.
+      note: listed == null ? null : _noteFor(listed, m.name),
       warning: wrong != null
           ? _wrongKindText(wrong, ModelFileKind.detection)
           : task == null
@@ -1189,26 +1207,44 @@ class _ModelsScreenState extends State<ModelsScreen> {
     );
   }
 
-  /// Every detection model, on the phone or to download, in one list.
+  /// Every detection model, on the phone or to download, under the heading of its model (round
+  /// 392, owner): its family or its own name ([ModelDownload.groupName]) with its purpose once,
+  /// then its files by file name, those on the phone and those to download together (round 317).
+  /// The headings by name; files the app's list does not know last, under "Other models on this
+  /// phone" (also a file kept with the wrong kind, which a heading of identification models
+  /// would mislabel).
   List<Widget> _detectorRows(ModelsInventory inv) {
     final onPhone = inv.onPhone;
-    return _byFileName([
-      for (final m in inv.detectors) (m.name, [_detectorTile(m, inv)]),
-      for (final d in inv.downloads.detectorOffers)
-        if (!onPhone.contains(d.file!.name))
-          (
-            d.file!.name,
-            [
-              _offerTile(
-                kDetectionIcon,
-                d.file!.name,
-                '${d.title}, ${formatBytes(d.file!.bytes)}',
-                () => _offerCard(d),
-                () => _get(d),
-              ),
-            ],
-          ),
-    ]);
+    final groups = <String?, List<(String, Widget)>>{};
+    final purposes = <String, String>{};
+    void add(ModelDownload? d, String name, Widget row) {
+      final key = d?.groupName;
+      if (d != null) purposes.putIfAbsent(d.groupName, () => d.purpose);
+      (groups[key] ??= []).add((name, row));
+    }
+
+    for (final m in inv.detectors) {
+      final d = _listedDetector(m, inv);
+      final group = d != null && !d.identification && inv.wrongKind[m.id] == null ? d : null;
+      add(group, m.name, _detectorTile(m, inv, group));
+    }
+    for (final d in inv.downloads.detectorOffers) {
+      if (onPhone.contains(d.file!.name)) continue;
+      final size = formatBytes(d.file!.bytes);
+      final details = [?_noteFor(d, d.file!.name), size].join('\n');
+      add(d, d.file!.name, _offerTile(kDetectionIcon, d.file!.name, details, () => _offerCard(d), () => _get(d)));
+    }
+    List<Widget> files(List<(String, Widget)> rows) => [
+      for (final (_, r) in rows..sort((a, b) => fileNameOrder(a.$1, b.$1))) r,
+    ];
+    final headings = groups.keys.nonNulls.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return [
+      for (final h in headings) ...[ModelGroupHeading(h, purpose: purposes[h]), ...files(groups[h]!)],
+      if (groups[null] case final other?) ...[
+        if (headings.isNotEmpty) const ModelGroupHeading('Other models on this phone'),
+        ...files(other),
+      ],
+    ];
   }
 
   /// Every identification model, on the phone or to download, in one list,

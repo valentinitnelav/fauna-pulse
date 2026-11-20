@@ -125,7 +125,11 @@ Open it from **Home**: **AI models** in the bottom bar, or **Menu** → **Downlo
 models**. The Identify screen has a link to it too (**Download & import models…**).
 
 - The screen has two lists: **Detection models** (find animals and draw a box around each one) and
-  **Identification models** (name what is inside each box). Each list is sorted by file name.
+  **Identification models** (name what is inside each box). Under **Detection models**, each
+  model has a heading with what it is for: a model with several files, such as MegaDetector V6
+  or flat-bug, has one heading for all of them, and each file says how it differs. Your own
+  files are last, under **Other models on this phone**. **Identification models** lists each
+  model with its name lists under it. Both lists are sorted by name.
   A file on the phone has a green **On this phone** mark. Each file that is not on the phone has
   its own **Download** button.
 - **Name lists without their model** lists name lists whose model is not on this phone. They

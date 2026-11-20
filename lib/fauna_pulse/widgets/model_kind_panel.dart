@@ -42,6 +42,32 @@ class OnThisPhoneLine extends StatelessWidget {
   );
 }
 
+/// The heading above the files of one model inside a [ModelKindPanel] (round 392, owner): the
+/// family name or the model's own name (`ModelDownload.groupName`), or "Other models on this
+/// phone". The same on "Choose other models" and on Download & import models; only Download &
+/// import models gives the [purpose] under it (the fold stays short, the details are there).
+class ModelGroupHeading extends StatelessWidget {
+  final String title;
+  final String? purpose;
+
+  const ModelGroupHeading(this.title, {super.key, this.purpose});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          header: true,
+          child: Text(title, style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
+        ),
+        if (purpose case final p?) Text(p, style: helperTextStyle),
+      ],
+    ),
+  );
+}
+
 class ModelKindPanel extends StatelessWidget {
   final bool identification;
 

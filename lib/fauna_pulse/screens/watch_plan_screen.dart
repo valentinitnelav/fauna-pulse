@@ -45,6 +45,12 @@
 // (identification/name_list_for_country.dart: the guess and the rule); a
 // country box in "Suggested AI models" shows where the country came from and
 // lets the user choose another one.
+// Round 392 (owner, after rounds 390 and 391 on a phone): the fold stays short.
+// Each detection model has a heading (its family, such as MegaDetector V6, or
+// its own name), and under it only its files with their short note and size:
+// with headings for families only, insectDCT read as a third flat-bug file. No
+// purpose lines and no sentence on what a slower file means; the details are
+// on Download & import models, grouped the same way, which the link names.
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -484,45 +490,9 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     ),
   );
 
-  /// What a slower detection file means (rounds 390 and 391, owner: no speed numbers and no
-  /// kinds of phones on screen, because other phones, settings and app versions give other
-  /// times; the times measured on named test phones are on each model card).
-  static const _slowerNote =
-      'A slower file checks fewer pictures per second on the camera screen ("det … fps") and '
-      'can warm the phone more. In videos checked afterwards it only takes longer.';
-
-  /// For each of [find]: the first file of the run of two or more files of one family in a row
-  /// (round 390: MegaDetector V6 c and e at 320 and 640 px, flat-bug n and s), whose family name
-  /// and purpose head the run, so the files read as options of one model; null for a file
-  /// shown alone.
-  static List<ModelDownload?> _familyHeads(List<ModelDownload> find) {
-    bool same(int a, int b) => a >= 0 && b < find.length && find[a].family != null && find[a].family == find[b].family;
-    final heads = <ModelDownload?>[];
-    for (var i = 0; i < find.length; i++) {
-      heads.add(same(i - 1, i) ? heads[i - 1] : (same(i, i + 1) ? find[i] : null));
-    }
-    return heads;
-  }
-
-  Widget _familyHeading(ModelDownload d) => Padding(
-    padding: const EdgeInsets.only(top: 8),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Semantics(
-          header: true,
-          child: Text(d.family!, style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
-        ),
-        Text(d.purpose, style: helperTextStyle),
-      ],
-    ),
-  );
-
-  /// Above the models of a kind that the phone has besides the suggestions.
-  Widget _otherOnPhone() => const Padding(
-    padding: EdgeInsets.only(top: 8),
-    child: Text('Other models on this phone', style: helperTextStyle),
-  );
+  /// Above the models of a kind that the phone has besides the suggestions: a heading as for
+  /// the suggested models (round 392).
+  Widget _otherOnPhone() => const ModelGroupHeading('Other models on this phone');
 
   /// Every suggestion of this answer and every other model on the phone, to
   /// choose another one.
@@ -530,7 +500,6 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     final use = _use;
     final otherDetectors = _otherDetectors;
     final otherNamings = _otherNamings;
-    final heads = _familyHeads(use.find);
     return Theme(
       // No lines above and below the fold.
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -545,15 +514,13 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
           ModelKindPanel(
             identification: false,
             title: 'To find the animals',
-            subtitle: use.find.length + otherDetectors.length > 1 ? _slowerNote : null,
             children: [
               for (final (i, d) in use.find.indexed) ...[
-                if (heads[i] case final h? when identical(h, d)) _familyHeading(h),
+                if (i == 0 || use.find[i - 1].groupName != d.groupName) ModelGroupHeading(d.groupName),
                 _choice(
                   chosen: d.file!.name == _find,
                   title: d.file!.name,
-                  // Under its family's heading only the note, which says how the file differs.
-                  lines: [if (heads[i]?.purpose != d.purpose) d.purpose, ?d.noteOfFile],
+                  lines: [?d.noteOfFile],
                   size: _sizeLine([d.file!]),
                   onTap: () => setState(() => _find = d.file!.name),
                 ),
@@ -606,7 +573,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
                       await _reload();
                     },
               icon: const Icon(Icons.download, size: 18),
-              label: const Text('More models: Download & import models'),
+              label: const Text('Details and more models: Download & import models'),
             ),
           ),
         ],

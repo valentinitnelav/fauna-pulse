@@ -49,8 +49,8 @@
 // `former_name_lists`). Each file becomes its own ModelDownload, so every
 // screen keeps one file per offer; `uses` names the model by `id` and gets all
 // its offered files, in their order. Models of one `family` (MegaDetector V6 c
-// and e, flat-bug n and s; one Hugging Face repository each) are shown under one
-// heading with their shared `purpose` where a page lists several, so the files
+// and e, flat-bug n and s; one Hugging Face repository each) share one heading
+// in the lists of detection models ([ModelDownload.groupName]), so the files
 // read as options of one model, not as unrelated models.
 
 import 'dart:convert';
@@ -113,8 +113,8 @@ class ModelDownload {
   final bool identification;
   final String title;
 
-  /// The name shared with the other models of its family (round 390), the
-  /// heading above them where a page lists several; null for a model alone.
+  /// The name shared with the other models of its family (round 390); null
+  /// for a model alone.
   final String? family;
 
   /// One plain line: what it finds or names.
@@ -166,6 +166,11 @@ class ModelDownload {
 
   /// The note to show next to [file]: its own, else the model's.
   String? get noteOfFile => fileNote ?? note;
+
+  /// The heading of this model's files in the lists of detection models (round 392, owner):
+  /// its family, else its own title. Every model has one, so a model alone is not read as one
+  /// more file of the family above it.
+  String get groupName => family ?? title;
 }
 
 /// An identification model with the name list it uses.

@@ -73,9 +73,10 @@ In the code, "pack" means such a file of either kind.
   paper) and the authors keep theirs up to date on that page. The screen asks users to cite
   the original model from there.
 - `family` (optional, round 390): the name shared by the models of one family that have one
-  Hugging Face repository (`MegaDetector V6` for c and e, `flat-bug` for n and s). Where a page
-  lists several of their files ("Choose other models" of "What do you want to watch?"), they
-  sit under that name with the `purpose` shown once, so give the models of one family the same
+  Hugging Face repository (`MegaDetector V6` for c and e, `flat-bug` for n and s). The lists of
+  detection models put each model's files under a heading: the family name, else the model's
+  `title` ("Choose other models" of "What do you want to watch?", and Download & import models,
+  which shows the `purpose` once under the heading). So give the models of one family the same
   `purpose` and let each file's `note` say how it differs.
 - Speed in `note` and `purpose` (round 391, owner): no numbers and no kinds of phones ("most
   phones", "phones with a fast GPU"), because other phones, settings and app versions give

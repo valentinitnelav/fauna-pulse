@@ -229,8 +229,9 @@ void main() {
     expect(find.text('bioclip-2_224_fp16.tflite'), findsOneWidget);
     expect(find.text('with bioclip-2_mammals-birds-world_v4.fpack'), findsOneWidget);
     expect(find.text('A large download: use Wi-Fi.'), findsOneWidget, reason: 'BioCLIP 2 is over 600 MB');
-    // Round 390: the four MegaDetector files under one heading, the family's purpose once,
-    // each file with its note; what "slower" means once, above them.
+    // Round 390: the four MegaDetector files under one heading, each file with its note.
+    // Round 392 (owner): no purpose and no sentence on speed in the fold; the details are on
+    // Download & import models, which the link at the end names.
     await _tap(tester, find.text('Choose other models'));
     final files = _use('mammals_birds').find;
     for (final d in files) {
@@ -238,19 +239,39 @@ void main() {
       expect(find.text(d.fileNote!), findsOneWidget, reason: d.file!.name);
     }
     expect(find.text('MegaDetector V6'), findsOneWidget);
-    expect(find.text(files.first.purpose), findsOneWidget, reason: 'shown once for the family');
-    expect(find.textContaining('A slower file checks fewer pictures per second'), findsOneWidget);
+    expect(find.text(files.first.purpose), findsNothing);
+    expect(find.textContaining('slower file'), findsNothing);
+    expect(find.text('Details and more models: Download & import models'), findsOneWidget);
     expect(tester.takeException(), isNull, reason: 'the notes fit 360 px');
   });
 
-  testWidgets('pollinators: flat-bug n and s under one heading, insectDCT on its own (r390)', (tester) async {
-    await _pump(tester, _use('pollinators'), const ModelFilesOnPhone(), _Calls());
+  testWidgets('pollinators: flat-bug n and s under one heading, insectDCT under its own (r390, r392)', (tester) async {
+    await _pump(
+      tester,
+      _use('pollinators'),
+      const ModelFilesOnPhone(detectors: {'my_bees_640_fp16.tflite'}),
+      _Calls(),
+    );
     await _tap(tester, find.text('Choose other models'));
     final suggested = _use('pollinators').find;
-    final flatbug = suggested.firstWhere((d) => d.id == 'flatbug-n'), dct = suggested.firstWhere((d) => d.id == 'insectdct-v8s');
-    expect(find.text('flat-bug'), findsOneWidget);
-    expect(find.text(flatbug.purpose), findsOneWidget, reason: 'n and s share it: once');
-    expect(find.text(dct.purpose), findsOneWidget, reason: 'a model alone keeps its own purpose line');
+    final dct = suggested.firstWhere((d) => d.id == 'insectdct-v8s');
+    // Round 392 (owner): with a heading for families only, insectDCT read as a third flat-bug
+    // file. Every model has its heading, in the order of the suggestions, and the phone's other
+    // models one of their own.
+    final headings = ['flat-bug', 'insectDCT detector', 'Other models on this phone'];
+    for (final h in headings) {
+      expect(find.text(h), findsOneWidget, reason: h);
+    }
+    // The last match: a suggested file is also named in the box above the fold.
+    double y(String text) => tester.getTopLeft(find.text(text).last).dy;
+    expect(y('flat-bug'), lessThan(y('flatbug-n_640_fp16.tflite')));
+    expect(y('flatbug-s_640_fp16.tflite'), lessThan(y('insectDCT detector')));
+    expect(y('insectDCT detector'), lessThan(y(dct.file!.name)));
+    expect(y(dct.file!.name), lessThan(y('Other models on this phone')));
+    expect(y('Other models on this phone'), lessThan(y('my_bees_640_fp16.tflite')));
+    for (final d in suggested) {
+      expect(find.text(d.purpose), findsNothing, reason: 'the purpose is on Download & import models');
+    }
     expect(tester.takeException(), isNull);
   });
 

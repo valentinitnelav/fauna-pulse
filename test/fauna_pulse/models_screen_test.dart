@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fauna_pulse/fauna_pulse/identification/identification_assets.dart';
+import 'package:fauna_pulse/fauna_pulse/logging/device_storage.dart' show formatBytes;
 import 'package:fauna_pulse/fauna_pulse/models/model_catalog.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_file_kind.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_downloads.dart';
@@ -225,13 +226,14 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, 3000));
     await tester.pumpAndSettle();
     expect(find.text(_mdv6), findsOneWidget);
-    expect(find.text('MegaDetector V6'), findsNothing, reason: 'no catalogue title for a file on the phone');
+    // Round 392: the title of its model heads the model's files, with the purpose once.
+    expect(find.text('MegaDetector V6'), findsOneWidget);
     expect(find.text('my_bees_640.tflite'), findsOneWidget);
     expect(find.textContaining('Finds:'), findsNothing, reason: 'details only in the card');
     await _card(tester, _mdv6);
     expect(find.text('Model'), findsOneWidget);
-    expect(find.text('MegaDetector V6'), findsOneWidget);
-    expect(find.text('Common animals.'), findsOneWidget);
+    expect(_inCard('MegaDetector V6'), findsOneWidget);
+    expect(_inCard('Common animals.'), findsOneWidget);
     expect(find.text('256 px (each picture is resized to this for the model)'), findsOneWidget);
     // Not "Precision": to ecologists that reads as an accuracy score (r317).
     expect(find.text('Number format'), findsOneWidget);
@@ -257,7 +259,8 @@ void main() {
     expect(_modelCard(tester), isNull);
     await _close(tester);
     // A variant that is not offered finds its model by its first part (round 276).
-    expect(find.text('flat-bug s (larger)'), findsNothing, reason: 'not offered for download');
+    // Not offered for download, but the heading of the phone's file (round 392).
+    expect(find.text('flat-bug s (larger)'), findsOneWidget);
     await _card(tester, 'flatbug-s_1024_fp16.tflite');
     expect(_inCard('flat-bug s (larger)'), findsOneWidget);
     expect(_inCard('MIT'), findsOneWidget);
@@ -361,9 +364,11 @@ void main() {
     await _show(tester, find.text(flatbug));
     expect(find.descendant(of: _tile(flatbug), matching: find.text('Download')), findsOneWidget);
     expect(find.descendant(of: _tile(flatbug), matching: find.text('On this phone')), findsNothing);
-    expect(find.descendant(of: _tile(flatbug), matching: find.text('flat-bug (small), 5.4 MB')), findsOneWidget);
+    // Under the heading of its model (round 392): the size alone (this file has no note).
+    expect(find.descendant(of: _tile(flatbug), matching: find.text('5.4 MB')), findsOneWidget);
+    expect(find.text('flat-bug (small)'), findsOneWidget);
     await _card(tester, flatbug, tooltip: 'About this model');
-    expect(find.text('Insects and other arthropods.'), findsOneWidget);
+    expect(_inCard('Insects and other arthropods.'), findsOneWidget);
     expect(_inCard('flatbug-n_640_fp16.tflite, 5.4 MB'), findsOneWidget);
     expect(_inCard(_madeHow), findsOneWidget);
     expect(_modelCard(tester), 'https://huggingface.co/Valen-Peregrine/flatbug-tflite');
@@ -609,6 +614,7 @@ void main() {
         downloads: _downloads,
       ),
     );
+    await _show(tester, find.text(_mdv6));
     await tester.tap(find.descendant(of: _tile(_mdv6), matching: find.byTooltip('Delete')));
     await tester.pumpAndSettle();
     expect(find.textContaining('It is the only detection model here.'), findsOneWidget);
@@ -1109,6 +1115,61 @@ void main() {
     await _card(tester, _b('mdv6-yolov10c_640_fp16.tflite'), tooltip: 'About this model');
     expect(_inCard('Finds smaller animals, slower.'), findsOneWidget, reason: 'the offer shows its own note');
     await _close(tester);
+  });
+
+  testWidgets('round 392: detection models grouped by model, the purpose once, own files last', (tester) async {
+    // The app's real list: MegaDetector V6 and flat-bug are families, insectDCT is alone.
+    final downloads = ModelDownloads.parse(File('assets/model_downloads.json').readAsStringSync());
+    final c320 = downloads.modelFor('mdv6-yolov10c_320_fp16.tflite')!;
+    final old = downloads.modelFor('mdv6-yolov10c_256_w8a32.tflite')!;
+    final flatbug = downloads.modelFor('flatbug-n_640_fp16.tflite')!;
+    final dct = downloads.modelFor('insectdct-v8s_640_fp16.tflite')!;
+    ModelEntry onPhone(String name) =>
+        ModelEntry(id: '/data/app/files/models/$name', name: name, source: ModelSource.imported, task: 'detect');
+    tester.view.physicalSize = const Size(360, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await _pump(
+      tester,
+      inventory: () => ModelsInventory(
+        detectors: [onPhone(c320.file!.name), onPhone(old.file!.name), onPhone('my_bees_640.tflite')],
+        sizes: {
+          '/data/app/files/models/${c320.file!.name}': c320.file!.bytes,
+          '/data/app/files/models/${old.file!.name}': old.file!.bytes,
+        },
+        downloads: downloads,
+      ),
+    );
+    double y(String text) => tester.getTopLeft(find.text(text)).dy;
+    // Headings by name, the phone's other files last; each model's files under its heading.
+    final order = [
+      'flat-bug',
+      _b(flatbug.file!.name),
+      'insectDCT detector',
+      _b(dct.file!.name),
+      'MegaDetector V6',
+      old.file!.name,
+      c320.file!.name,
+      _b('mdv6-yolov10e_640_fp16.tflite'),
+      'Other models on this phone',
+      'my_bees_640.tflite',
+    ];
+    for (var i = 1; i < order.length; i++) {
+      expect(y(order[i - 1]), lessThan(y(order[i])), reason: '${order[i - 1]} above ${order[i]}');
+    }
+    expect(find.text(c320.purpose), findsOneWidget, reason: 'once for the four MegaDetector files');
+    expect(find.text(flatbug.purpose), findsOneWidget);
+    expect(find.text(dct.purpose), findsOneWidget);
+    // Each file shows its own note, on the phone or to download, and no model title.
+    expect(find.descendant(of: _tile(c320.file!.name), matching: find.text(c320.fileNote!)), findsOneWidget);
+    expect(find.descendant(of: _tile(old.file!.name), matching: find.text(old.fileNote!)), findsOneWidget);
+    final e640 = downloads.modelFor('mdv6-yolov10e_640_fp16.tflite')!;
+    expect(
+      find.descendant(of: _tile(_b(e640.file!.name)), matching: find.text('${e640.fileNote}\n${formatBytes(e640.file!.bytes)}')),
+      findsOneWidget,
+    );
+    expect(find.text('MegaDetector V6 c (compact)'), findsNothing, reason: 'the title is in the card');
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('round 322: with the model not on the phone, a replaced list sits under it, above its new version', (tester) async {
