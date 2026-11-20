@@ -234,7 +234,8 @@ import models**. When a screen needs a model that is not on the phone yet, it sh
 such as **Get a detection model…** or **Get an identification model…**, which opens the same
 screen.
 
-The ⓘ card of each model and name list links its model card on Hugging Face (in its last row).
+The card of each model and name list (tap the file on **Download & import models**) links its
+model card on Hugging Face (in its last row).
 The model card says who made the model, how it was adapted for FaunaPulse, its licence, how to
 cite it and whether there is a newer version. The card of a name list also has **Show the
 names**: every name of the list on one page, with a search box.

@@ -139,14 +139,16 @@ models**. The Identify screen has a link to it too (**Download & import models�
   also brings the model when it is missing.
 - The insectDCT classifier is one row with its class list. Downloading the class list brings the
   model along, and choosing the model also chooses its class list.
-- Each file has an ⓘ button. It opens a card named after the file, with rows such as *Kind*,
+- Each file has a ⋮ button with what you can do with it: **About this file** (**About this
+  model** or **About this name list** for a file to download), **Delete file**, or **Download**. Tapping a file opens the
+  same card as **About this file**. The card is named after the file, with rows such as *Kind*,
   *File*, *Licence* and *Source*. For a file the app does not know, one row *Licence and source*
   says that it is not known. The card of a model downloaded from Hugging Face ends with
   **Model card on Hugging Face**, its page there.
 - **All models for FaunaPulse on Hugging Face** opens the collection of all models. The box
   **About these models** at the end of the screen says more about them.
 
-**Delete models.** Tap the bin next to a file (**Delete**). Under a list of two files or more,
+**Delete models.** Tap ⋮ next to a file, then **Delete file**. Under a list of two files or more,
 **Delete all detection models…** or **Delete all identification models…** deletes the whole
 list. To delete some files, press and hold one file, tap the others, then tap the bin at the top.
 A model's name lists are deleted with it. Sessions and results already made keep their results.
@@ -337,7 +339,7 @@ with its family, its order and, when the list has one, its common name. The sear
 in all of these, so typing a family shows its names; names that start with the typed letters
 come first. Tap a name to search the web for it or to
 copy it ([Looking up a name](#looking-up-a-name)). The same page, with every name of a list,
-opens from the name list's ⓘ card on **Download & import models** (**Show the names**).
+opens from the name list's card on **Download & import models** (**Show the names**).
 
 An amber line warns when the name list holds under 80 % of the country's own GBIF list: it was
 made for another region (with **Countries I choose**, each such country is named). For one
@@ -974,7 +976,7 @@ mammal and bird names (none in the BioCLIP 2.5 Europe list). The pack header lis
 row with its names as published (`name_rules.rows`). The version 1 lists use every row as
 published.
 
-Details: the model cards on Hugging Face (section *Names*; the ⓘ card of a name list on
+Details: the model cards on Hugging Face (section *Names*; the card of a name list on
 Download & import models links its model card, which also lists newer versions) and
 `bioclip_export/build_label_pack.py` of fauna-pulse-models.
 

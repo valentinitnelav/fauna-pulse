@@ -97,6 +97,14 @@
 // fold of the "What do you want to watch?" pages, which leaves the purpose out
 // and sends here for the details. Identification models were already grouped
 // (a model with its name lists under it).
+//
+// Round 393 (owner: the file names broke in odd places, because the ⓘ and the
+// Delete or Download button beside them took much of the row): each row has one
+// ⋮ for its actions, as each session on the Sessions screen ("About this file"
+// or "About this model", "Delete file", "Download"), and a tap on a row opens
+// its card. A file to download keeps its Download button in view, under its
+// name beside the size. A name list to download got a card of its own for it
+// (its title, file, licence, source and model card).
 
 import 'dart:io';
 
@@ -112,6 +120,7 @@ import '../models/model_catalog.dart';
 import '../models/model_downloads.dart';
 import '../models/model_file_kind.dart';
 import '../models/model_import.dart';
+import '../widgets/action_menu.dart';
 import '../widgets/download_files_dialog.dart';
 import '../widgets/download_model_dialog.dart';
 import '../widgets/external_link.dart';
@@ -344,7 +353,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
 
   static const _about =
       'The models are adapted (converted to smaller files) to run on a phone. Each model keeps the '
-      'licence given by the people who made it: tap ⓘ next to a model to see its licence and source '
+      'licence given by the people who made it: tap a model to see its licence and source '
       '(the source says how to cite the model if you publish results). The files are kept on Hugging '
       'Face; each Download button below gets its file from there, so you do not need to visit the site.';
 
@@ -796,8 +805,9 @@ class _ModelsScreenState extends State<ModelsScreen> {
   static String _nameOf(File f) => f.path.split('/').last;
 
   /// A file name that may break after each "_" (an invisible space there),
-  /// so a long one wraps between its parts in a window's title, not inside
-  /// a word ("…tflit" / "e", seen beside the X).
+  /// so a long one wraps between its parts in a window's title or a row of
+  /// the list, not inside a word ("…tflit" / "e", seen beside the X), and
+  /// fills its first line ("mdv6-" alone broke off at the hyphen).
   static String _breakable(String name) => name.replaceAll('_', '_\u200B');
 
   /// 35260 → "35,260", as in the catalogue's titles.
@@ -839,14 +849,23 @@ class _ModelsScreenState extends State<ModelsScreen> {
     child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white70)),
   );
 
-  /// Round 275 (owner): the details of a file or download sit behind an ⓘ,
-  /// in a card, so the list shows names only.
-  Widget _infoButton(VoidCallback onInfo, {String tooltip = 'About this file'}) => IconButton(
-    icon: const Icon(Icons.info_outline, size: 20),
-    tooltip: tooltip,
-    visualDensity: VisualDensity.compact,
-    onPressed: onInfo,
-  );
+  /// The ⋮ of a row (round 393, owner): the ⓘ beside a name (round 275: the details sit in a
+  /// card, so the list shows names only) and the Delete or Download button beside it left the
+  /// file name so little room that it broke in odd places. One menu, as each session has on
+  /// the Sessions screen. [onDelete] null: a file the user cannot delete; [onGet] for a file to
+  /// download, whose Download button stays in view under its name as well.
+  Widget _rowMenu(String about, VoidCallback onInfo, {VoidCallback? onDelete, VoidCallback? onGet}) =>
+      PopupMenuButton<VoidCallback>(
+        icon: const Icon(Icons.more_vert),
+        tooltip: 'File actions',
+        enabled: _busy == null,
+        onSelected: (action) => action(),
+        itemBuilder: (_) => [
+          actionMenuItem(onInfo, Icons.info_outline, about),
+          if (onGet != null) actionMenuItem(onGet, Icons.download, 'Download'),
+          if (onDelete != null) actionMenuItem(onDelete, Icons.delete_forever, 'Delete file', color: Colors.red),
+        ],
+      );
 
   /// The icons a card can show. A card's restoration note stores the index:
   /// it holds plain values only, and an icon rebuilt from a stored code point
@@ -1098,24 +1117,39 @@ class _ModelsScreenState extends State<ModelsScreen> {
     ], modelCard: _modelCardUrl(d.file));
   }
 
+  /// The card of a name list to download (round 393, owner: every row has the same ⋮), with
+  /// the rows of a name list's card on the phone that the app's list can give.
+  void _listOfferCard(ModelDownload d, NameListDownload l) => _showCard(Icons.list_alt, l.file.name, [
+    ('Kind', 'Name list for ${d.title}'),
+    ('Name list', l.title),
+    if (l.warning ?? l.note case final note?) ('Note', note),
+    ('File', '${l.file.name}, ${formatBytes(l.file.bytes)}'),
+    if (l.licence.isNotEmpty) ('Licence', l.licence),
+    if (l.source.isNotEmpty) ('Source', l.source),
+    if (l.licence.isEmpty) ..._originRows(d),
+  ], modelCard: _modelCardUrl(l.file));
+
   /// A file on the phone: its name (round 275, owner: the file name for
-  /// every file, no catalogue title), the green tick (round 317), ⓘ and
-  /// delete. A file the user can delete ([path]) is selected by pressing and
-  /// holding it (round 279); while selecting, a box replaces the icon and the
-  /// buttons.
+  /// every file, no catalogue title), the green tick (round 317), the ⋮ with
+  /// its card and delete; a tap opens the card too (round 393), as a tap on a
+  /// session opens it. A file the user can delete ([path]) is selected by
+  /// pressing and holding it (round 279); while selecting, a box replaces the
+  /// icon and the ⋮.
   Widget _tile(IconData icon, String name, VoidCallback onInfo, {String? path, String? warning, String? note}) {
     final sel = _selected;
     final selecting = sel != null && path != null;
     return ListTile(
       contentPadding: EdgeInsets.zero,
       dense: true,
+      // The icon and the ⋮ beside the name, also when the lines under it are many.
+      titleAlignment: ListTileTitleAlignment.top,
       selected: selecting && sel.contains(path),
       selectedTileColor: Colors.lightBlueAccent.withValues(alpha: 0.12),
       leading: selecting
           ? Checkbox(value: sel.contains(path), onChanged: (_) => _toggle(path))
           : Icon(icon, color: Colors.white70),
       minLeadingWidth: 24,
-      title: Text(name, style: selecting ? const TextStyle(color: Colors.white) : null),
+      title: Text(_breakable(name), style: selecting ? const TextStyle(color: Colors.white) : null),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1124,23 +1158,11 @@ class _ModelsScreenState extends State<ModelsScreen> {
           if (warning != null) Text(warning, style: const TextStyle(color: Colors.amber, fontSize: 12.5)),
         ],
       ),
-      onTap: selecting ? () => _toggle(path) : null,
+      onTap: sel == null ? onInfo : (selecting ? () => _toggle(path) : null),
       onLongPress: path == null || _busy != null ? null : () => _toggle(path),
       trailing: sel != null
           ? null
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _infoButton(onInfo),
-                if (path != null)
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 20),
-                    tooltip: 'Delete',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: _busy == null ? () => _delete({path}) : null,
-                  ),
-              ],
-            ),
+          : _rowMenu('About this file', onInfo, onDelete: path == null ? null : () => _delete({path})),
     );
   }
 
@@ -1160,25 +1182,39 @@ class _ModelsScreenState extends State<ModelsScreen> {
     ],
   ];
 
-  /// A file to download: its name, what it is and its size, the Download
-  /// button; its icon in the colour of its kind.
-  Widget _offerTile(IconData icon, String name, String details, VoidCallback? onInfo, VoidCallback onGet) => ListTile(
-    contentPadding: EdgeInsets.zero,
-    dense: true,
-    leading: Icon(icon, color: icon == kDetectionIcon ? kDetectionColor : kIdentificationColor),
-    minLeadingWidth: 24,
-    // The Download button leaves the name little room: let it break after a
-    // "_", not inside "tflite" (seen on a phone).
-    title: Text(_breakable(name)),
-    subtitle: Text(details, style: helperTextStyle),
-    trailing: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (onInfo != null) _infoButton(onInfo, tooltip: 'About this model'),
-        TextButton(onPressed: _busy == null ? onGet : null, child: const Text('Download')),
-      ],
-    ),
-  );
+  /// A file to download: its name, what it is and its size (the lines of
+  /// [details]), the Download button; its icon in the colour of its kind. The
+  /// ⋮ and a tap open its card ([onInfo]). Round 393: the Download button sits
+  /// beside the last line (the size), so the name has the row's width.
+  Widget _offerTile(IconData icon, String name, String details, VoidCallback onInfo, VoidCallback onGet) {
+    final lines = details.split('\n');
+    // While files on the phone are selected to delete, as on their rows: no ⋮, a tap does nothing.
+    final info = _selected == null ? onInfo : null;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      titleAlignment: ListTileTitleAlignment.top,
+      leading: Icon(icon, color: icon == kDetectionIcon ? kDetectionColor : kIdentificationColor),
+      minLeadingWidth: 24,
+      title: Text(_breakable(name)),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final l in lines.take(lines.length - 1)) Text(l, style: helperTextStyle),
+          Row(
+            children: [
+              Expanded(child: Text(lines.last, style: helperTextStyle)),
+              TextButton(onPressed: _busy == null ? onGet : null, child: const Text('Download')),
+            ],
+          ),
+        ],
+      ),
+      onTap: info,
+      trailing: info == null
+          ? null
+          : _rowMenu(icon == Icons.list_alt ? 'About this name list' : 'About this model', info, onGet: onGet),
+    );
+  }
 
   /// A row under its identification model.
   static Widget _under(Widget child) => Padding(padding: const EdgeInsets.only(left: 32), child: child);
@@ -1300,7 +1336,17 @@ class _ModelsScreenState extends State<ModelsScreen> {
         for (final l in more)
           (
             l.file.name,
-            [_under(_offerTile(Icons.list_alt, l.file.name, _listDetails(l), null, () => _get(offer!, list: l)))],
+            [
+              _under(
+                _offerTile(
+                  Icons.list_alt,
+                  l.file.name,
+                  _listDetails(l),
+                  () => _listOfferCard(offer!, l),
+                  () => _get(offer!, list: l),
+                ),
+              ),
+            ],
           ),
       ]),
     ];
@@ -1346,7 +1392,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
                         Icons.list_alt,
                         l.file.name,
                         '${_listDetails(l)}, plus the model (${formatBytes(model.bytes)})',
-                        null,
+                        () => _listOfferCard(d, l),
                         () => _get(d, list: l),
                       ),
               ),

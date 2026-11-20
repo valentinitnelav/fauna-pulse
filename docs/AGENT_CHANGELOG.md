@@ -10548,3 +10548,7 @@ Asked: after seeing rounds 390 and 391 on a phone, keep "Choose other models" sh
 on speed, insectDCT not read as a flat-bug file) and group the detection models by model on
 Download & import models.
 
+## Round 393 (2026-11-20): one ⋮ menu per file on Download & import models
+Asked: keep file names on one line where possible by putting each file's actions in one ⋮ menu,
+as on the Sessions screen. Owner's answers kept the fold, the title and no search box.
+

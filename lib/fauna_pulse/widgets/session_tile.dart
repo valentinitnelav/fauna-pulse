@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 
 import '../logging/device_storage.dart';
 import '../logging/past_sessions.dart';
+import 'action_menu.dart';
 
 /// What the ⋮ menu of a session row offers.
 enum SessionAction { rename, exportPhotos, analyze, identify, delete }
@@ -160,15 +161,7 @@ class SessionTile extends StatelessWidget {
   }
 
   Widget _menu(PastSession s) {
-    PopupMenuItem<SessionAction> item(SessionAction a, IconData icon, String text, {Color? color}) => PopupMenuItem(
-      value: a,
-      child: ListTile(
-        dense: true,
-        contentPadding: EdgeInsets.zero,
-        leading: Icon(icon, color: color),
-        title: Text(text, style: color == null ? null : TextStyle(color: color)),
-      ),
-    );
+    const item = actionMenuItem<SessionAction>;
     return PopupMenuButton<SessionAction>(
       icon: const Icon(Icons.more_vert),
       tooltip: 'Session actions',

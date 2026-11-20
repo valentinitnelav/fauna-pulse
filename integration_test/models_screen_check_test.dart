@@ -113,9 +113,14 @@ void main() {
     await shot('models_top');
 
     Future<void> card(String name) async {
-      final tile = find.ancestor(of: find.text(name), matching: find.byType(ListTile));
-      await tester.scrollUntilVisible(find.text(name), 200, scrollable: find.byType(Scrollable).first);
-      await tester.tap(find.descendant(of: tile, matching: find.byTooltip('About this file')));
+      // Round 393: the list shows a file name with a break point after each "_", and the card
+      // opens from the row's ⋮.
+      final shown = find.text(name.replaceAll('_', '_\u200B'));
+      final tile = find.ancestor(of: shown, matching: find.byType(ListTile));
+      await tester.scrollUntilVisible(shown, 200, scrollable: find.byType(Scrollable).first);
+      await tester.tap(find.descendant(of: tile, matching: find.byTooltip('File actions')));
+      await settle();
+      await tester.tap(find.text('About this file'));
       await settle();
     }
 

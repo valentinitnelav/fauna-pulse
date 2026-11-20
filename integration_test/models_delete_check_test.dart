@@ -32,6 +32,9 @@ const _detectors = {'flatbug-n_640_fp16.tflite', 'insectdct-v8s_640_fp16.tflite'
 const _idModel = 'insectdct-cls-v7-eff2s_224_fp16.tflite';
 const _classList = 'insectdct-cls-v7-eff2s_224_fp16.fpack';
 
+/// A file name as the list shows it: with a break point after each "_" (round 393).
+Finder _name(String file) => find.text(file.replaceAll('_', '_\u200B'));
+
 Future<Set<String>> _names(Future<Directory> dir) async =>
     {for (final f in (await dir).listSync().whereType<File>()) f.path.split('/').last};
 
@@ -85,7 +88,7 @@ void main() {
     await settle();
 
     await tester.pumpWidget(MaterialApp(theme: ThemeData.dark(useMaterial3: true), home: const ModelsScreen()));
-    await waitFor(find.text('flatbug-n_640_fp16.tflite'));
+    await waitFor(_name('flatbug-n_640_fp16.tflite'));
     await settle();
     await shot('del_start');
 
@@ -103,9 +106,9 @@ void main() {
     // Press and hold one, tap the other, delete both (back at the top first).
     await tester.drag(find.byType(ListView), const Offset(0, 3000));
     await settle();
-    await tester.longPress(find.text('flatbug-n_640_fp16.tflite'));
+    await tester.longPress(_name('flatbug-n_640_fp16.tflite'));
     await settle();
-    await tester.tap(find.text('insectdct-v8s_640_fp16.tflite'));
+    await tester.tap(_name('insectdct-v8s_640_fp16.tflite'));
     await settle();
     expect(find.text('2 selected'), findsOneWidget);
     await shot('del_selecting');
@@ -119,14 +122,17 @@ void main() {
     await shot('del_after_detectors');
 
     // The classifier: its class list goes with it.
-    await tester.dragUntilVisible(find.text(_idModel), find.byType(ListView), const Offset(0, -150));
+    await tester.dragUntilVisible(_name(_idModel), find.byType(ListView), const Offset(0, -150));
     await settle();
+    // Round 393: Delete is in the row's ⋮.
     await tester.tap(
       find.descendant(
-        of: find.ancestor(of: find.text(_idModel), matching: find.byType(ListTile)),
-        matching: find.byTooltip('Delete'),
+        of: find.ancestor(of: _name(_idModel), matching: find.byType(ListTile)),
+        matching: find.byTooltip('File actions'),
       ),
     );
+    await settle();
+    await tester.tap(find.text('Delete file'));
     await settle();
     expect(find.textContaining('Its class list $_classList is deleted with it.'), findsOneWidget);
     await shot('del_classifier_dialog');

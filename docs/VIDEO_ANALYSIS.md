@@ -898,8 +898,8 @@ MegaDetector V6 (MDV6), which finds animals, people and vehicles: first the comp
 at 320 px, then c at 640 px (try it for smaller or more distant animals) and the larger model (e)
 at 320 and 640 px. These are slower than c at 320 px: live, a slower file checks fewer pictures
 per second and can warm the phone more; for videos checked afterwards it only takes longer. The
-times measured on three test phones are on the MegaDetector model card on Hugging Face (ⓘ of
-the file on **Download & import models**). For names it suggests
+times measured on three test phones are on the MegaDetector model card on Hugging Face (tap
+the file on **Download & import models** to open its card, which links it). For names it suggests
 BioCLIP 2 with the name list *Mammals and birds of the world*. For a shorter list of the
 expected mammals or birds, build your own BioCLIP label pack with `bioclip_export/` of
 [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models)

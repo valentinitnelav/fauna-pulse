@@ -324,7 +324,7 @@ BioCLIP chooses each animal's name from a name list. Such lists are prepared per
 
 These models were made by other research teams. FaunaPulse tools adapted them to run on a phone, and each model keeps its creators' licence.
 
-Each model card on [Hugging Face][hf_fp_models] names the original authors, the licence and how to cite the model. In the app, the ⓘ card of each model and name list downloaded from there links its model card. If you publish results, please also cite the original model as its authors ask.
+Each model card on [Hugging Face][hf_fp_models] names the original authors, the licence and how to cite the model. In the app, the card of each model and name list downloaded from there (tap it on **Download & import models**) links its model card. If you publish results, please also cite the original model as its authors ask.
 
 </details>
 

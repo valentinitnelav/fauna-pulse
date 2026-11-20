@@ -220,9 +220,12 @@ void main() {
     await waitFor(find.text('Detection models'));
     await settle();
     await shot('models_credits');
-    final info = find.byTooltip('About this file');
-    if (info.evaluate().isNotEmpty) {
-      await tester.tap(info.first);
+    // The first row's card, from its ⋮ (round 393).
+    final menu = find.byTooltip('File actions');
+    if (menu.evaluate().isNotEmpty) {
+      await tester.tap(menu.first);
+      await settle();
+      await tester.tap(find.textContaining('About this').last);
       await settle();
       await shot('models_card_source');
       await tester.tap(find.text('Close'));

@@ -82,7 +82,7 @@ In the code, "pack" means such a file of either kind.
   phones", "phones with a fast GPU"), because other phones, settings and app versions give
   other times. Say the order ("the fastest of the four", "slower than 320 px") when it follows
   from the model and picture size; the times measured on named test phones belong on the model
-  card, which every ⓘ card links.
+  card, which the card of every file in the app links.
 - `file` (optional): the file offered for download. An entry without it is known but not
   offered (its files on the phone still show its details).
 - `files` (round 390, detection models only): instead of `file`, several files of the same
@@ -91,7 +91,7 @@ In the code, "pack" means such a file of either kind.
   `purpose`, so the note says what each one is for).
 - `former_files` (round 390, detection models only): files no longer offered, in the same shape
   plus a `note`, like `former_name_lists` below. A copy on the phone keeps the model's details in
-  its ⓘ card and shows the note under its file name; the links and checksums stay for
+  its card and shows the note under its file name; the links and checksums stay for
   `update_catalogue.py --urls`.
 - `name_lists` (identification models): each with `kind` (`class_list` or `label_pack`),
   `title` and `file`, and its own `licence` and `source` when the names come from elsewhere
@@ -99,7 +99,7 @@ In the code, "pack" means such a file of either kind.
 - `former_name_lists` (round 322): name lists no longer offered (a version replaced by a newer
   one, the 32-family demo lists), in the same shape plus a `note` (shown in grey) or a
   `warning` (in amber). They are never offered or suggested; a copy on the phone keeps its
-  title, licence and source in its ⓘ card and shows that line under its file name. Their
+  title, licence and source in its card and shows that line under its file name. Their
   links and checksums stay, so `update_catalogue.py --urls` still matches the published files.
 - `bytes` and `sha256`: the app shows the size and checks every download against the
   checksum. A file on the phone counts as present by its **name** only, so re-exported

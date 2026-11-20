@@ -147,28 +147,49 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
-Finder _tile(String title) => find.ancestor(of: find.text(title), matching: find.byType(ListTile));
+/// Text as the screen shows it, with or without the invisible break points of a file name
+/// ([_b]): the rows of the list show every file name so (round 393).
+/// Matches what find.text matches: a Text, or an EditableText (the cards' SelectableText).
+Finder _text(String s) => find.byWidgetPredicate(
+  (w) =>
+      switch (w) {
+        Text t => t.data ?? t.textSpan?.toPlainText(),
+        EditableText e => e.controller.text,
+        _ => null,
+      }?.replaceAll('\u200B', '') ==
+      s.replaceAll('\u200B', ''),
+  description: 'text "$s"',
+);
+
+Finder _tile(String title) => find.ancestor(of: _text(title), matching: find.byType(ListTile));
 
 Future<void> _show(WidgetTester tester, Finder f) async {
   await tester.dragUntilVisible(f, find.byType(ListView), const Offset(0, -150));
   await tester.pumpAndSettle();
 }
 
-/// Opens the card of the file or download [title] (its ⓘ).
-Future<void> _card(WidgetTester tester, String title, {String tooltip = 'About this file'}) async {
-  await _show(tester, find.text(title));
-  await tester.tap(find.descendant(of: _tile(title), matching: find.byTooltip(tooltip)));
+/// Chooses [action] in the ⋮ menu of the row of [title] (round 393).
+Future<void> _menu(WidgetTester tester, String title, String action) async {
+  await _show(tester, _text(title));
+  await tester.tap(find.descendant(of: _tile(title), matching: find.byTooltip('File actions')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.descendant(of: find.byType(PopupMenuItem<VoidCallback>), matching: _text(action)));
   await tester.pumpAndSettle();
 }
 
-/// A file name as a row with a Download button shows it: it may break after
-/// each "_" (an invisible space there, round 317).
-String _b(String name) => name.replaceAll('_', '_\u200B');
+/// Opens the card of the file or download [title] from its ⋮ ([tooltip]: the menu's first
+/// line, "About this model" for a download).
+Future<void> _card(WidgetTester tester, String title, {String tooltip = 'About this file'}) =>
+    _menu(tester, title, tooltip);
 
-Finder _inCard(String text) => find.descendant(of: find.byType(AlertDialog), matching: find.text(text));
+/// A file name as a row shows it: it may break after each "_" (an invisible space there, rounds
+/// 317 and 393). Also for a name already shown so.
+String _b(String name) => name.replaceAll('_\u200B', '_').replaceAll('_', '_\u200B');
+
+Finder _inCard(String text) => find.descendant(of: find.byType(AlertDialog), matching: _text(text));
 
 Future<void> _close(WidgetTester tester) async {
-  await tester.tap(find.text('Close'));
+  await tester.tap(_text('Close'));
   await tester.pumpAndSettle();
 }
 
@@ -209,11 +230,11 @@ final _formerDownloads = ModelDownloads.parse('''
 void main() {
   testWidgets('every file is listed by its name; its details are in the card behind the ⓘ', (tester) async {
     await _pump(tester);
-    expect(find.text('Download & import models'), findsOneWidget);
-    expect(find.text('Storage free: 12.4 GB'), findsOneWidget);
+    expect(_text('Download & import models'), findsOneWidget);
+    expect(_text('Storage free: 12.4 GB'), findsOneWidget);
     // Round 317 (owner): adapted for phones, each model's own licence, the
     // downloads come from Hugging Face without visiting it.
-    expect(find.text('About these models'), findsOneWidget);
+    expect(_text('About these models'), findsOneWidget);
     expect(find.textContaining('made by other research teams'), findsNothing);
     expect(find.textContaining('Each model keeps the licence given by the people who made it'), findsOneWidget);
     expect(find.textContaining('so you do not need to visit the site'), findsOneWidget);
@@ -222,23 +243,23 @@ void main() {
     final link = find.widgetWithText(ExternalLinkText, 'All models for FaunaPulse on Hugging Face');
     await _show(tester, link);
     expect(tester.widget<ExternalLinkText>(link).url, 'https://huggingface.co/collections/Valen-Peregrine/faunapulse');
-    expect(tester.getTopLeft(link).dy, greaterThan(tester.getTopLeft(find.text('Your own models')).dy));
+    expect(tester.getTopLeft(link).dy, greaterThan(tester.getTopLeft(_text('Your own models')).dy));
     await tester.drag(find.byType(ListView), const Offset(0, 3000));
     await tester.pumpAndSettle();
-    expect(find.text(_mdv6), findsOneWidget);
+    expect(_text(_mdv6), findsOneWidget);
     // Round 392: the title of its model heads the model's files, with the purpose once.
-    expect(find.text('MegaDetector V6'), findsOneWidget);
-    expect(find.text('my_bees_640.tflite'), findsOneWidget);
+    expect(_text('MegaDetector V6'), findsOneWidget);
+    expect(_text('my_bees_640.tflite'), findsOneWidget);
     expect(find.textContaining('Finds:'), findsNothing, reason: 'details only in the card');
     await _card(tester, _mdv6);
-    expect(find.text('Model'), findsOneWidget);
+    expect(_text('Model'), findsOneWidget);
     expect(_inCard('MegaDetector V6'), findsOneWidget);
     expect(_inCard('Common animals.'), findsOneWidget);
-    expect(find.text('256 px (each picture is resized to this for the model)'), findsOneWidget);
+    expect(_text('256 px (each picture is resized to this for the model)'), findsOneWidget);
     // Not "Precision": to ecologists that reads as an accuracy score (r317).
-    expect(find.text('Number format'), findsOneWidget);
-    expect(find.text('int8 (8-bit whole numbers, the smallest file)'), findsOneWidget);
-    expect(find.text('AGPL-3.0'), findsOneWidget);
+    expect(_text('Number format'), findsOneWidget);
+    expect(_text('int8 (8-bit whole numbers, the smallest file)'), findsOneWidget);
+    expect(_text('AGPL-3.0'), findsOneWidget);
     // The source is a link: its authors say there how to cite the model (round 277).
     expect(find.widgetWithText(ExternalLinkText, 'https://github.com/microsoft/MegaDetector'), findsOneWidget);
     // Its model card, as on a name list's card (round 324): the repository page.
@@ -251,16 +272,16 @@ void main() {
     );
     await _close(tester);
     await _card(tester, 'my_bees_640.tflite');
-    expect(find.text('bee, hoverfly'), findsOneWidget);
-    expect(find.text('On this phone, 6.0 MB'), findsOneWidget);
-    expect(find.text('Model'), findsNothing, reason: 'the user\'s own file');
-    expect(find.text("Not known for this file. Ask whoever made it."), findsOneWidget);
+    expect(_text('bee, hoverfly'), findsOneWidget);
+    expect(_text('On this phone, 6.0 MB'), findsOneWidget);
+    expect(_text('Model'), findsNothing, reason: 'the user\'s own file');
+    expect(_text("Not known for this file. Ask whoever made it."), findsOneWidget);
     expect(_inCard(_madeHow), findsNothing);
     expect(_modelCard(tester), isNull);
     await _close(tester);
     // A variant that is not offered finds its model by its first part (round 276).
     // Not offered for download, but the heading of the phone's file (round 392).
-    expect(find.text('flat-bug s (larger)'), findsOneWidget);
+    expect(_text('flat-bug s (larger)'), findsOneWidget);
     await _card(tester, 'flatbug-s_1024_fp16.tflite');
     expect(_inCard('flat-bug s (larger)'), findsOneWidget);
     expect(_inCard('MIT'), findsOneWidget);
@@ -268,12 +289,12 @@ void main() {
     await _close(tester);
     await _card(tester, _clsName);
     expect(_inCard('insectdct-cls-v7_eff2s_fp16.fpack'), findsNothing, reason: 'its name lists are under it on the screen (r314)');
-    expect(find.text('On this phone, 41.8 MB'), findsOneWidget);
+    expect(_text('On this phone, 41.8 MB'), findsOneWidget);
     expect(_modelCard(tester), 'https://huggingface.co/Valen-Peregrine/insectdct-cls-v7-tflite');
     await _close(tester);
     await _card(tester, 'insectdct-cls-v7_eff2s_fp16.fpack');
-    expect(find.text('Class list of insectdct-cls-v7_eff2s_fp16: 104 classes'), findsOneWidget);
-    expect(find.text('insectDCT classifier: Its 104 classes'), findsOneWidget);
+    expect(_text('Class list of insectdct-cls-v7_eff2s_fp16: 104 classes'), findsOneWidget);
+    expect(_text('insectDCT classifier: Its 104 classes'), findsOneWidget);
     await _close(tester);
   });
 
@@ -281,10 +302,10 @@ void main() {
   testWidgets("a name list's card opens the page of its names", (tester) async {
     await _pump(tester);
     await _card(tester, _clsName);
-    expect(find.text('Show the names'), findsNothing);
+    expect(_text('Show the names'), findsNothing);
     await _close(tester);
     await _card(tester, 'insectdct-cls-v7_eff2s_fp16.fpack');
-    await tester.tap(find.text('Show the names'));
+    await tester.tap(_text('Show the names'));
     // No pumpAndSettle: the page turns its progress circle until the file is read.
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
@@ -321,7 +342,7 @@ void main() {
     await _card(tester, _clsName);
     expect(_inCard('insectDCT classifier'), findsNothing);
     expect(find.textContaining('this file has another size'), findsOneWidget);
-    expect(find.text("Not known for this file. Ask whoever made it."), findsOneWidget);
+    expect(_text("Not known for this file. Ask whoever made it."), findsOneWidget);
     expect(_modelCard(tester), isNull);
   });
 
@@ -357,33 +378,35 @@ void main() {
   testWidgets('only what is missing is offered; a name list brings its model along', (tester) async {
     await _pump(tester);
     // MegaDetector is on the phone (a green tick), flat-bug is not; insectDCT is complete.
-    expect(find.descendant(of: _tile(_mdv6), matching: find.text('Download')), findsNothing);
-    expect(find.descendant(of: _tile(_mdv6), matching: find.text('On this phone')), findsOneWidget);
+    expect(find.descendant(of: _tile(_mdv6), matching: _text('Download')), findsNothing);
+    expect(find.descendant(of: _tile(_mdv6), matching: _text('On this phone')), findsOneWidget);
     expect(find.descendant(of: _tile(_mdv6), matching: find.byIcon(Icons.check_circle)), findsOneWidget);
     final flatbug = _b('flatbug-n_640_fp16.tflite');
-    await _show(tester, find.text(flatbug));
-    expect(find.descendant(of: _tile(flatbug), matching: find.text('Download')), findsOneWidget);
-    expect(find.descendant(of: _tile(flatbug), matching: find.text('On this phone')), findsNothing);
+    await _show(tester, _text(flatbug));
+    expect(find.descendant(of: _tile(flatbug), matching: _text('Download')), findsOneWidget);
+    expect(find.descendant(of: _tile(flatbug), matching: _text('On this phone')), findsNothing);
     // Under the heading of its model (round 392): the size alone (this file has no note).
-    expect(find.descendant(of: _tile(flatbug), matching: find.text('5.4 MB')), findsOneWidget);
-    expect(find.text('flat-bug (small)'), findsOneWidget);
+    expect(find.descendant(of: _tile(flatbug), matching: _text('5.4 MB')), findsOneWidget);
+    expect(_text('flat-bug (small)'), findsOneWidget);
     await _card(tester, flatbug, tooltip: 'About this model');
     expect(_inCard('Insects and other arthropods.'), findsOneWidget);
     expect(_inCard('flatbug-n_640_fp16.tflite, 5.4 MB'), findsOneWidget);
     expect(_inCard(_madeHow), findsOneWidget);
     expect(_modelCard(tester), 'https://huggingface.co/Valen-Peregrine/flatbug-tflite');
     await _close(tester);
-    await _show(tester, find.text(_b(_europeName)));
-    expect(find.text('Europe\n54.8 MB, plus the model (581.2 MB)'), findsOneWidget);
-    await tester.tap(find.descendant(of: _tile(_b(_europeName)), matching: find.text('Download')));
+    await _show(tester, _text(_b(_europeName)));
+    // Round 393: the size on the line of the Download button.
+    expect(find.descendant(of: _tile(_europeName), matching: _text('Europe')), findsOneWidget);
+    expect(find.descendant(of: _tile(_europeName), matching: _text('54.8 MB, plus the model (581.2 MB)')), findsOneWidget);
+    await tester.tap(find.descendant(of: _tile(_b(_europeName)), matching: _text('Download')));
     await tester.pumpAndSettle();
-    expect(find.text('Download BioCLIP 2'), findsOneWidget);
+    expect(_text('Download BioCLIP 2'), findsOneWidget);
     expect(find.textContaining('The model and the name list "Europe". In total 636.0 MB.'), findsOneWidget);
-    expect(find.text('A large download: use Wi-Fi if you can.'), findsOneWidget);
+    expect(_text('A large download: use Wi-Fi if you can.'), findsOneWidget);
     await tester.tap(find.widgetWithText(TextButton, 'Download').last);
     await tester.pumpAndSettle();
     expect(_downloaded, ['bioclip-2_image_fp16_4d.tflite', _europeName]);
-    expect(find.text('Downloaded bioclip-2_image_fp16_4d.tflite and $_europeName.'), findsOneWidget);
+    expect(_text('Downloaded bioclip-2_image_fp16_4d.tflite and $_europeName.'), findsOneWidget);
     expect(_scans, 2);
   });
 
@@ -391,37 +414,37 @@ void main() {
     // Stress run 2026-10-20: after Cancel, Back or a failure the list kept
     // offering "Download" for a model that had already arrived.
     await _pump(tester, failNameLists: true);
-    await _show(tester, find.text(_b(_europeName)));
-    await tester.tap(find.descendant(of: _tile(_b(_europeName)), matching: find.text('Download')));
+    await _show(tester, _text(_b(_europeName)));
+    await tester.tap(find.descendant(of: _tile(_b(_europeName)), matching: _text('Download')));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(TextButton, 'Download').last);
     await tester.pumpAndSettle();
     expect(_downloaded, ['bioclip-2_image_fp16_4d.tflite']);
-    expect(find.text('Try again'), findsOneWidget);
-    await tester.tap(find.text('Cancel'));
+    expect(_text('Try again'), findsOneWidget);
+    await tester.tap(_text('Cancel'));
     await tester.pumpAndSettle();
-    expect(find.text('Download BioCLIP 2'), findsNothing);
+    expect(_text('Download BioCLIP 2'), findsNothing);
     expect(_scans, 2, reason: 'the list is scanned again after the dialog closed without success');
   });
 
   testWidgets('one list per kind by file name: files on the phone and to download together (r317)', (tester) async {
-    double y(String text) => tester.getTopLeft(find.text(text)).dy;
+    double y(String text) => tester.getTopLeft(_text(text)).dy;
     await _pump(tester, inventory: () => ModelsInventory(downloads: _downloads));
     // The catalogue lists MegaDetector first.
     expect(y(_b('flatbug-n_640_fp16.tflite')), lessThan(y(_b(_mdv6))));
-    await _show(tester, find.text(_b(_clsName)));
+    await _show(tester, _text(_b(_clsName)));
     expect(y(_b('bioclip-2_image_fp16_4d.tflite')), lessThan(y(_b(_clsName))));
   });
 
   testWidgets('a file on the phone sits among the files to download, in file-name order (r317)', (tester) async {
-    double y(String text) => tester.getTopLeft(find.text(text)).dy;
+    double y(String text) => tester.getTopLeft(_text(text)).dy;
     await _pump(
       tester,
       inventory: () => ModelsInventory(detectors: [_inventory().detectors[1]], downloads: _downloads),
     );
     expect(y(_b('flatbug-n_640_fp16.tflite')), lessThan(y(_b(_mdv6))));
     expect(y(_b(_mdv6)), lessThan(y('my_bees_640.tflite')));
-    expect(find.text('On this phone'), findsOneWidget, reason: 'only my_bees is on the phone');
+    expect(_text('On this phone'), findsOneWidget, reason: 'only my_bees is on the phone');
   });
 
   test('files are sorted by name, upper and lower case alike; "_" before "." (r317)', () {
@@ -462,36 +485,36 @@ void main() {
     );
     // The pack's own count leaves out its "none of these" entries, as the title does.
     await _card(tester, _europeName);
-    expect(find.text('Name list for bioclip-2: 35,264 names'), findsOneWidget);
-    expect(find.text('BioCLIP 2: Europe'), findsOneWidget);
+    expect(_text('Name list for bioclip-2: 35,264 names'), findsOneWidget);
+    expect(_text('BioCLIP 2: Europe'), findsOneWidget);
     await _close(tester);
     final fam = _b('bioclip2_flower_visitors_32fam_v1.fpack');
-    await _show(tester, find.text(fam));
-    expect(find.text('Name lists for your region and the animals you watch:'), findsOneWidget, reason: 'under the model');
-    expect(find.text('bioclip-2_image_fp16_4d.tflite'), findsOneWidget, reason: 'the model is not offered again');
-    expect(find.text('32 families\n59.8 MB'), findsOneWidget, reason: 'no "plus the model"');
-    await tester.tap(find.descendant(of: _tile(fam), matching: find.text('Download')));
+    await _show(tester, _text(fam));
+    expect(_text('Name lists for your region and the animals you watch:'), findsOneWidget, reason: 'under the model');
+    expect(_text('bioclip-2_image_fp16_4d.tflite'), findsOneWidget, reason: 'the model is not offered again');
+    expect(find.descendant(of: _tile(fam), matching: _text('59.8 MB')), findsOneWidget, reason: 'no "plus the model"');
+    await tester.tap(find.descendant(of: _tile(fam), matching: _text('Download')));
     await tester.pumpAndSettle();
     expect(find.textContaining('The name list "32 families". In total 59.8 MB.'), findsOneWidget);
   });
 
   testWidgets('deleting a classifier says its class list goes with it; Cancel keeps both', (tester) async {
     await _pump(tester);
-    await _show(tester, find.text(_clsName));
-    await tester.tap(find.descendant(of: _tile(_clsName), matching: find.byTooltip('Delete')));
+    await _show(tester, _text(_clsName));
+    await _menu(tester, _clsName, 'Delete file');
     await tester.pumpAndSettle();
     // The title may break after each "_" (an invisible space there, r289).
-    expect(find.text('Delete ${_clsName.replaceAll('_', '_\u200B')}?'), findsOneWidget);
+    expect(_text('Delete ${_clsName.replaceAll('_', '_\u200B')}?'), findsOneWidget);
     expect(find.textContaining('Its class list insectdct-cls-v7_eff2s_fp16.fpack is deleted with it.'), findsOneWidget);
-    await tester.tap(find.text('Cancel'));
+    await tester.tap(_text('Cancel'));
     await tester.pumpAndSettle();
-    expect(find.text(_clsName), findsOneWidget);
+    expect(_text(_clsName), findsOneWidget);
   });
 
   testWidgets('an empty phone says what needs a model', (tester) async {
     await _pump(tester, inventory: () => ModelsInventory(downloads: _downloads));
     expect(find.textContaining('None on this phone yet: live detection'), findsOneWidget);
-    await _show(tester, find.text('None on this phone yet: "Identify organisms" needs one.'));
+    await _show(tester, _text('None on this phone yet: "Identify organisms" needs one.'));
   });
 
   testWidgets('BioCLIP 2 imported under another file name: its name lists under it, the model not offered again (r289)',
@@ -499,12 +522,12 @@ void main() {
     final own = File('$_dir/models/bioclip-2_image_fp16.tflite'); // an older export, not the offered file
     await _pump(tester, inventory: () => ModelsInventory(idModels: [own], downloads: _downloads));
     final fam = _b('bioclip2_flower_visitors_32fam_v1.fpack');
-    await _show(tester, find.text(fam));
-    expect(find.text('⚠ No name list: this model cannot identify. Download one below.'), findsOneWidget);
-    expect(find.text('Name lists for your region and the animals you watch:'), findsOneWidget);
-    expect(find.text('bioclip-2_image_fp16_4d.tflite'), findsNothing, reason: 'the offered file is not offered again');
+    await _show(tester, _text(fam));
+    expect(_text('⚠ No name list: this model cannot identify. Download one below.'), findsOneWidget);
+    expect(_text('Name lists for your region and the animals you watch:'), findsOneWidget);
+    expect(_text('bioclip-2_image_fp16_4d.tflite'), findsNothing, reason: 'the offered file is not offered again');
     expect(find.textContaining('plus the model'), findsNothing);
-    await tester.tap(find.descendant(of: _tile(fam), matching: find.text('Download')));
+    await tester.tap(find.descendant(of: _tile(fam), matching: _text('Download')));
     await tester.pumpAndSettle();
     expect(find.textContaining('The name list "32 families". In total 59.8 MB.'), findsOneWidget, reason: 'no 609 MB model');
   });
@@ -513,10 +536,11 @@ void main() {
     final model = _b('bioclip-2_image_fp16_4d.tflite');
     final fam = _b('bioclip2_flower_visitors_32fam_v1.fpack');
     await _pump(tester, inventory: () => ModelsInventory(downloads: _downloads));
-    await _show(tester, find.text(fam));
-    expect(find.descendant(of: _tile(model), matching: find.text('1. The model, needed once: 581.2 MB')), findsOneWidget);
-    expect(find.text('2. Then the name lists for your region and the animals you watch:'), findsOneWidget);
-    expect(find.text('32 families\n59.8 MB, plus the model (581.2 MB)'), findsOneWidget);
+    await _show(tester, _text(fam));
+    expect(find.descendant(of: _tile(model), matching: _text('1. The model, needed once: 581.2 MB')), findsOneWidget);
+    expect(_text('2. Then the name lists for your region and the animals you watch:'), findsOneWidget);
+    expect(_text('32 families'), findsOneWidget);
+    expect(_text('59.8 MB, plus the model (581.2 MB)'), findsOneWidget);
     // Round 314 (owner): the card of the model does not repeat the lists shown in their rows.
     await _card(tester, model, tooltip: 'About this model');
     for (final repeated in ['Europe', '32 families', 'bioclip2_flower_visitors_32fam_v1.fpack']) {
@@ -527,7 +551,7 @@ void main() {
     // What a name list is, and why one that fits gives better names.
     expect(find.textContaining('so a list that fits gives better names'), findsOneWidget);
     // The model alone.
-    await tester.tap(find.descendant(of: _tile(model), matching: find.text('Download')));
+    await tester.tap(find.descendant(of: _tile(model), matching: _text('Download')));
     await tester.pumpAndSettle();
     expect(find.textContaining('The model. Then download one or more name lists for it. In total 581.2 MB.'), findsOneWidget);
     await tester.tap(find.widgetWithText(TextButton, 'Download').last);
@@ -551,11 +575,11 @@ void main() {
         downloads: _downloads,
       ),
     );
-    await _show(tester, find.text(_europeName));
-    expect(find.descendant(of: _tile(_europeName), matching: find.text('On this phone')), findsOneWidget);
-    expect(find.text('Name lists without their model'), findsNothing);
-    expect(tester.getTopLeft(find.text(model)).dy, lessThan(tester.getTopLeft(find.text(_europeName)).dy));
-    final download = find.descendant(of: _tile(model), matching: find.text('Download'));
+    await _show(tester, _text(_europeName));
+    expect(find.descendant(of: _tile(_europeName), matching: _text('On this phone')), findsOneWidget);
+    expect(_text('Name lists without their model'), findsNothing);
+    expect(tester.getTopLeft(_text(model)).dy, lessThan(tester.getTopLeft(_text(_europeName)).dy));
+    final download = find.descendant(of: _tile(model), matching: _text('Download'));
     await tester.ensureVisible(download);
     await tester.pumpAndSettle();
     await tester.tap(download);
@@ -572,9 +596,9 @@ void main() {
         downloads: _downloads,
       ),
     );
-    await _show(tester, find.text('insectdct-cls-v7_eff2s_fp16.fpack'));
-    expect(find.text('Name lists without their model'), findsOneWidget);
-    expect(find.text(_b(_clsName)), findsOneWidget, reason: 'the classifier is offered in one row');
+    await _show(tester, _text('insectdct-cls-v7_eff2s_fp16.fpack'));
+    expect(_text('Name lists without their model'), findsOneWidget);
+    expect(_text(_b(_clsName)), findsOneWidget, reason: 'the classifier is offered in one row');
   });
 
   testWidgets('a model without a name list is flagged; a list without its model is set apart (r271)', (tester) async {
@@ -591,12 +615,12 @@ void main() {
         downloads: _downloads,
       ),
     );
-    await _show(tester, find.text('bioclip-2_image_fp16_4d.tflite'));
-    expect(find.text('⚠ No name list: this model cannot identify. Download one below.'), findsOneWidget);
-    expect(find.text('Name lists for your region and the animals you watch:'), findsOneWidget, reason: 'its lists, under it');
-    await _show(tester, find.text('Name lists without their model'));
-    expect(find.text('Their model is not on this phone, so they cannot be used yet.'), findsOneWidget);
-    expect(find.text('bioclip25_pollinator_orders_europe_v1.fpack'), findsOneWidget);
+    await _show(tester, _text('bioclip-2_image_fp16_4d.tflite'));
+    expect(_text('⚠ No name list: this model cannot identify. Download one below.'), findsOneWidget);
+    expect(_text('Name lists for your region and the animals you watch:'), findsOneWidget, reason: 'its lists, under it');
+    await _show(tester, _text('Name lists without their model'));
+    expect(_text('Their model is not on this phone, so they cannot be used yet.'), findsOneWidget);
+    expect(_text('bioclip25_pollinator_orders_europe_v1.fpack'), findsOneWidget);
   });
 
   testWidgets('deleting the only detection model, or a model\'s last name list, says what stops working (r271)', (tester) async {
@@ -614,16 +638,16 @@ void main() {
         downloads: _downloads,
       ),
     );
-    await _show(tester, find.text(_mdv6));
-    await tester.tap(find.descendant(of: _tile(_mdv6), matching: find.byTooltip('Delete')));
+    await _show(tester, _text(_mdv6));
+    await _menu(tester, _mdv6, 'Delete file');
     await tester.pumpAndSettle();
     expect(find.textContaining('It is the only detection model here.'), findsOneWidget);
     expect(find.textContaining('Sessions that already have boxes can still be identified.'), findsOneWidget);
     expect(find.textContaining('Time-lapse and motion capture still work.'), findsOneWidget);
-    await tester.tap(find.text('Cancel'));
+    await tester.tap(_text('Cancel'));
     await tester.pumpAndSettle();
-    await _show(tester, find.text(_europeName));
-    await tester.tap(find.descendant(of: _tile(_europeName), matching: find.byTooltip('Delete')));
+    await _show(tester, _text(_europeName));
+    await _menu(tester, _europeName, 'Delete file');
     await tester.pumpAndSettle();
     expect(
       find.textContaining('It is the only name list of bioclip-2_image_fp16_4d.tflite, which then cannot identify'),
@@ -649,29 +673,29 @@ void main() {
         );
       },
     );
-    final import = find.text('Import model files…');
+    final import = _text('Import model files…');
     await _show(tester, import);
     expect(find.textContaining('press and hold one file in the file chooser, then choose "Select all"'), findsOneWidget);
     await tester.tap(import);
     await tester.pumpAndSettle();
-    expect(find.text('Already on this phone'), findsOneWidget);
+    expect(_text('Already on this phone'), findsOneWidget);
     expect(
-      find.text('my_bees_640.tflite is already on this phone (detection model). Replace it with the chosen file?'),
+      _text('my_bees_640.tflite is already on this phone (detection model). Replace it with the chosen file?'),
       findsOneWidget,
     );
     expect(find.byType(CheckboxListTile), findsNothing, reason: 'the last chosen file');
-    await tester.tap(find.text('Keep the one on the phone'));
+    await tester.tap(_text('Keep the one on the phone'));
     await tester.pumpAndSettle();
     expect(answers, [false]);
-    expect(find.text('Some files were not imported'), findsOneWidget);
-    expect(find.text('2 detection models, listed under Detection models:'), findsOneWidget);
+    expect(_text('Some files were not imported'), findsOneWidget);
+    expect(_text('2 detection models, listed under Detection models:'), findsOneWidget);
     expect(_inCard('flatbug-s_640_fp16.tflite'), findsOneWidget);
-    expect(find.text('1 identification model, listed under Identification models:'), findsOneWidget);
-    expect(find.text('1 name list, listed under their identification model:'), findsOneWidget);
-    expect(find.text('Already on this phone, kept:'), findsOneWidget);
+    expect(_text('1 identification model, listed under Identification models:'), findsOneWidget);
+    expect(_text('1 name list, listed under their identification model:'), findsOneWidget);
+    expect(_text('Already on this phone, kept:'), findsOneWidget);
     expect(_inCard('my_bees_640.tflite'), findsOneWidget);
-    expect(find.text('notes.tflite: not a model for pictures (its input is not a colour picture).'), findsOneWidget);
-    await tester.tap(find.text('Close'));
+    expect(_text('notes.tflite: not a model for pictures (its input is not a colour picture).'), findsOneWidget);
+    await tester.tap(_text('Close'));
     await tester.pumpAndSettle();
     expect(_scans, 2, reason: 'the list is read again');
   });
@@ -688,22 +712,22 @@ void main() {
         return const ModelImportReport(imported: [('bioclip-2_image_fp16_4d.tflite', ModelFileKind.identification)]);
       },
     );
-    final import = find.text('Import model files…');
+    final import = _text('Import model files…');
     await _show(tester, import);
     await tester.tap(import);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Same answer for the other chosen files already on the phone'));
+    await tester.tap(_text('Same answer for the other chosen files already on the phone'));
     await tester.pump();
-    await tester.tap(find.text('Replace'));
+    await tester.tap(_text('Replace'));
     await tester.pumpAndSettle();
     expect(answers, [true, true, true]);
-    expect(find.text('Already on this phone'), findsNothing, reason: 'asked once');
+    expect(_text('Already on this phone'), findsNothing, reason: 'asked once');
     expect(
-      find.text('Imported bioclip-2_image_fp16_4d.tflite: a identification model, listed under Identification models.'),
+      _text('Imported bioclip-2_image_fp16_4d.tflite: a identification model, listed under Identification models.'),
       findsNothing,
     );
     expect(
-      find.text('Imported bioclip-2_image_fp16_4d.tflite: an identification model, listed under Identification models.'),
+      _text('Imported bioclip-2_image_fp16_4d.tflite: an identification model, listed under Identification models.'),
       findsOneWidget,
     );
   });
@@ -714,22 +738,22 @@ void main() {
       importFiles: ({required replace, onFileLoading, onProgress}) async =>
           const ModelImportReport(kept: ['my_bees_640.tflite']),
     );
-    final import = find.text('Import model files…');
+    final import = _text('Import model files…');
     await _show(tester, import);
     await tester.tap(import);
     await tester.pumpAndSettle();
-    expect(find.text('Nothing new imported'), findsOneWidget);
-    expect(find.text('Imported'), findsNothing);
-    expect(find.text('Already on this phone, kept:'), findsOneWidget);
+    expect(_text('Nothing new imported'), findsOneWidget);
+    expect(_text('Imported'), findsNothing);
+    expect(_text('Already on this phone, kept:'), findsOneWidget);
   });
 
   testWidgets('a class list alone: the window says the model is already on the phone (r317)', (tester) async {
     await _pump(tester, inventory: () => ModelsInventory(idModels: [_cls], downloads: _downloads));
     final list = _b('insectdct-cls-v7_eff2s_fp16.fpack');
-    await _show(tester, find.text(list));
-    await tester.tap(find.descendant(of: _tile(list), matching: find.text('Download')));
+    await _show(tester, _text(list));
+    await tester.tap(find.descendant(of: _tile(list), matching: _text('Download')));
     await tester.pumpAndSettle();
-    expect(find.text('Its class list (the model is already on this phone). In total 13 KB.'), findsOneWidget);
+    expect(_text('Its class list (the model is already on this phone). In total 13 KB.'), findsOneWidget);
     await tester.tap(find.widgetWithText(TextButton, 'Download').last);
     await tester.pumpAndSettle();
     expect(_downloaded, ['insectdct-cls-v7_eff2s_fp16.fpack']);
@@ -737,11 +761,11 @@ void main() {
 
   testWidgets('a link to a name list; a file already on the phone is replaced only when asked to (r275)', (tester) async {
     await _pump(tester, onPhone: const [ModelFileKind.nameList]);
-    final link = find.text('Download from a link…');
+    final link = _text('Download from a link…');
     await _show(tester, link);
     await tester.tap(link);
     await tester.pumpAndSettle();
-    expect(find.text('Download from a link'), findsOneWidget);
+    expect(_text('Download from a link'), findsOneWidget);
     // For files not listed: listed ones have their own Download button (r317).
     expect(find.textContaining('listed files have their own Download button'), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'https://example.org/r/$_europeName');
@@ -750,18 +774,18 @@ void main() {
     await tester.tap(download);
     await tester.pumpAndSettle();
     expect(
-      find.text('$_europeName is already on this phone (name list). Download it again and replace the one on the phone?'),
+      _text('$_europeName is already on this phone (name list). Download it again and replace the one on the phone?'),
       findsOneWidget,
     );
-    await tester.tap(find.text('Keep the one on the phone'));
+    await tester.tap(_text('Keep the one on the phone'));
     await tester.pumpAndSettle();
     expect(_linked, isEmpty, reason: 'nothing downloaded');
     await tester.tap(download);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Replace'));
+    await tester.tap(_text('Replace'));
     await tester.pumpAndSettle();
     expect(_linked, ['https://example.org/r/$_europeName']);
-    expect(find.text('Downloaded $_europeName (name list).'), findsOneWidget);
+    expect(_text('Downloaded $_europeName (name list).'), findsOneWidget);
   });
 
   testWidgets('a file kept with the wrong kind is flagged (r275)', (tester) async {
@@ -780,7 +804,7 @@ void main() {
       },
     );
     expect(
-      find.text(
+      _text(
         '⚠ This is an identification model, not a detection model. Delete it here and import it again: it '
         'then goes to its place.',
       ),
@@ -804,7 +828,7 @@ void main() {
       },
     );
     expect(
-      find.text('⚠ This file is a pose model (keypoints): this app runs detection models only (plain boxes). Delete it here.'),
+      _text('⚠ This file is a pose model (keypoints): this app runs detection models only (plain boxes). Delete it here.'),
       findsOneWidget,
     );
   });
@@ -845,7 +869,7 @@ void main() {
   testWidgets('fits a 360-px screen and the last row stays above the system bar', (tester) async {
     simulateBottomSystemBar(tester);
     await _pump(tester);
-    final last = find.text('Download from a link…');
+    final last = _text('Download from a link…');
     await _show(tester, last);
     await tester.drag(find.byType(ListView), const Offset(0, -2000));
     await tester.pumpAndSettle();
@@ -861,16 +885,16 @@ void main() {
   testWidgets('each kind of model in a panel of its own colour (r288)', (tester) async {
     await _pump(tester);
     bool panelOf(String text) =>
-        tester.widget<ModelKindPanel>(find.ancestor(of: find.text(text), matching: find.byType(ModelKindPanel))).identification;
+        tester.widget<ModelKindPanel>(find.ancestor(of: _text(text), matching: find.byType(ModelKindPanel))).identification;
     expect(panelOf('Detection models'), isFalse);
     expect(panelOf('my_bees_640.tflite'), isFalse);
     expect(panelOf('Delete all detection models…'), isFalse);
-    await _show(tester, find.text('insectdct-cls-v7_eff2s_fp16.fpack'));
+    await _show(tester, _text('insectdct-cls-v7_eff2s_fp16.fpack'));
     expect(panelOf('Identification models'), isTrue);
     expect(panelOf('insectdct-cls-v7_eff2s_fp16.tflite'), isTrue);
     expect(panelOf('insectdct-cls-v7_eff2s_fp16.fpack'), isTrue, reason: 'name lists with their model');
-    await _show(tester, find.text('Import model files…'));
-    expect(find.ancestor(of: find.text('Import model files…'), matching: find.byType(ModelKindPanel)), findsNothing);
+    await _show(tester, _text('Import model files…'));
+    expect(find.ancestor(of: _text('Import model files…'), matching: find.byType(ModelKindPanel)), findsNothing);
     expect(kDetectionColor, isNot(kIdentificationColor));
   });
 
@@ -890,13 +914,13 @@ void main() {
     );
 
     Future<void> deleteTile(WidgetTester tester, String name) async {
-      await _show(tester, find.text(name));
-      await tester.tap(find.descendant(of: _tile(name), matching: find.byTooltip('Delete')));
+      await _show(tester, _text(name));
+      await _menu(tester, name, 'Delete file');
       await tester.pumpAndSettle();
     }
 
     Future<void> confirm(WidgetTester tester) async {
-      await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Delete')));
+      await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: _text('Delete')));
       await tester.pumpAndSettle();
     }
 
@@ -921,10 +945,10 @@ void main() {
 
     testWidgets('"Delete all detection models…" lists them and says none is left', (tester) async {
       await _pump(tester);
-      await _show(tester, find.text('Delete all detection models…'));
-      await tester.tap(find.text('Delete all detection models…'));
+      await _show(tester, _text('Delete all detection models…'));
+      await tester.tap(_text('Delete all detection models…'));
       await tester.pumpAndSettle();
-      expect(find.text('Delete all detection models?'), findsOneWidget);
+      expect(_text('Delete all detection models?'), findsOneWidget);
       expect(find.textContaining('• my_bees_640.tflite'), findsOneWidget);
       expect(find.textContaining('No detection model is left then.'), findsOneWidget);
       await confirm(tester);
@@ -933,38 +957,38 @@ void main() {
 
     testWidgets('"Delete all identification models…" takes the name lists too', (tester) async {
       await _pump(tester, inventory: bioclip);
-      await _show(tester, find.text('Delete all identification models…'));
-      await tester.tap(find.text('Delete all identification models…'));
+      await _show(tester, _text('Delete all identification models…'));
+      await tester.tap(_text('Delete all identification models…'));
       await tester.pumpAndSettle();
-      expect(find.text('Delete all identification models and name lists?'), findsOneWidget);
+      expect(_text('Delete all identification models and name lists?'), findsOneWidget);
       await confirm(tester);
       expect(_deleted, [b2.path, europe.path, fam.path]);
     });
 
     testWidgets('one file per kind: no "Delete all"', (tester) async {
       await _pump(tester, inventory: () => ModelsInventory(detectors: [_inventory().detectors.first], downloads: _downloads));
-      expect(find.text('Delete all detection models…'), findsNothing);
-      expect(find.text('Delete all identification models…'), findsNothing);
+      expect(_text('Delete all detection models…'), findsNothing);
+      expect(_text('Delete all identification models…'), findsNothing);
     });
 
     testWidgets('press and hold selects; several are deleted at once; Back ends the selection', (tester) async {
       await _pump(tester);
       // The Hugging Face line (round 314) moved the list down.
-      await tester.ensureVisible(find.text(_mdv6));
+      await tester.ensureVisible(_text(_mdv6));
       await tester.pumpAndSettle();
-      await tester.longPress(find.text('my_bees_640.tflite'));
+      await tester.longPress(_text('my_bees_640.tflite'));
       await tester.pumpAndSettle();
-      expect(find.text('1 selected'), findsOneWidget);
-      expect(find.byTooltip('Delete'), findsNothing, reason: 'boxes replace the buttons');
-      await tester.tap(find.text(_mdv6));
+      expect(_text('1 selected'), findsOneWidget);
+      expect(find.byTooltip('File actions'), findsNothing, reason: 'boxes replace the buttons');
+      await tester.tap(_text(_mdv6));
       await tester.pumpAndSettle();
-      expect(find.text('2 selected'), findsOneWidget);
-      await _show(tester, find.text(_clsName));
-      await tester.tap(find.text(_clsName));
+      expect(_text('2 selected'), findsOneWidget);
+      await _show(tester, _text(_clsName));
+      await tester.tap(_text(_clsName));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Delete the selected files'));
       await tester.pumpAndSettle();
-      expect(find.text('Delete 4 files?'), findsOneWidget, reason: 'the class list goes with its model');
+      expect(_text('Delete 4 files?'), findsOneWidget, reason: 'the class list goes with its model');
       expect(find.textContaining('Name lists are deleted with their model.'), findsOneWidget);
       await confirm(tester);
       expect(_deleted, [
@@ -973,23 +997,23 @@ void main() {
         _cls.path,
         _classList.path,
       ]);
-      expect(find.text('Download & import models'), findsOneWidget, reason: 'selecting ended');
-      await tester.longPress(find.text(_clsName));
+      expect(_text('Download & import models'), findsOneWidget, reason: 'selecting ended');
+      await tester.longPress(_text(_clsName));
       await tester.pumpAndSettle();
-      expect(find.text('1 selected'), findsOneWidget);
+      expect(_text('1 selected'), findsOneWidget);
       expect(await tester.binding.handlePopRoute(), isTrue);
       await tester.pumpAndSettle();
-      expect(find.text('Download & import models'), findsOneWidget, reason: 'Back ended the selection, the screen stays');
-      await tester.longPress(find.text(_clsName));
+      expect(_text('Download & import models'), findsOneWidget, reason: 'Back ended the selection, the screen stays');
+      await tester.longPress(_text(_clsName));
       await tester.pumpAndSettle();
-      await tester.tap(find.text(_clsName));
+      await tester.tap(_text(_clsName));
       await tester.pumpAndSettle();
-      expect(find.text('Download & import models'), findsOneWidget, reason: 'unticking the last file ends it');
-      await tester.longPress(find.text(_clsName));
+      expect(_text('Download & import models'), findsOneWidget, reason: 'unticking the last file ends it');
+      await tester.longPress(_text(_clsName));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Stop selecting'));
       await tester.pumpAndSettle();
-      expect(find.text('Download & import models'), findsOneWidget, reason: 'the X ends it');
+      expect(_text('Download & import models'), findsOneWidget, reason: 'the X ends it');
     });
   });
 
@@ -1026,12 +1050,12 @@ void main() {
         downloads: _formerDownloads,
       ),
     );
-    await _show(tester, find.text(v1.path.split('/').last));
-    final note = tester.widget<Text>(find.text('Replaced by version 2 (below). Results made with this list stay as they are.'));
+    await _show(tester, _text(v1.path.split('/').last));
+    final note = tester.widget<Text>(_text('Replaced by version 2 (below). Results made with this list stay as they are.'));
     expect(note.style?.color, isNot(Colors.amber), reason: 'a plain note');
-    expect(find.text(_b(demoName)), findsNothing, reason: 'a list no longer offered is never offered');
-    expect(find.text(demoName), findsNothing);
-    expect(find.text('Download'), findsNothing, reason: 'the model and the offered list are on the phone');
+    expect(_text(_b(demoName)), findsNothing, reason: 'a list no longer offered is never offered');
+    expect(_text(demoName), findsNothing);
+    expect(_text('Download'), findsNothing, reason: 'the model and the offered list are on the phone');
     await _card(tester, 'bioclip-2_europe_v1.fpack');
     expect(_inCard('BioCLIP 2: Europe v1'), findsOneWidget, reason: 'its catalogue details stay');
     expect(_inCard('Replaced by version 2 (below). Results made with this list stay as they are.'), findsOneWidget);
@@ -1058,10 +1082,10 @@ void main() {
         downloads: _formerDownloads,
       ),
     );
-    await _show(tester, find.text(demoName));
-    expect(tester.widget<Text>(find.text('A demo list, no longer updated.')).style?.color, Colors.amber);
-    expect(find.text(_b('bioclip-2_europe_v2.fpack')), findsOneWidget, reason: 'the offered list to download');
-    expect(find.text(_b('bioclip-2_europe_v1.fpack')), findsNothing, reason: 'the replaced list is not offered');
+    await _show(tester, _text(demoName));
+    expect(tester.widget<Text>(_text('A demo list, no longer updated.')).style?.color, Colors.amber);
+    expect(_text(_b('bioclip-2_europe_v2.fpack')), findsOneWidget, reason: 'the offered list to download');
+    expect(_text(_b('bioclip-2_europe_v1.fpack')), findsNothing, reason: 'the replaced list is not offered');
   });
 
   testWidgets('round 390: a model with several files offers each; a file no longer offered shows its note', (tester) async {
@@ -1094,13 +1118,13 @@ void main() {
         downloads: downloads,
       ),
     );
-    await _show(tester, find.text(old));
-    expect(find.text('An older file of this model.'), findsOneWidget, reason: 'under its name, as a replaced name list');
-    expect(find.text(_b(old)), findsNothing, reason: 'never offered');
-    await _show(tester, find.text(goneOther));
-    expect(find.text('Gone file note.'), findsOneWidget, reason: 'under $gone only, not under $goneOther');
+    await _show(tester, _text(old));
+    expect(_text('An older file of this model.'), findsOneWidget, reason: 'under its name, as a replaced name list');
+    expect(find.descendant(of: _tile(old), matching: _text('Download')), findsNothing, reason: 'never offered');
+    await _show(tester, _text(goneOther));
+    expect(_text('Gone file note.'), findsOneWidget, reason: 'under $gone only, not under $goneOther');
     for (final f in ['mdv6-yolov10c_320_fp16.tflite', 'mdv6-yolov10c_640_fp16.tflite']) {
-      expect(find.text(_b(f)), findsOneWidget, reason: '$f: each file of the model is offered');
+      expect(_text(_b(f)), findsOneWidget, reason: '$f: each file of the model is offered');
     }
     await _card(tester, old);
     expect(_inCard('MegaDetector V6 c (compact)'), findsOneWidget);
@@ -1140,7 +1164,7 @@ void main() {
         downloads: downloads,
       ),
     );
-    double y(String text) => tester.getTopLeft(find.text(text)).dy;
+    double y(String text) => tester.getTopLeft(_text(text)).dy;
     // Headings by name, the phone's other files last; each model's files under its heading.
     final order = [
       'flat-bug',
@@ -1157,18 +1181,68 @@ void main() {
     for (var i = 1; i < order.length; i++) {
       expect(y(order[i - 1]), lessThan(y(order[i])), reason: '${order[i - 1]} above ${order[i]}');
     }
-    expect(find.text(c320.purpose), findsOneWidget, reason: 'once for the four MegaDetector files');
-    expect(find.text(flatbug.purpose), findsOneWidget);
-    expect(find.text(dct.purpose), findsOneWidget);
+    expect(_text(c320.purpose), findsOneWidget, reason: 'once for the four MegaDetector files');
+    expect(_text(flatbug.purpose), findsOneWidget);
+    expect(_text(dct.purpose), findsOneWidget);
     // Each file shows its own note, on the phone or to download, and no model title.
-    expect(find.descendant(of: _tile(c320.file!.name), matching: find.text(c320.fileNote!)), findsOneWidget);
-    expect(find.descendant(of: _tile(old.file!.name), matching: find.text(old.fileNote!)), findsOneWidget);
+    expect(find.descendant(of: _tile(c320.file!.name), matching: _text(c320.fileNote!)), findsOneWidget);
+    expect(find.descendant(of: _tile(old.file!.name), matching: _text(old.fileNote!)), findsOneWidget);
     final e640 = downloads.modelFor('mdv6-yolov10e_640_fp16.tflite')!;
     expect(
-      find.descendant(of: _tile(_b(e640.file!.name)), matching: find.text('${e640.fileNote}\n${formatBytes(e640.file!.bytes)}')),
+      find.descendant(of: _tile(e640.file!.name), matching: _text(e640.fileNote!)),
       findsOneWidget,
     );
-    expect(find.text('MegaDetector V6 c (compact)'), findsNothing, reason: 'the title is in the card');
+    expect(find.descendant(of: _tile(e640.file!.name), matching: _text(formatBytes(e640.file!.bytes))), findsOneWidget);
+    expect(_text('MegaDetector V6 c (compact)'), findsNothing, reason: 'the title is in the card');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('round 393: one ⋮ per row with its actions, also for a name list to download; a tap opens the card', (tester) async {
+    await _pump(tester);
+    Future<List<String>> actions(String title) async {
+      await _show(tester, _text(title));
+      await tester.tap(find.descendant(of: _tile(title), matching: find.byTooltip('File actions')));
+      await tester.pumpAndSettle();
+      final items = find.byType(PopupMenuItem<VoidCallback>);
+      final texts = [
+        for (final e in items.evaluate())
+          for (final t in find.descendant(of: find.byWidget(e.widget), matching: find.byType(Text)).evaluate())
+            (t.widget as Text).data!,
+      ];
+      await tester.tapAt(Offset.zero); // closes the menu
+      await tester.pumpAndSettle();
+      return texts;
+    }
+
+    // A file on the phone: its card and Delete, no ⓘ or Delete button beside the name.
+    expect(await actions(_mdv6), ['About this file', 'Delete file']);
+    expect(find.byTooltip('About this file'), findsNothing);
+    expect(find.byTooltip('Delete'), findsNothing);
+    // A tap on a row opens its card, as a tap on a session opens it.
+    await tester.tap(_text(_mdv6));
+    await tester.pumpAndSettle();
+    expect(_inCard('MegaDetector V6'), findsOneWidget);
+    await _close(tester);
+    // A model to download: its card and Download, which also stays in view under its name.
+    final flatbug = 'flatbug-n_640_fp16.tflite';
+    expect(await actions(flatbug), ['About this model', 'Download']);
+    expect(find.descendant(of: _tile(flatbug), matching: find.byType(TextButton)), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.descendant(of: _tile(flatbug), matching: _text('Download'))).dy,
+      greaterThan(tester.getBottomLeft(_text(flatbug)).dy),
+      reason: 'under the name, which has the width of the row',
+    );
+    // A name list to download has the same ⋮, with a card of its own (owner, after seeing
+    // rows without one).
+    expect(await actions(_europeName), ['About this name list', 'Download']);
+    await _card(tester, _europeName, tooltip: 'About this name list');
+    expect(_inCard('Name list for BioCLIP 2'), findsOneWidget);
+    expect(_inCard('Europe'), findsOneWidget);
+    expect(_inCard('${_b(_europeName)}, 54.8 MB'), findsOneWidget);
+    await _close(tester);
+    // The menu deletes, after asking.
+    await _menu(tester, _clsName, 'Delete file');
+    expect(find.byType(AlertDialog), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1182,13 +1256,13 @@ void main() {
         downloads: _formerDownloads,
       ),
     );
-    await _show(tester, find.text(_b('bioclip-2_europe_v2.fpack')));
-    expect(find.text('Name lists without their model'), findsNothing);
-    expect(find.text('Replaced by version 2 (below). Results made with this list stay as they are.'), findsOneWidget);
-    final y1 = tester.getTopLeft(find.text('bioclip-2_europe_v1.fpack')).dy;
-    final y2 = tester.getTopLeft(find.text(_b('bioclip-2_europe_v2.fpack'))).dy;
+    await _show(tester, _text(_b('bioclip-2_europe_v2.fpack')));
+    expect(_text('Name lists without their model'), findsNothing);
+    expect(_text('Replaced by version 2 (below). Results made with this list stay as they are.'), findsOneWidget);
+    final y1 = tester.getTopLeft(_text('bioclip-2_europe_v1.fpack')).dy;
+    final y2 = tester.getTopLeft(_text(_b('bioclip-2_europe_v2.fpack'))).dy;
     expect(y1, lessThan(y2), reason: 'version 2 is below, as the note says');
-    expect(tester.getTopLeft(find.text(_b('bioclip-2_224_fp16.tflite'))).dy, lessThan(y1), reason: 'under the model');
+    expect(tester.getTopLeft(_text(_b('bioclip-2_224_fp16.tflite'))).dy, lessThan(y1), reason: 'under the model');
   });
 
   testWidgets('an open card and the list position come back after Android closed the app (r325)', (tester) async {
