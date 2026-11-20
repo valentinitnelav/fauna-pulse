@@ -191,14 +191,14 @@ void main() {
     await _pump(
       tester,
       use,
-      ModelFilesOnPhone(detectors: {use.find.single.file!.name}, idModels: {model.file!.name}, nameLists: {list.file.name}),
+      ModelFilesOnPhone(detectors: {use.find.first.file!.name}, idModels: {model.file!.name}, nameLists: {list.file.name}),
       calls,
     );
     expect(find.text('On this phone'), findsOneWidget);
     await _tap(tester, find.text('Use these'));
     expect(calls.downloaded, isEmpty);
-    expect(calls.saved, [(use.find.single.file!.name, model.file!.name, list.file.name)]);
-    expect(calls.popped, (detector: use.find.single.file!.name, idModel: model.file!.name, nameList: list.file.name));
+    expect(calls.saved, [(use.find.first.file!.name, model.file!.name, list.file.name)]);
+    expect(calls.popped, (detector: use.find.first.file!.name, idModel: model.file!.name, nameList: list.file.name));
   });
 
   testWidgets('insectDCT classifier on the phone without its class list: the list on a line of its own (r314)',
@@ -225,10 +225,33 @@ void main() {
 
   testWidgets('mammals and birds: the new name list and a large download', (tester) async {
     await _pump(tester, _use('mammals_birds'), const ModelFilesOnPhone(), _Calls());
-    expect(find.text('mdv6-yolov10c_256_w8a32.tflite'), findsOneWidget);
+    expect(find.text('mdv6-yolov10c_320_fp16.tflite'), findsOneWidget);
     expect(find.text('bioclip-2_224_fp16.tflite'), findsOneWidget);
     expect(find.text('with bioclip-2_mammals-birds-world_v4.fpack'), findsOneWidget);
     expect(find.text('A large download: use Wi-Fi.'), findsOneWidget, reason: 'BioCLIP 2 is over 600 MB');
+    // Round 390: the four MegaDetector files under one heading, the family's purpose once,
+    // each file with its note; what "slower" means once, above them.
+    await _tap(tester, find.text('Choose other models'));
+    final files = _use('mammals_birds').find;
+    for (final d in files) {
+      expect(find.text(d.file!.name), findsAtLeastNWidgets(1), reason: d.file!.name);
+      expect(find.text(d.fileNote!), findsOneWidget, reason: d.file!.name);
+    }
+    expect(find.text('MegaDetector V6'), findsOneWidget);
+    expect(find.text(files.first.purpose), findsOneWidget, reason: 'shown once for the family');
+    expect(find.textContaining('A slower file checks fewer pictures per second'), findsOneWidget);
+    expect(tester.takeException(), isNull, reason: 'the notes fit 360 px');
+  });
+
+  testWidgets('pollinators: flat-bug n and s under one heading, insectDCT on its own (r390)', (tester) async {
+    await _pump(tester, _use('pollinators'), const ModelFilesOnPhone(), _Calls());
+    await _tap(tester, find.text('Choose other models'));
+    final suggested = _use('pollinators').find;
+    final flatbug = suggested.firstWhere((d) => d.id == 'flatbug-n'), dct = suggested.firstWhere((d) => d.id == 'insectdct-v8s');
+    expect(find.text('flat-bug'), findsOneWidget);
+    expect(find.text(flatbug.purpose), findsOneWidget, reason: 'n and s share it: once');
+    expect(find.text(dct.purpose), findsOneWidget, reason: 'a model alone keeps its own purpose line');
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('a file not online yet: the plain message, nothing saved', (tester) async {
@@ -258,7 +281,7 @@ void main() {
     expect(find.text('my_bees_640_fp16.tflite'), findsNothing, reason: 'in the closed fold');
     await _tap(tester, find.text('Choose other models'));
     expect(find.text('Other models on this phone'), findsNWidgets(2), reason: 'detection and identification');
-    expect(find.text('mdv6-yolov10c_256_w8a32.tflite'), findsOneWidget, reason: 'suggested for another answer');
+    expect(find.text('mdv6-yolov10c_256_w8a32.tflite'), findsOneWidget, reason: 'a file no longer offered (round 390)');
     expect(find.text('with bioclip-2_mammals-birds-world_v1.fpack'), findsOneWidget,
         reason: 'a list no longer offered (round 322) can still be chosen');
     expect(find.text('flatbug-n_640_fp16.tflite'), findsNWidgets(2), reason: 'box and suggestion, not again');

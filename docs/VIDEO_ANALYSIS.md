@@ -894,7 +894,11 @@ More about each:
 - **Lindenthal camera traps**: one 213 GB zip.
 
 **Mammals and birds.** For this answer of **What do you want to watch?** the app suggests
-MegaDetector V6 (MDV6), which finds animals, people and vehicles. For names it suggests
+MegaDetector V6 (MDV6), which finds animals, people and vehicles: first the compact model (c)
+at 320 px, then c at 640 px and the larger model (e) at 320 and 640 px. c at 640 px finds more
+of the small or distant animals than c at 320 px. The other files are slower (each file's note
+says how much slower than another file): live, a slower file checks fewer pictures per second
+and warms the phone more; for videos checked afterwards it only takes longer. For names it suggests
 BioCLIP 2 with the name list *Mammals and birds of the world*. For a shorter list of the
 expected mammals or birds, build your own BioCLIP label pack with `bioclip_export/` of
 [fauna-pulse-models](https://github.com/valentinitnelav/fauna-pulse-models)

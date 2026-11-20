@@ -13,21 +13,67 @@
     {
       "id": "mdv6-yolov10c",
       "kind": "detection_model",
-      "title": "MegaDetector V6",
-      "purpose": "Common animals: finds animals in general (trained on camera-trap pictures, mostly mammals, birds and reptiles), plus people and vehicles.",
+      "title": "MegaDetector V6 c (compact)",
+      "family": "MegaDetector V6",
+      "purpose": "Common animals: finds animals in general (trained on camera-trap pictures, mostly mammals, birds and reptiles), plus people and vehicles. Two model sizes, compact (c) and larger (e), each for pictures of 320 or 640 px.",
       "licence": "AGPL-3.0",
       "source": "https://github.com/microsoft/MegaDetector",
-      "file": {
-        "name": "mdv6-yolov10c_256_w8a32.tflite",
-        "bytes": 2548785,
-        "sha256": "32ca01921bb6acee00d8e78f6b3a0194760bd8d8b27b17bf4aefe12e3075c9e6",
-        "url": "https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/009a5a95c07ad60c71226c668b437af7a6213c3c/mdv6-yolov10c_256_w8a32.tflite"
-      }
+      "files": [
+        {
+          "name": "mdv6-yolov10c_320_fp16.tflite",
+          "note": "Compact, 320 px: the fastest of the four.",
+          "bytes": 4824360,
+          "sha256": "ad4ddf42a41e7fb893a5189ec2aee45bd704ea324ccf01511324cf071a3639ef",
+          "url": "https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/8e06c919a320806147c008933ef51be32052614e/mdv6-yolov10c_320_fp16.tflite"
+        },
+        {
+          "name": "mdv6-yolov10c_640_fp16.tflite",
+          "note": "Compact, 640 px: finds more of the small or distant animals; about 3 to 4 times slower than compact 320 px.",
+          "bytes": 4899960,
+          "sha256": "330c828a19b6521b15cb162248a3fff172a3f4b47d3e8fd54fe8a758f8314751",
+          "url": "https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/8e06c919a320806147c008933ef51be32052614e/mdv6-yolov10c_640_fp16.tflite"
+        }
+      ],
+      "former_files": [
+        {
+          "name": "mdv6-yolov10c_256_w8a32.tflite",
+          "bytes": 2548785,
+          "sha256": "32ca01921bb6acee00d8e78f6b3a0194760bd8d8b27b17bf4aefe12e3075c9e6",
+          "url": "https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/009a5a95c07ad60c71226c668b437af7a6213c3c/mdv6-yolov10c_256_w8a32.tflite",
+          "note": "An older file of this model, no longer offered: the 320 px file finds more animals and can use the graphics chip (GPU)."
+        }
+      ]
+    },
+    {
+      "id": "mdv6-yolov10e",
+      "kind": "detection_model",
+      "title": "MegaDetector V6 e (larger)",
+      "family": "MegaDetector V6",
+      "purpose": "Common animals: finds animals in general (trained on camera-trap pictures, mostly mammals, birds and reptiles), plus people and vehicles. Two model sizes, compact (c) and larger (e), each for pictures of 320 or 640 px.",
+      "licence": "AGPL-3.0",
+      "source": "https://github.com/microsoft/MegaDetector",
+      "files": [
+        {
+          "name": "mdv6-yolov10e_320_fp16.tflite",
+          "note": "Larger, 320 px: the authors' larger model; about 7 to 18 times slower than compact 320 px.",
+          "bytes": 59867209,
+          "sha256": "7fa169cc3eb7e96978d04f681bb996c116d6240ce08f5f332bc3bb9cde74eb51",
+          "url": "https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/8e06c919a320806147c008933ef51be32052614e/mdv6-yolov10e_320_fp16.tflite"
+        },
+        {
+          "name": "mdv6-yolov10e_640_fp16.tflite",
+          "note": "Larger, 640 px: the slowest; about 3 to 4 times slower than larger 320 px.",
+          "bytes": 59942809,
+          "sha256": "fe1adcb0f3d3454cead091e22b1c56a2b498120c3d2bf1e676b1047b6de28456",
+          "url": "https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/8e06c919a320806147c008933ef51be32052614e/mdv6-yolov10e_640_fp16.tflite"
+        }
+      ]
     },
     {
       "id": "flatbug-n",
       "kind": "detection_model",
       "title": "flat-bug n (small)",
+      "family": "flat-bug",
       "purpose": "Insects and other arthropods: finds land arthropods, best on plain, flat backgrounds (trained mostly on pictures from traps, scans and lab trays). On flowers it can miss some insects: then try the insectDCT detector.",
       "licence": "MIT",
       "source": "https://github.com/darsa-group/flat-bug",
@@ -42,6 +88,7 @@
       "id": "flatbug-s",
       "kind": "detection_model",
       "title": "flat-bug s (larger)",
+      "family": "flat-bug",
       "purpose": "Insects and other arthropods: finds land arthropods, best on plain, flat backgrounds (trained mostly on pictures from traps, scans and lab trays). On flowers it can miss some insects: then try the insectDCT detector.",
       "note": "About 3.5 times the size of flat-bug n, and about 2 to 3 times slower per picture.",
       "licence": "MIT",
@@ -470,7 +517,8 @@
       "title": "Mammals and birds",
       "setup": "Fix the phone (on a tripod or a tree) facing a feeding site, a path or a nest entrance. On the camera screen, make the yellow square large, over the place the animals visit: FaunaPulse looks for animals only inside it.",
       "find": [
-        "mdv6-yolov10c"
+        "mdv6-yolov10c",
+        "mdv6-yolov10e"
       ],
       "name": [
         {

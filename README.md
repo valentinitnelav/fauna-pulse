@@ -292,7 +292,7 @@ Their original GitHub repositories are listed below:
 
 - [flat-bug][flatbug] (sizes `n` and `s`) mostly trained on dead specimens, so try it when aiming the camera at a homogenous background; for insects the app suggests it as a demo detector,
 - [insectDCT][insectdct] (size `s`) try it for insects on flowers,
-- [MegaDetector v6][mgdetv6] for common animals (3 classes: *animal, person, vehicle*).
+- [MegaDetector v6][mgdetv6] (sizes `c` and `e`) for common animals (3 classes: *animal, person, vehicle*).
 
 Classifiers (identification models) are offered the same way.
 

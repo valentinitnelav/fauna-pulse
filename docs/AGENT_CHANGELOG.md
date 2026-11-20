@@ -10533,3 +10533,8 @@ Asked: v4 in the catalogue in place of v2, clearer short-list messages (the owne
 ## Round 389 (2026-11-19): country box by name only, and a faster first tap
 Asked: no number of names next to the chosen country (one number on the page, in the line under the boxes), and why searching countries was slow on the Xiaomi 11T Pro. Open: the menu still builds all 250 rows at its first opening (about 0.45 s on a Samsung M12); a lazily built list needs a new country box.
 
+## Round 390 (2026-11-20): MegaDetector V6 c and e at 320 and 640 px in the download list
+Asked: offer the four new MegaDetector files, check on a phone that the app reads them, then show
+each model family under one heading. Open: fauna-pulse-models' publish check reads one file per
+model (hand-off note there); the Galaxy M12 CPU threads, a separate round if wanted.
+

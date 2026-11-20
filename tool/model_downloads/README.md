@@ -69,11 +69,25 @@ In the code, "pack" means such a file of either kind.
 - `models`: one entry per model, with `id` (the `<model>` part of its file names, unique),
   `kind` (`detection_model` or `identification_model`), `title`, `purpose`, optional `note`,
   `licence` and `source` (the authors' page: a repository or a Hugging Face page).
+- `family` (optional, round 390): the name shared by the models of one family that have one
+  Hugging Face repository (`MegaDetector V6` for c and e, `flat-bug` for n and s). Where a page
+  lists several of their files ("Choose other models" of "What do you want to watch?"), they
+  sit under that name with the `purpose` shown once, so give the models of one family the same
+  `purpose` and let each file's `note` say how it differs (compare files with each other, not
+  with kinds of phones: "about 3 times slower than ..." stays true as phones change).
   No citation field (round 277, owner): a citation changes (a preprint becomes a journal
   paper) and the authors keep theirs up to date on that page. The screen asks users to cite
   the original model from there.
 - `file` (optional): the file offered for download. An entry without it is known but not
   offered (its files on the phone still show its details).
+- `files` (round 390, detection models only): instead of `file`, several files of the same
+  weights, for example MegaDetector V6 c at 320 and 640 px. Each is offered on its own, and
+  each may carry its own `note`, shown with that file only (the files of one model share the
+  `purpose`, so the note says what each one is for).
+- `former_files` (round 390, detection models only): files no longer offered, in the same shape
+  plus a `note`, like `former_name_lists` below. A copy on the phone keeps the model's details in
+  its ⓘ card and shows the note under its file name; the links and checksums stay for
+  `update_catalogue.py --urls`.
 - `name_lists` (identification models): each with `kind` (`class_list` or `label_pack`),
   `title` and `file`, and its own `licence` and `source` when the names come from elsewhere
   (the TreeOfLife embeddings, CC0).
@@ -89,7 +103,8 @@ In the code, "pack" means such a file of either kind.
   order of the tiles. Each has `id`, `icon` (which drawing the tile shows: `pollinators`,
   `flat_surface`, `mammals_birds`; `widgets/watch_tiles.dart`), `title`, `setup` (one sentence
   on where to put the phone), `find` (the `id`s of the suggested detection models, in the order
-  to suggest them) and `name` (the suggested identification models, each `{"model": id, "list": file
+  to suggest them; a model with `files` brings all of them, in their order) and `name` (the
+  suggested identification models, each `{"model": id, "list": file
   name}`; a classifier with one class list may leave out `list`). The first of `find` and of
   `name` are the page's *Suggested AI models* (the others wait under *Choose other models*; the
   page of the answer used last opens with the models in use instead). For naming, BioCLIP 2
@@ -154,7 +169,9 @@ link is not public (HTTP 401)" means that a repository was made private again or
 names a repository that does not exist.
 
 - The MegaDetector file of release `v0.8.0-alpha.1` (`MDV6-yolov10-c_int8_256.tflite`, the
-  same bytes as `mdv6-yolov10c_256_w8a32.tflite`) stays online. Development builds from round
+  same bytes as `mdv6-yolov10c_256_w8a32.tflite`) stays online. Since round 390 the app no
+  longer offers it (it is a `former_files` entry): the 320 px fp16 file finds more animals and
+  runs on phone GPUs. Development builds from round
   268 to round 313 (never released) download it from there, and the model card names it. The
   released v0.8.0-alpha.1 carries the same file inside its APK.
 

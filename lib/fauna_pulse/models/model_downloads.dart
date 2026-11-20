@@ -42,6 +42,16 @@
 // or suggested, but a file on the phone keeps its title, licence and source,
 // and shows its `note` (grey) or `warning` (amber) line; without the entry its
 // card would say "not known, ask whoever made it" about our own file.
+//
+// Round 390 (owner): a detection model may offer several files (`files`, for
+// example MegaDetector V6 at 320 and 640 px), each with its own `note`, and keep
+// the files it no longer offers (`former_files`, the same idea as
+// `former_name_lists`). Each file becomes its own ModelDownload, so every
+// screen keeps one file per offer; `uses` names the model by `id` and gets all
+// its offered files, in their order. Models of one `family` (MegaDetector V6 c
+// and e, flat-bug n and s; one Hugging Face repository each) are shown under one
+// heading with their shared `purpose` where a page lists several, so the files
+// read as options of one model, not as unrelated models.
 
 import 'dart:convert';
 import 'dart:io';
@@ -103,11 +113,20 @@ class ModelDownload {
   final bool identification;
   final String title;
 
+  /// The name shared with the other models of its family (round 390), the
+  /// heading above them where a page lists several; null for a model alone.
+  final String? family;
+
   /// One plain line: what it finds or names.
   final String purpose;
 
-  /// Optional caveat (speed, size).
+  /// Optional caveat of the model (speed, size).
   final String? note;
+
+  /// The `note` of [file] itself (round 390: the files of one model differ in
+  /// speed). Shown only for that file, so a file of the model found by its
+  /// name's first part (another input size) gets the model's [note].
+  final String? fileNote;
   final String licence;
   final String source;
 
@@ -122,21 +141,31 @@ class ModelDownload {
   /// for the files on the phone, never offered or suggested.
   final List<NameListDownload> formerNameLists;
 
+  /// [file] is one of the model's `former_files` (round 390): known for the
+  /// file on the phone, never offered or suggested.
+  final bool former;
+
   const ModelDownload({
     required this.id,
     required this.identification,
     required this.title,
+    this.family,
     required this.purpose,
     this.note,
+    this.fileNote,
     required this.licence,
     required this.source,
     this.file,
     this.nameLists = const [],
     this.formerNameLists = const [],
+    this.former = false,
   });
 
   /// Offered for download.
-  bool get offered => file != null;
+  bool get offered => file != null && !former;
+
+  /// The note to show next to [file]: its own, else the model's.
+  String? get noteOfFile => fileNote ?? note;
 }
 
 /// An identification model with the name list it uses.
@@ -246,7 +275,17 @@ class ModelDownloads {
           _ => throw FormatException('unknown kind ${e['kind']} of $id'),
         };
         if (!ids.add(modelKey(id))) throw FormatException('repeated id $id');
-        final model = e['file'] is Map ? file(e['file'] as Map<String, dynamic>) : null;
+        List<Map<String, dynamic>> maps(String key) => [for (final f in (e[key] as List? ?? const [])) f as Map<String, dynamic>];
+        // `file`, or each of `files`, then the `former_files` (round 390). Only for detection
+        // models: an identification model's name lists would be repeated with every file.
+        final files = [
+          for (final f in [if (e['file'] is Map) e['file'] as Map<String, dynamic>, ...maps('files')])
+            (file(f), f['note'] as String?, false),
+          for (final f in maps('former_files')) (file(f), f['note'] as String?, true),
+        ];
+        if (isId && (e['files'] != null || e['former_files'] != null)) {
+          throw FormatException('files or former_files in identification model $id');
+        }
         List<NameListDownload> lists(String key) => [
           for (final l in (e[key] as List? ?? const []))
             NameListDownload(
@@ -266,24 +305,28 @@ class ModelDownloads {
         final offeredLists = lists('name_lists'), formerLists = lists('former_name_lists');
         final allLists = [...offeredLists, ...formerLists];
         final safe = isId
-            ? (model == null || isSafeIdentificationFileName(model.name, ext: '.tflite')) &&
+            ? files.every((f) => isSafeIdentificationFileName(f.$1.name, ext: '.tflite')) &&
                   allLists.every((l) => isSafeIdentificationFileName(l.file.name, ext: '.fpack'))
-            : (model == null || isSafeModelBaseName(model.name)) && allLists.isEmpty;
+            : files.every((f) => isSafeModelBaseName(f.$1.name)) && allLists.isEmpty;
         if (!safe) throw FormatException('unsafe file name in $id');
-        (isId ? identification : detectors).add(
-          ModelDownload(
-            id: id,
-            identification: isId,
-            title: e['title'] as String,
-            purpose: e['purpose'] as String,
-            note: e['note'] as String?,
-            licence: e['licence'] as String? ?? '',
-            source: e['source'] as String? ?? '',
-            file: model,
-            nameLists: offeredLists,
-            formerNameLists: formerLists,
-          ),
-        );
+        (isId ? identification : detectors).addAll([
+          for (final (model, fileNote, former) in files.isEmpty ? [(null, null, false)] : files)
+            ModelDownload(
+              id: id,
+              identification: isId,
+              title: e['title'] as String,
+              family: e['family'] as String?,
+              purpose: e['purpose'] as String,
+              note: e['note'] as String?,
+              fileNote: fileNote,
+              licence: e['licence'] as String? ?? '',
+              source: e['source'] as String? ?? '',
+              file: model,
+              nameLists: offeredLists,
+              formerNameLists: formerLists,
+              former: former,
+            ),
+        ]);
       } catch (e) {
         logSwallowed('model_downloads_entry', e);
       }
@@ -297,10 +340,13 @@ class ModelDownloads {
 
   /// `uses` (round 278). A suggestion naming a model that is not offered, or
   /// a list that model does not have, is left out (logged); a use left with
-  /// no detection model is skipped.
+  /// no detection model is skipped. A detection model brings all its offered
+  /// files, in the order of its `files` (round 390).
   static List<WatchUse> _parseUses(List raw, List<ModelDownload> detectors, List<ModelDownload> identification) {
-    ModelDownload? offered(List<ModelDownload> all, String id) =>
-        all.where((d) => d.offered && modelKey(d.id) == modelKey(id)).firstOrNull;
+    List<ModelDownload> offered(List<ModelDownload> all, String id) => [
+      for (final d in all)
+        if (d.offered && modelKey(d.id) == modelKey(id)) d,
+    ];
     final uses = <WatchUse>[];
     for (final u in raw) {
       try {
@@ -308,9 +354,9 @@ class ModelDownloads {
         final id = e['id'] as String;
         final find = <ModelDownload>[];
         for (final m in (e['find'] as List? ?? const [])) {
-          final d = offered(detectors, m as String);
-          if (d != null) {
-            find.add(d);
+          final files = offered(detectors, m as String);
+          if (files.isNotEmpty) {
+            find.addAll(files);
           } else {
             logSwallowed('model_downloads_use', 'no offered detection model $m in use $id');
           }
@@ -318,7 +364,7 @@ class ModelDownloads {
         final name = <NamingDownload>[];
         for (final n in (e['name'] as List? ?? const [])) {
           final m = (n as Map<String, dynamic>)['model'] as String;
-          final d = offered(identification, m);
+          final d = offered(identification, m).firstOrNull;
           final listName = n['list'] as String?;
           // A classifier has one list (its classes): it may be left out.
           final list = d?.nameLists
@@ -349,8 +395,8 @@ class ModelDownloads {
   }
 
   /// The entry of the model file [fileName] (a name or a path): the one
-  /// that offers exactly this file, else the one whose `id` is the file's
-  /// first part (round 276, compared with [modelKey]).
+  /// that offers or offered exactly this file, else the one whose `id` is the
+  /// file's first part (round 276, compared with [modelKey]).
   ModelDownload? modelFor(String fileName) {
     final name = fileName.split('/').last;
     final all = [...detectors, ...identification];

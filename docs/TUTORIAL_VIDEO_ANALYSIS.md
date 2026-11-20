@@ -25,14 +25,15 @@ tap a file name, then the download button. The videos land in the phone's Downlo
 | File | What it shows | Size | Try it with |
 |---|---|---|---|
 | `Pumpkin1080_square_realtime.mp4` | a honey bee on a pumpkin flower | 8.3 MB | insectDCT detector, then BioCLIP 2 with the European pollinator names |
-| `White_tailed_Deer_square.mp4` | two white-tailed deer at a trail camera | 19.2 MB | MegaDetector V6, then BioCLIP 2 with the mammal and bird names |
+| `White_tailed_Deer_square.mp4` | two white-tailed deer at a trail camera | 19.2 MB | MegaDetector V6 c, then BioCLIP 2 with the mammal and bird names |
 
 ## 2. Download the AI models (once, with internet)
 
 On Home, tap **AI models** at the bottom (screen *Download & import models*) and download:
 
 - **insectDCT detector** (19 MB): finds insects on flowers. For the bee video.
-- **MegaDetector V6** (2.5 MB): finds mammals and birds. For the deer video.
+- **MegaDetector V6 c (compact)**, the file `mdv6-yolov10c_320_fp16.tflite` (4.6 MB): finds mammals
+  and birds. For the deer video.
 - **BioCLIP 2** (609 MB), with the name lists *Flies, bees and wasps, beetles, butterflies and
   moths of Europe* (57 MB) and *Mammals and birds of the world* (26 MB).
 
@@ -48,7 +49,7 @@ BioCLIP 2 is large: use Wi-Fi. After this, FaunaPulse needs no internet.
 
 1. Tap **Find animals in these videos**. Later, from Home: step 4 **Find and name the animals**,
    tap **Find animals in videos** and pick the session.
-2. **Detection model**: the insectDCT detector for the bee, MegaDetector V6 for the deer.
+2. **Detection model**: the insectDCT detector for the bee, MegaDetector V6 c for the deer.
 3. Switch on **Also identify them**. Check that the model is BioCLIP 2 and choose the name list
    (European pollinators for the bee, mammals and birds for the deer).
 4. Tap **Analyze 1 clip and identify**.

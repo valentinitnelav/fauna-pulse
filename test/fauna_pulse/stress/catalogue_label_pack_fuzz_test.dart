@@ -120,8 +120,9 @@ void main() {
     });
 
     test('wrong JSON types anywhere in the list: one or two bad values cost at most their own models', () {
-      final all = ModelDownloads.parse(catalogue);
-      final total = all.detectors.length + all.identification.length;
+      // Models, not rows: a model with several files has a row per file (round 390).
+      int models(ModelDownloads c) => {for (final d in [...c.detectors, ...c.identification]) d.id}.length;
+      final total = models(ModelDownloads.parse(catalogue));
       final report = FuzzReport();
       final one = jsonEncode(jsonDecode(catalogue));
       for (final (name, lines) in typeMutants([one], Random(22), count: 500)) {
@@ -129,7 +130,7 @@ void main() {
         Object? err;
         try {
           final c = ModelDownloads.parse(lines.single);
-          final left = c.detectors.length + c.identification.length;
+          final left = models(c);
           // A mutation touches one or two places: it may cost those models (and a use), not the rest.
           if (left < total - 2) err = StateError('$left of $total models left');
         } catch (e) {

@@ -37,6 +37,9 @@ list (rebuilt under the new name, so other bytes). Anything else is reported
 Round 322: a new label pack version is added by hand (its "name" in "name_lists", the old
 version moved to "former_name_lists"), then --urls fills in its link, size and checksum.
 
+Round 390: a detection model may list several files ("files", each with an optional "note")
+and the files it no longer offers ("former_files"); every mode reads them like "file".
+
 Round 381: --countries writes assets/name_list_countries.json from local label packs:
 
     python tool/model_downloads/update_catalogue.py --countries ~/fauna-pulse-models/.../*.fpack
@@ -69,13 +72,19 @@ def sha256_of(path):
     return h.hexdigest()
 
 
+def model_files(entry):
+    """The model file dicts of a catalogue entry: "file", or "files" (round 390), and the
+    "former_files" no longer offered."""
+    return ([entry["file"]] if "file" in entry else []) + entry.get("files", []) + entry.get("former_files", [])
+
+
 def file_entries(catalogue):
-    """Every {"name", "bytes", "sha256"} dict in the catalogue, by file name (the lists no longer
-    offered too, so --urls still matches their published files)."""
+    """Every {"name", "bytes", "sha256"} dict in the catalogue, by file name (the files and lists
+    no longer offered too, so --urls still matches their published files)."""
     out = {}
     for entry in catalogue.get("models", []):
-        if "file" in entry:
-            out[entry["file"]["name"]] = entry["file"]
+        for f in model_files(entry):
+            out[f["name"]] = f
         for lst in entry.get("name_lists", []) + entry.get("former_name_lists", []):
             out[lst["file"]["name"]] = lst["file"]
     return out
@@ -128,7 +137,7 @@ def attach_unmatched(catalogue, name):
     entry = next((e for e in catalogue.get("models", []) if m and e["id"] == m.group("id")), None)
     if entry is None:
         return None
-    if name.endswith(".tflite") and "file" not in entry:
+    if name.endswith(".tflite") and not model_files(entry):
         entry["file"] = {}
         return entry["file"]
     class_lists = [lst for lst in entry.get("name_lists", []) if lst.get("kind") == "class_list"]

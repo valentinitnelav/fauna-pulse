@@ -484,6 +484,39 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     ),
   );
 
+  /// What a slower detection file means (round 390, owner: compare the files with each other,
+  /// never with kinds of phones, whose speed changes every year).
+  static const _slowerNote =
+      'A slower file checks fewer pictures per second on the camera screen ("det … fps") and '
+      'warms the phone more. In videos checked afterwards it only takes longer.';
+
+  /// For each of [find]: the first file of the run of two or more files of one family in a row
+  /// (round 390: MegaDetector V6 c and e at 320 and 640 px, flat-bug n and s), whose family name
+  /// and purpose head the run, so the files read as options of one model; null for a file
+  /// shown alone.
+  static List<ModelDownload?> _familyHeads(List<ModelDownload> find) {
+    bool same(int a, int b) => a >= 0 && b < find.length && find[a].family != null && find[a].family == find[b].family;
+    final heads = <ModelDownload?>[];
+    for (var i = 0; i < find.length; i++) {
+      heads.add(same(i - 1, i) ? heads[i - 1] : (same(i, i + 1) ? find[i] : null));
+    }
+    return heads;
+  }
+
+  Widget _familyHeading(ModelDownload d) => Padding(
+    padding: const EdgeInsets.only(top: 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          header: true,
+          child: Text(d.family!, style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600)),
+        ),
+        Text(d.purpose, style: helperTextStyle),
+      ],
+    ),
+  );
+
   /// Above the models of a kind that the phone has besides the suggestions.
   Widget _otherOnPhone() => const Padding(
     padding: EdgeInsets.only(top: 8),
@@ -496,6 +529,7 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     final use = _use;
     final otherDetectors = _otherDetectors;
     final otherNamings = _otherNamings;
+    final heads = _familyHeads(use.find);
     return Theme(
       // No lines above and below the fold.
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -507,19 +541,27 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
         subtitle: const Text('The suggested models, and the models already on this phone', style: helperTextStyle),
         children: [
           const SizedBox(height: 12),
-          ModelKindPanel(identification: false, title: 'To find the animals', children: [
-            for (final d in use.find)
-              _choice(
-                chosen: d.file!.name == _find,
-                title: d.file!.name,
-                lines: [d.purpose],
-                size: _sizeLine([d.file!]),
-                onTap: () => setState(() => _find = d.file!.name),
-              ),
-            if (otherDetectors.isNotEmpty) _otherOnPhone(),
-            for (final f in otherDetectors)
-              _choice(chosen: f == _find, title: f, lines: const [], onTap: () => setState(() => _find = f)),
-          ]),
+          ModelKindPanel(
+            identification: false,
+            title: 'To find the animals',
+            subtitle: use.find.length + otherDetectors.length > 1 ? _slowerNote : null,
+            children: [
+              for (final (i, d) in use.find.indexed) ...[
+                if (heads[i] case final h? when identical(h, d)) _familyHeading(h),
+                _choice(
+                  chosen: d.file!.name == _find,
+                  title: d.file!.name,
+                  // Under its family's heading only the note, which says how the file differs.
+                  lines: [if (heads[i]?.purpose != d.purpose) d.purpose, ?d.noteOfFile],
+                  size: _sizeLine([d.file!]),
+                  onTap: () => setState(() => _find = d.file!.name),
+                ),
+              ],
+              if (otherDetectors.isNotEmpty) _otherOnPhone(),
+              for (final f in otherDetectors)
+                _choice(chosen: f == _find, title: f, lines: const [], onTap: () => setState(() => _find = f)),
+            ],
+          ),
           if (_namingOffered) ...[
             const SizedBox(height: 12),
             ModelKindPanel(identification: true, title: 'To name them', children: [

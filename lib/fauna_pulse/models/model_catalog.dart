@@ -95,8 +95,9 @@ class ModelCatalog {
     kLocalYolo26ModelId: 'YOLO26 nano (local test model)',
   };
 
-  // Configs that saved a pre-r119 placeholder id (yolo26s/m/l/x) load as the
-  // current MDV6 default; the migration lives in SessionConfig.fromJson.
+  // Configs that saved a pre-r119 placeholder id (yolo26s/m/l/x) load with no
+  // model chosen (no model ships with the app, so there is no default);
+  // the migration is migrateModelPath (session_config.dart).
 
   static const bundledIds = {kLocalYolo26ModelId};
 
@@ -313,10 +314,7 @@ List<String> visibleBundledModelAssets(
 }
 
 /// How the camera screen recovers after a model failed to load (round 151).
-/// [revertToPath] is what `SessionConfig.modelPath` should point at again;
-/// [toBundledDefault] is true when nothing was running natively (a failed
-/// initial load), so the recovery falls back to the release's bundled MDV6
-/// model instead of a previously loaded model.
+/// [revertToPath] is what `SessionConfig.modelPath` should point at again.
 class ModelLoadRecovery {
   /// The model to go back to; '' = none (the camera runs without one).
   final String revertToPath;

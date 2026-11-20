@@ -931,13 +931,13 @@ class _ModelsScreenState extends State<ModelsScreen> {
 
   static bool _isLink(String value) => value.startsWith('https://') && !value.contains(RegExp(r'\s'));
 
-  /// What the app's model list says about a file on the phone (round 276:
-  /// every known model, found by the file's first part).
-  static List<(String, String)> _catalogueRows(ModelDownload? d) => [
+  /// What the app's model list says about the file [fileName] on the phone (round 276:
+  /// every known model, found by the file's first part). A file's own note only for that file.
+  static List<(String, String)> _catalogueRows(ModelDownload? d, String fileName) => [
     if (d != null) ...[
       ('Model', d.title),
       ('Use', d.purpose),
-      if (d.note != null) ('Note', d.note!),
+      if ((d.file?.name == fileName ? d.noteOfFile : d.note) case final note?) ('Note', note),
     ],
   ];
 
@@ -1010,7 +1010,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
     _showCard(kDetectionIcon, m.name, [
       ('Kind', 'Detection model: finds animals and draws a box around each one'),
       if (d != listed) _otherFileNote,
-      ..._catalogueRows(d),
+      ..._catalogueRows(d, m.name),
       if (m.labels.isNotEmpty) ('Finds', _finds(m.labels)),
       if (m.inputSize != null) ('Input size', '${m.inputSize} px (each picture is resized to this for the model)'),
       if (m.precision != null) ('Number format', _numberFormat(m.precision!)),
@@ -1033,7 +1033,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
     _showCard(kIdentificationIcon, _nameOf(f), [
       ('Kind', 'Identification model: names what is inside each box, choosing from a name list made for it'),
       if (d != listed) _otherFileNote,
-      ..._catalogueRows(d),
+      ..._catalogueRows(d, _nameOf(f)),
       // Its name lists are listed under it on the screen (round 314).
       ('File', _onPhone(f.path, inv)),
       ..._originRows(d),
@@ -1067,7 +1067,7 @@ class _ModelsScreenState extends State<ModelsScreen> {
     _showCard(d.identification ? kIdentificationIcon : kDetectionIcon, d.title, [
       ('Kind', d.identification ? 'Identification model' : 'Detection model'),
       ('Use', d.purpose),
-      if (d.note != null) ('Note', d.note!),
+      if (d.noteOfFile case final note?) ('Note', note),
       ('File', '${d.file!.name}, ${formatBytes(d.file!.bytes)}'),
       for (final l in d.nameLists)
         if (l.classList) ('Class list', '${l.title}\n${l.file.name}, ${formatBytes(l.file.bytes)}'),
@@ -1172,11 +1172,15 @@ class _ModelsScreenState extends State<ModelsScreen> {
   Widget _detectorTile(ModelEntry m, ModelsInventory inv) {
     final wrong = inv.wrongKind[m.id];
     final task = inv.unsupportedTask[m.id];
+    // A file the list no longer offers shows its note under its name, as a former name list does.
+    final listed = inv.downloads.modelFor(m.name);
+    final former = _sameFile(listed, listed?.file, m.name, inv.sizes[m.id]);
     return _tile(
       kDetectionIcon,
       m.name,
       () => _detectorCard(m, inv),
       path: m.source == ModelSource.imported ? m.id : null,
+      note: former != null && former.former && former.file!.name == m.name ? former.noteOfFile : null,
       warning: wrong != null
           ? _wrongKindText(wrong, ModelFileKind.detection)
           : task == null

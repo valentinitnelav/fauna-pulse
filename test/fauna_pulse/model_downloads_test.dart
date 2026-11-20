@@ -18,7 +18,18 @@ import 'package:fauna_pulse/fauna_pulse/widgets/download_files_dialog.dart';
 void main() {
   test('the shipped list names every known model; the offered files have safe names, sizes and checksums', () {
     final c = ModelDownloads.parse(File('assets/model_downloads.json').readAsStringSync());
-    expect(c.detectors.map((d) => d.id), ['arthronat-n', 'mdv6-yolov10c', 'flatbug-n', 'flatbug-s', 'insectdct-v8s']);
+    // One entry per file (round 390: MegaDetector V6 offers several, and keeps its old file).
+    expect(c.detectors.map((d) => d.file?.name ?? d.id), [
+      'arthronat-n',
+      'mdv6-yolov10c_320_fp16.tflite',
+      'mdv6-yolov10c_640_fp16.tflite',
+      'mdv6-yolov10c_256_w8a32.tflite',
+      'mdv6-yolov10e_320_fp16.tflite',
+      'mdv6-yolov10e_640_fp16.tflite',
+      'flatbug-n_640_fp16.tflite',
+      'flatbug-s_640_fp16.tflite',
+      'insectdct-v8s_640_fp16.tflite',
+    ]);
     expect(c.identification.map((d) => d.id), [
       'insectdct-cls-v7-eff2s',
       'insectdct-cls-v7-cnb',
@@ -26,13 +37,48 @@ void main() {
       'bioclip-2',
       'bioclip-2.5',
     ]);
-    expect(c.detectorOffers.map((d) => d.id), ['mdv6-yolov10c', 'flatbug-n', 'flatbug-s', 'insectdct-v8s']);
+    expect(c.detectorOffers.map((d) => d.id), [
+      'mdv6-yolov10c',
+      'mdv6-yolov10c',
+      'mdv6-yolov10e',
+      'mdv6-yolov10e',
+      'flatbug-n',
+      'flatbug-s',
+      'insectdct-v8s',
+    ]);
+    // Round 390: the old MegaDetector file is no longer offered, but keeps its link (for
+    // update_catalogue.py --urls) and a note for the phones that have it.
+    final formerFiles = c.detectors.where((d) => d.former).toList();
+    expect(formerFiles.map((d) => d.file!.name), ['mdv6-yolov10c_256_w8a32.tflite']);
+    expect(formerFiles.single.noteOfFile, startsWith('An older file of this model'));
+    // Each MegaDetector file says what it is for; the files of one model differ only there.
+    for (final d in c.detectorOffers.where((d) => d.id.startsWith('mdv6'))) {
+      expect(d.fileNote, isNotNull, reason: d.file!.name);
+    }
+    // Families (round 390): the watch page shows a family's purpose once, from its first file,
+    // so the models of one family must share it.
+    expect({for (final d in c.detectorOffers) d.id: d.family}, {
+      'mdv6-yolov10c': 'MegaDetector V6',
+      'mdv6-yolov10e': 'MegaDetector V6',
+      'flatbug-n': 'flat-bug',
+      'flatbug-s': 'flat-bug',
+      'insectdct-v8s': null,
+    });
+    for (final d in c.detectors.where((d) => d.family != null)) {
+      expect(d.purpose, c.detectors.firstWhere((o) => o.family == d.family).purpose, reason: d.id);
+    }
+    expect(c.uses.firstWhere((u) => u.id == 'mammals_birds').find.map((d) => d.file!.name), [
+      'mdv6-yolov10c_320_fp16.tflite',
+      'mdv6-yolov10c_640_fp16.tflite',
+      'mdv6-yolov10e_320_fp16.tflite',
+      'mdv6-yolov10e_640_fp16.tflite',
+    ], reason: 'the fastest file first; a model brings its files in their order');
     expect(c.identificationOffers.map((d) => d.id), ['insectdct-cls-v7-eff2s', 'bioclip-2', 'bioclip-2.5']);
     final all = [
       for (final d in [...c.detectorOffers, ...c.identificationOffers]) ...[d.file!, for (final l in d.nameLists) l.file],
     ];
-    expect(all, hasLength(4 + 3 + 1 + 7 + 6),
-        reason: 'round 322: the v2 label packs, no 32-family demo; round 379: the six continent lists of BioCLIP 2 and its world '
+    expect(all, hasLength(7 + 3 + 1 + 7 + 6),
+        reason: 'round 390: four MegaDetector files; round 322: the v2 label packs, no 32-family demo; round 379: the six continent lists of BioCLIP 2 and its world '
             'mammals and birds; round 381: the six continent lists of BioCLIP 2.5');
     // Round 322: the lists no longer offered keep their pinned links and
     // checksums (update_catalogue.py --urls matches them by checksum).
@@ -52,7 +98,7 @@ void main() {
       expect(l.note ?? l.warning, isNotNull, reason: l.file.name);
       expect(l.warning != null, l.file.name.contains('32fam'), reason: 'only the demo lists warn: ${l.file.name}');
     }
-    for (final f in [...all, for (final l in former) l.file]) {
+    for (final f in [...all, for (final l in former) l.file, for (final d in formerFiles) d.file!]) {
       expect(f.url.isScheme('https'), isTrue, reason: f.name);
       expect(f.url.path, endsWith('/${f.name}'));
       // Round 314: a Hugging Face link is pinned to one upload (a commit), never a branch.
@@ -72,7 +118,7 @@ void main() {
     }
     expect(
       c.detectorOffers.first.file!.url.toString(),
-      'https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/009a5a95c07ad60c71226c668b437af7a6213c3c/mdv6-yolov10c_256_w8a32.tflite',
+      'https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/8e06c919a320806147c008933ef51be32052614e/mdv6-yolov10c_320_fp16.tflite',
     );
     expect(
       c.identificationOffers.last.file!.url.toString(),
@@ -111,11 +157,12 @@ void main() {
     String? title(String name) => c.modelFor(name)?.title;
     // Named by the rule: variants that are not offered.
     expect(title('flatbug-s_1024_fp16.tflite'), 'flat-bug s (larger)');
-    expect(title('mdv6-yolov10c_640_fp16.tflite'), 'MegaDetector V6');
+    expect(title('mdv6-yolov10c_1280_fp16.tflite'), 'MegaDetector V6 c (compact)');
+    expect(title('mdv6-yolov10e_1280_fp16.tflite'), 'MegaDetector V6 e (larger)');
     expect(title('insectdct-cls-v7-res_224_fp16.tflite'), 'insectDCT classifier (ResNet50)');
     expect(title('bioclip-2.5_224_fp16.tflite'), 'BioCLIP 2.5');
     // Named before the rule: upper case, "-" and "." do not matter.
-    expect(title('MDV6-yolov10-c_int8_320.tflite'), 'MegaDetector V6');
+    expect(title('MDV6-yolov10-c_int8_320.tflite'), 'MegaDetector V6 c (compact)');
     expect(title('insectdct-v8-s_1024_fp16.tflite'), 'insectDCT detector');
     expect(title('bioclip-25_image_fp16.tflite'), 'BioCLIP 2.5');
     expect(title('arthronat-n_640_int8.tflite'), 'ArthroNat n');
@@ -180,6 +227,35 @@ void main() {
     expect(u.find.map((d) => d.id), ['det'], reason: 'known but not offered, and unknown, are left out');
     expect([for (final (m, l) in u.name) '${m.id}/${l.file.name}'], ['cls/cls_224_fp16.fpack', 'clip/clip_b_v1.fpack'],
         reason: 'a model with several lists needs the list named');
+  });
+
+  test('several files per detection model and former files (r390)', () {
+    final c = ModelDownloads.parse('''
+{"models": [
+   {"id": "det", "kind": "detection_model", "title": "Det", "purpose": "p", "note": "model note",
+    "files": [{"name": "det_320_fp16.tflite", "bytes": 5, "url": "https://example.org/det_320_fp16.tflite", "note": "fast"},
+              {"name": "det_640_fp16.tflite", "bytes": 6, "url": "https://example.org/det_640_fp16.tflite"}],
+    "former_files": [{"name": "det_256_int8.tflite", "bytes": 4, "url": "https://example.org/det_256_int8.tflite", "note": "old"}]},
+   {"id": "gone", "kind": "detection_model", "title": "Gone", "purpose": "p",
+    "former_files": [{"name": "gone_640_fp16.tflite", "bytes": 4, "url": "https://example.org/gone_640_fp16.tflite"}]},
+   {"id": "two", "kind": "identification_model", "title": "Two files", "purpose": "p",
+    "files": [{"name": "two_224_fp16.tflite", "bytes": 1, "url": "https://example.org/a.tflite"},
+              {"name": "two_336_fp16.tflite", "bytes": 1, "url": "https://example.org/b.tflite"}]},
+   {"id": "old", "kind": "identification_model", "title": "Former file", "purpose": "p",
+    "former_files": [{"name": "old_224_fp16.tflite", "bytes": 1, "url": "https://example.org/old.tflite"}]}
+ ],
+ "uses": [{"id": "u", "title": "U", "find": ["gone", "det"]}]}''');
+    expect(c.detectors.map((d) => d.file!.name), ['det_320_fp16.tflite', 'det_640_fp16.tflite', 'det_256_int8.tflite', 'gone_640_fp16.tflite']);
+    expect(c.detectorOffers.map((d) => d.file!.name), ['det_320_fp16.tflite', 'det_640_fp16.tflite']);
+    expect(c.detectors.map((d) => d.noteOfFile), ['fast', 'model note', 'old', null], reason: "a file's own note, else the model's");
+    expect(c.identification, isEmpty, reason: 'an identification model would repeat its name lists with every file');
+    expect(c.uses.single.find.map((d) => d.file!.name), ['det_320_fp16.tflite', 'det_640_fp16.tflite'],
+        reason: 'a model brings its offered files in their order, never a former one');
+    // A former file finds its own entry (and note); another file of the model gets the model's.
+    expect(c.modelFor('/p/det_256_int8.tflite')!.former, isTrue);
+    expect(c.modelFor('/p/det_256_int8.tflite')!.noteOfFile, 'old');
+    expect(c.modelFor('det_1024_fp16.tflite')!.note, 'model note');
+    expect(c.modelFor('det_1024_fp16.tflite')!.offered, isTrue);
   });
 
   testWidgets('the download dialog shows the total, and Try again continues with the failed file', (tester) async {

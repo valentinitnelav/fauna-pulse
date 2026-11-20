@@ -10,7 +10,10 @@
 //         --dart-define=OUTPUTS_MODELS=<absolute .tflite path on the phone>[,<path>]
 // Always pass --no-uninstall (see video_decode_check_test.dart for why). Without OUTPUTS_PICTURES
 // the folder detector_outputs_check/ in the app's external files directory is used; without
-// OUTPUTS_MODELS the bundled detectors.
+// OUTPUTS_MODELS the bundled detectors. In a freshly installed side-by-side copy (test/README.md)
+// a folder that adb created in the external files directory cannot be listed by the app
+// (permission denied, Xiaomi 11T Pro): copy pictures and models into the app's own files
+// directory with `adb shell run-as <package> cp` and pass those paths.
 
 import 'dart:io';
 

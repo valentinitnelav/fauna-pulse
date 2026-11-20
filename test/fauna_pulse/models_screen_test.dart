@@ -1058,6 +1058,59 @@ void main() {
     expect(find.text(_b('bioclip-2_europe_v1.fpack')), findsNothing, reason: 'the replaced list is not offered');
   });
 
+  testWidgets('round 390: a model with several files offers each; a file no longer offered shows its note', (tester) async {
+    final downloads = ModelDownloads.parse('''
+{"models": [
+   {"id": "mdv6-yolov10c", "kind": "detection_model", "title": "MegaDetector V6 c (compact)", "purpose": "Common animals.",
+    "licence": "AGPL-3.0", "source": "https://github.com/microsoft/MegaDetector",
+    "files": [{"name": "mdv6-yolov10c_320_fp16.tflite", "bytes": 4824360, "note": "For live detection on most phones.",
+               "url": "https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/8e06c91/mdv6-yolov10c_320_fp16.tflite"},
+              {"name": "mdv6-yolov10c_640_fp16.tflite", "bytes": 4899960, "note": "Finds smaller animals, slower.",
+               "url": "https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/8e06c91/mdv6-yolov10c_640_fp16.tflite"}],
+    "former_files": [{"name": "mdv6-yolov10c_256_w8a32.tflite", "bytes": 2548785, "note": "An older file of this model.",
+                      "url": "https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/009a5a9/mdv6-yolov10c_256_w8a32.tflite"}]},
+   {"id": "gone", "kind": "detection_model", "title": "Gone", "purpose": "Old.",
+    "former_files": [{"name": "gone_256_int8.tflite", "bytes": 5, "note": "Gone file note.", "url": "https://example.org/gone_256_int8.tflite"}]}
+ ]}''');
+    const old = 'mdv6-yolov10c_256_w8a32.tflite', other = 'mdv6-yolov10c_1280_fp16.tflite';
+    // A model that offers no file any more: its old file's note stays with that file only.
+    const gone = 'gone_256_int8.tflite', goneOther = 'gone_640_fp16.tflite';
+    await _pump(
+      tester,
+      inventory: () => ModelsInventory(
+        detectors: const [
+          ModelEntry(id: '/data/app/files/models/$old', name: old, source: ModelSource.imported, task: 'detect'),
+          ModelEntry(id: '/data/app/files/models/$other', name: other, source: ModelSource.imported, task: 'detect'),
+          ModelEntry(id: '/data/app/files/models/$gone', name: gone, source: ModelSource.imported, task: 'detect'),
+          ModelEntry(id: '/data/app/files/models/$goneOther', name: goneOther, source: ModelSource.imported, task: 'detect'),
+        ],
+        sizes: const {'/data/app/files/models/$old': 2548785},
+        downloads: downloads,
+      ),
+    );
+    await _show(tester, find.text(old));
+    expect(find.text('An older file of this model.'), findsOneWidget, reason: 'under its name, as a replaced name list');
+    expect(find.text(_b(old)), findsNothing, reason: 'never offered');
+    await _show(tester, find.text(goneOther));
+    expect(find.text('Gone file note.'), findsOneWidget, reason: 'under $gone only, not under $goneOther');
+    for (final f in ['mdv6-yolov10c_320_fp16.tflite', 'mdv6-yolov10c_640_fp16.tflite']) {
+      expect(find.text(_b(f)), findsOneWidget, reason: '$f: each file of the model is offered');
+    }
+    await _card(tester, old);
+    expect(_inCard('MegaDetector V6 c (compact)'), findsOneWidget);
+    expect(_inCard('An older file of this model.'), findsOneWidget);
+    expect(_modelCard(tester), 'https://huggingface.co/Valen-Peregrine/mdv6-tflite');
+    await _close(tester);
+    // Another file of the model (found by its first part) gets the model's details, no file's note.
+    await _card(tester, other);
+    expect(_inCard('MegaDetector V6 c (compact)'), findsOneWidget);
+    expect(_inCard('For live detection on most phones.'), findsNothing);
+    await _close(tester);
+    await _card(tester, _b('mdv6-yolov10c_640_fp16.tflite'), tooltip: 'About this model');
+    expect(_inCard('Finds smaller animals, slower.'), findsOneWidget, reason: 'the offer shows its own note');
+    await _close(tester);
+  });
+
   testWidgets('round 322: with the model not on the phone, a replaced list sits under it, above its new version', (tester) async {
     final v1 = File('$_dir/packs/bioclip-2_europe_v1.fpack');
     await _pump(

@@ -179,7 +179,7 @@ void main() {
     await tester.tap(find.text('Mammals and birds'));
     await tester.pumpAndSettle();
     expect(find.byType(WatchPlanScreen), findsOneWidget);
-    expect(find.text('mdv6-yolov10c_256_w8a32.tflite'), findsOneWidget);
+    expect(find.text('mdv6-yolov10c_320_fp16.tflite'), findsOneWidget);
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect((await SharedPreferences.getInstance()).getString(kHomeWatchUsePref), isNull);
@@ -370,7 +370,7 @@ void main() {
   testWidgets('set up with a label pack; a camera model from elsewhere is just "Chosen AI models"', (tester) async {
     SharedPreferences.setMockInitialValues({kHomeWatchUsePref: 'mammals_birds'});
     const bioclip = (
-      detector: 'mdv6-yolov10c_256_w8a32.tflite',
+      detector: 'mdv6-yolov10c_320_fp16.tflite',
       idModel: 'bioclip-2_224_fp16.tflite',
       nameList: 'bioclip-2_mammals-birds-world_v1.fpack',
     );
