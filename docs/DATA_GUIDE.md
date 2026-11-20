@@ -225,7 +225,7 @@ Every key is always present, null when empty:
   `gps`/`typed`/`previous`, `coordinate_uncertainty_m`, `satellites_used` (null),
   `uncertainty_goal_m` (the user's GPS goal for a GPS position, default 10), `fix_time` ISO or
   null. The older top-level `location` stays as before.
-- **Problem reports** replace every position and every value of this block with
+- **Feedback reports** replace every position and every value of this block with
   `"[redacted]"` (the keys stay, in `custom` too), except `phone_maker`, `phone_model`,
   `phone_id`, `camera_height_m`, `detection_distance_m`, `detection_distance_source` and
   `site_photos`.

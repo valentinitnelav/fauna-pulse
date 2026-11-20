@@ -8,14 +8,14 @@
 //   flutter build apk --release --dart-define=DONATION_LINK=true
 // for APKs published outside Google Play (GitHub releases). The default, and
 // so every Google Play build, has no money link: the box then asks to share
-// the app, cite it and report problems (owner choice, round 277).
+// the app, cite it and send feedback (owner choice, round 277).
 //
 // Share: Android's own share window with a short text and a link (owner
 // choice over one button per network: it works with every app installed and
 // needs no upkeep).
 //
 // Round 303 (owner): the menu's "Support FaunaPulse" only repeated Share and
-// Report a problem, so the menu now has "Cite FaunaPulse" instead (the box
+// Send feedback, so the menu now has "Cite FaunaPulse" instead (the box
 // stays on the home screen). Citing opens a window in the app with the
 // citation of the installed version and a Copy button, as in FaunaLapse: it
 // works without internet, and the old link to the README's #citation heading
@@ -70,17 +70,17 @@ String supportText({bool donationLink = kDonationLink}) => donationLink
           'from the developer\'s own budget, including the AI coding tools that help build it. '
           'Donations help keep it maintained and its bugs fixed. Sharing it and citing it help too.'
     : 'FaunaPulse is open source and stays free for science. You can help: share it with '
-          'others, cite it in your publications, and report problems.';
+          'others, cite it in your publications, and send feedback.';
 
 /// The home screen's "Support FaunaPulse" box.
 class SupportFaunaPulseCard extends StatelessWidget {
-  /// Opens "Report a problem".
-  final VoidCallback onReportProblem;
+  /// Opens "Send feedback".
+  final VoidCallback onSendFeedback;
 
   /// Tests set it; the app uses [kDonationLink].
   final bool donationLink;
 
-  const SupportFaunaPulseCard({super.key, required this.onReportProblem, this.donationLink = kDonationLink});
+  const SupportFaunaPulseCard({super.key, required this.onSendFeedback, this.donationLink = kDonationLink});
 
   @override
   Widget build(BuildContext context) => Container(
@@ -121,9 +121,9 @@ class SupportFaunaPulseCard extends StatelessWidget {
               label: const Text('Cite this version'),
             ),
             TextButton.icon(
-              onPressed: onReportProblem,
-              icon: const Icon(Icons.bug_report_outlined, size: 18),
-              label: const Text('Report a problem'),
+              onPressed: onSendFeedback,
+              icon: const Icon(Icons.feedback_outlined, size: 18),
+              label: const Text('Send feedback'),
             ),
           ],
         ),

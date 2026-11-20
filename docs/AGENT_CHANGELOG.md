@@ -10552,3 +10552,8 @@ Download & import models.
 Asked: keep file names on one line where possible by putting each file's actions in one ⋮ menu,
 as on the Sessions screen. Owner's answers kept the fold, the title and no search box.
 
+## Round 394 (2026-11-20): Send feedback by email
+Asked: "Send feedback" instead of "Report a problem": free text and screenshots, sent from the
+tester's own email app with one zip, no form. Open: a check on a phone with two email apps; the
+Play store contact address (owner).
+

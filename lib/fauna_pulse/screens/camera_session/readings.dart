@@ -202,8 +202,8 @@ extension _CameraReadings on _CameraSessionScreenState {
     });
   }
 
-  /// Shows the error with the full message (selectable/copyable) and lets the user
-  /// create a diagnostic report (saved locally, optionally sent to the developer).
+  /// Shows the error with the full message (selectable/copyable) and lets the user send
+  /// feedback about it, with this session's data.
   Future<void> _showErrorReportDialog(String message) async {
     await showDialog<void>(
       context: context,
@@ -219,12 +219,8 @@ extension _CameraReadings on _CameraSessionScreenState {
               SelectableText(message, style: const TextStyle(fontSize: 13)),
               const SizedBox(height: 12),
               const Text(
-                'You can create a diagnostic report (settings, session log and the '
-                "app's recent technical log) and send it to the developer with "
-                'Share… (for example with a messaging app or to a cloud drive).',
-                // Round 317: white70 like the other windows; black54 was
-                // unreadable on the dark dialog (the app always uses the dark
-                // theme).
+                'You can send feedback about this to the developer. The app adds the '
+                "technical details (settings, this session's log and the app's recent log).",
                 style: TextStyle(fontSize: 12, color: Colors.white70),
               ),
             ],
@@ -236,81 +232,12 @@ extension _CameraReadings on _CameraSessionScreenState {
             child: const Text('Close'),
           ),
           TextButton(
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              // Ask the user to describe the problem first (required).
-              final input = await showProblemDescriptionEditor(context);
-              if (input == null || !mounted) return;
-              await _createReport(message, input);
-            },
-            child: const Text(
-              'Create report',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Builds and saves the report, then shows its size and offers to send it.
-  Future<void> _createReport(
-    String message,
-    ProblemDescriptionResult input,
-  ) async {
-    // Brief progress indicator — capturing logcat spawns a process.
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-    ErrorReport? report;
-    try {
-      report = await ErrorReporter.build(
-        trigger: message,
-        userDescription: input.description,
-        config: _config,
-        sessionLog: _logger?.file,
-        attachmentPaths: input.screenshotPaths,
-      );
-    } catch (e) {
-      report = null;
-    }
-    if (!mounted) return;
-    Navigator.of(context).pop(); // dismiss the spinner
-    if (report == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not create the report.')),
-      );
-      return;
-    }
-    final saved = report;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        actionsOverflowDirection: VerticalDirection.up,
-        title: DialogTitle(const Text('Report ready'), onClose: () => Navigator.of(ctx).pop()),
-        // Round 317: the same words as the home screen's window. Reports are
-        // kept in the app's private storage, which a computer cannot open
-        // over USB, and no screen lists old reports.
-        content: Text(
-          'The report is ready (${saved.humanSize}). Tap Share… to send it now (for example with '
-          'a messaging app or to a cloud drive). After you close this window, you cannot open '
-          'this report again (not in the app and not from a computer).',
-          style: const TextStyle(fontSize: 13),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Close'),
-          ),
-          TextButton(
             onPressed: () {
               Navigator.of(ctx).pop();
-              ErrorReporter.share(saved);
+              showFeedbackScreen(context, trigger: message, config: _config, sessionLog: _logger?.file);
             },
             child: const Text(
-              'Share…',
+              'Send feedback',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
           ),

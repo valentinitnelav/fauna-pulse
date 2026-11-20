@@ -606,7 +606,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
       logSwallowed('crop_export', e);
       msg =
           'Could not save or share the crop. Try again; if it keeps failing, '
-          'use "Report a problem" in the Home screen menu.';
+          'use "Send feedback" in the Home screen menu.';
     } finally {
       if (mounted) setState(() => _cropBusy = false);
     }

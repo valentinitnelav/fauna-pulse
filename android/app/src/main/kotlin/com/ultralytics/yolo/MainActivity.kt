@@ -276,8 +276,8 @@ class MainActivity : FlutterFragmentActivity() {
                             mainHandler.post { result.success(log) }
                         }
                     }
-                    // Opens an email app with recipient + subject + the report
-                    // file attached (the share sheet cannot pre-fill a recipient).
+                    // Opens an email app with recipient, subject, text and the
+                    // feedback zip attached (the share sheet cannot fill in a recipient).
                     "sendEmail" -> {
                         val ok = try {
                             sendFileByEmail(
@@ -459,12 +459,16 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
-    /// Opens the user's email app with [to], [subject] and the file at [path]
-    /// attached. The file (a saved error report under the app's external files
-    /// dir) is handed over through a FileProvider — Android's mechanism for
-    /// granting another app read access to ONE file without exposing the whole
-    /// storage (declared in AndroidManifest.xml + res/xml/report_file_paths.xml).
-    /// Returns false when the file is missing or no email app exists.
+    /// Opens the user's email app with [to], [subject], [body] and the file at [path]
+    /// attached. The file (a feedback report in the app's internal `error_reports/` folder) is
+    /// handed over through a FileProvider: Android's way to let another app read ONE file
+    /// without opening the whole storage (AndroidManifest.xml + res/xml/report_file_paths.xml).
+    /// The selector (an empty `mailto:` address) makes only email apps answer: with the type
+    /// `message/rfc822` alone other apps answered too, and a chooser window always opened (it
+    /// says "No apps" instead of failing), so a phone without an email app could not be told.
+    /// The `<queries>` entry for `mailto:` in AndroidManifest.xml is what lets Android 11+
+    /// find the email apps for this request. Returns false when the file is missing or no email
+    /// app exists.
     private fun sendFileByEmail(path: String?, to: String?, subject: String, body: String): Boolean {
         if (path.isNullOrBlank() || to.isNullOrBlank()) return false
         val file = java.io.File(path)
@@ -473,18 +477,23 @@ class MainActivity : FlutterFragmentActivity() {
             this, "$packageName.reports.fileprovider", file,
         )
         val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "message/rfc822" // MIME type for email — filters the app list to mail apps
+            // No type: Android matches the selector together with this intent's type, and an
+            // email app's mailto: entry has none, so "application/zip" found no app at all
+            // (Redmi Note 9S with Gmail). The ClipData below carries the file and its grant.
             putExtra(Intent.EXTRA_EMAIL, arrayOf(to))
             putExtra(Intent.EXTRA_SUBJECT, subject)
             putExtra(Intent.EXTRA_TEXT, body)
             putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = android.content.ClipData.newRawUri(file.name, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            selector = Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:"))
         }
         return try {
-            startActivity(Intent.createChooser(intent, "Send report by email"))
+            // Several email apps and none chosen as default: Android asks which one.
+            startActivity(intent)
             true
-        } catch (e: Exception) {
-            false // no app can handle it (ActivityNotFoundException)
+        } catch (e: android.content.ActivityNotFoundException) {
+            false
         }
     }
 

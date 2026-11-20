@@ -117,5 +117,12 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
         </intent>
+        <!-- Send feedback by email (MainActivity.sendFileByEmail resolves an email app with
+             an empty mailto: address). Without this entry Android 11+ hides every email app
+             from FaunaPulse and the app reports "No email app found" (seen on the Redmi). -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO"/>
+            <data android:scheme="mailto"/>
+        </intent>
     </queries>
 </manifest>

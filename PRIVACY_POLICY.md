@@ -92,31 +92,39 @@ does a web search beyond the name you chose. As with any download, the server th
 file (Hugging Face, GitHub or the site of a link you entered) sees your phone's internet
 address and the request; their own privacy policies apply to that.
 
-## Problem reports and crash files
+## Feedback and crash files
 
-If something goes wrong, **Report a problem** (in the **Menu** and in the **Support
-FaunaPulse** box on **Home**) builds a report on the phone. It contains app and device
-information, your description, recent crash files, your settings and recent system log
-lines, plus the screenshots you choose to attach.
+**Send feedback** (in the **Menu** and in the **Support FaunaPulse** box on **Home**) builds a
+report on the phone. It contains a report ID, app and device information, your text, recent
+crash files, your settings and recent system log lines, plus the screenshots you choose to add.
+Screenshots are made smaller and saved again without their hidden data (EXIF, which can hold
+the position where a photo was taken); what they show stays, so check that they show nothing
+private.
 
-On the **Describe the problem** screen you also choose one session whose settings and sampled
-files go into the report, or **No session data**. With screenshots or session files, the
-report is one zip file. The text you typed is kept on the phone (in the app's private
-storage, excluded from Android backup) until you share the report, so it is shown again if
-you leave the screen or close the report without sharing it; **Clear text** deletes it.
+On the **Send feedback** screen you also choose one session whose settings and sampled files go
+into the report, or **No session data**. GPS coordinates and the field notes you typed (names,
+places, notes, the values of your own fields) are removed from the session samples, so
+sensitive sites and names are not disclosed by accident. The session name and the names of
+your own fields stay. The report is one zip file. The text you typed is kept on the phone (in
+the app's private storage, excluded from Android backup) until the report is handed to another
+app, so it is shown again if you leave the screen without sending it; **Clear text** deletes it.
 
-The report is created locally and only leaves the phone if you share it yourself: **Share…**
-hands it to an app you choose (for example a messaging app or a cloud drive), or you paste
-its text into a GitHub issue.
+The report only leaves the phone if you send it yourself: **Send by email** opens your own
+email app with the address, the subject, your text and the zip filled in, and nothing is sent
+until you press Send there. **Share another way** hands it to an app you choose (for example a
+messaging app). Please read a report before you post it in a public place such as a GitHub
+issue. Reports are stored in the app's private internal storage, excluded from Android backup,
+and never transmitted automatically; a report older than 14 days is deleted when you make a new
+one. The newest 20 crash files are kept there too.
 
-GPS coordinates and the field notes you typed (names, places, notes, the values of your own
-fields) are removed from the session samples before the report is written, so sensitive
-sites and names are not disclosed by accident. Screenshots are added as you picked them, so
-check that they show nothing private. The session name and the names of your own
-fields stay, so please read a report before you post it in a public place such as a GitHub
-issue. Problem reports and the
-newest 20 crash files are stored in the app's private internal storage, excluded
-from Android backup, and never transmitted automatically.
+## Feedback by email
+
+If you send feedback (**Menu** → **Send feedback** → **Send by email**), your own email app
+sends it to biodiv.pulse@gmail.com. We receive your email address, your text, the screenshots
+you chose and the technical details listed above. We use them only to improve FaunaPulse. We
+may sort and summarise feedback with software tools, including AI services. Emails and
+attachments are kept for as long as they are needed for this. To have your feedback deleted,
+write to the same address.
 
 ## Children
 
@@ -146,5 +154,5 @@ history is the record.
 
 ## Contact
 
-Questions or concerns: open an issue at
+Questions, feedback or a deletion request: biodiv.pulse@gmail.com, or an issue at
 <https://github.com/valentinitnelav/fauna-pulse/issues>.

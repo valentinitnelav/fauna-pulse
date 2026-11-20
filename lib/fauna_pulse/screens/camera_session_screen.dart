@@ -33,7 +33,6 @@ import '../capture/time_lapse_plan.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../logging/device_thermal.dart';
-import '../logging/error_reporter.dart';
 import '../logging/roi_update_debouncer.dart';
 import '../logging/session_logger.dart';
 import '../models/model_catalog.dart';
@@ -74,7 +73,7 @@ import '../widgets/dialog_title.dart';
 import '../widgets/not_enough_storage_dialog.dart';
 import '../widgets/record_button.dart';
 import 'models_screen.dart';
-import 'problem_description_screen.dart';
+import 'feedback_screen.dart';
 import 'settings_sheet.dart';
 import 'session_summary_screen.dart';
 

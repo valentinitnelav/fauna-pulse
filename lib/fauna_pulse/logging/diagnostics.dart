@@ -26,9 +26,9 @@ class Diagnostics {
     }
   }
 
-  /// Opens an email app with [to], [subject] and the file at [path] already
-  /// attached. Needed because the share sheet cannot pre-fill a recipient.
-  /// Returns false when no email app could be opened.
+  /// Opens an email app with [to], [subject], [body] and the file at [path]
+  /// already attached. Needed because the share sheet cannot fill in a
+  /// recipient. Returns false when the phone has no email app.
   static Future<bool> sendEmail({
     required String path,
     required String to,

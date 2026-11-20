@@ -53,7 +53,7 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
   `photo_header.dart`.
 - `logging/`: `session_logger.dart` (JSONL writer), `session_log_index.dart` (one pass over a
   session, feeds every summary tab), `past_sessions.dart`, `track_source.dart`, statistics,
-  thermal and storage guards, error hooks, crash files, problem reports.
+  thermal and storage guards, error hooks, crash files, feedback reports.
 - `postprocess/`: AI afterwards. Photos: `post_detector.dart`, `photo_keep.dart`, `sahi.dart`,
   `photo_tracker.dart`; videos: `video_*.dart`, `clip_cleanup.dart`; FaunaLapse import
   `faunalapse_import.dart`; `csv_cell.dart`.
@@ -106,7 +106,7 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   `simulateBottomSystemBar` that checks the last row with `expectAboveBottomInset` (template:
   `summary_bottom_inset_test.dart`). A screen with a text box is a scrolling list (a fixed
   `Column` shrinks the box to a line under the keyboard), tested with the keyboard open
-  (template: `problem_description_screen_test.dart`).
+  (template: `feedback_screen_test.dart`).
 - **Settings sheet:** tabs Setup / Detection / Photos / Power. All heat controls are on Power
   (Detection is greyed in the no-AI modes while the gate must stay editable). Expert knobs in
   `FoldSection`s, explanations behind an ⓘ. `HelpSwitchTile` draws help below the tile, never as
@@ -221,7 +221,7 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   exceptions: `session_renamed`, `video_cleanup`).
 - **One tracks file per session:** `trackSourceOf(dir)` (afterwards when `post_tracks.jsonl`
   exists and no live tracker ran, else live); every reader uses it.
-- **Problem reports** are built in `error_reports/` (the only folder the report FileProvider
+- **Feedback reports** are built in `error_reports/` (the only folder the report FileProvider
   serves); every session line goes through `redactReportLine`. Crash files `crashes/` come from
   Dart and Kotlin (keep `writeCrashFile` ↔ `crashFileBody` in sync). All CSV cells go through
   `csvCell`.

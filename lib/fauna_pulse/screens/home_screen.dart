@@ -44,7 +44,6 @@
 // page's button.
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -72,7 +71,7 @@ import 'dashboard_screen.dart';
 import 'faunalapse_import_flow.dart' show kHideFaunaLapseImportInfoPrefKey;
 import 'identification_screen.dart' show WaitingIdentificationWatch;
 import 'models_screen.dart';
-import 'problem_description_screen.dart';
+import 'feedback_screen.dart';
 import 'session_actions.dart';
 import 'sessions_screen.dart';
 import 'watch_plan_screen.dart';
@@ -399,62 +398,13 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
     await _reloadModels();
   }
 
-  /// Builds a diagnostic report from outside a session (e.g. after a crash and
-  /// restart): the last-used settings, the most recent session log if any, and
-  /// the app's recent technical log. Saves it locally and offers to send it.
-  Future<void> _reportProblem() async {
-    // Ask the user to describe the problem first (required; screenshots
-    // optional since round 190; the session whose data rides along is the
-    // user's visible choice since round 191 — newest preselected).
-    // Cancelling aborts.
-    final input = await showProblemDescriptionEditor(
-      context,
-      sessions: [
-        for (final s in _sessions) (name: s.name, logPath: s.logFile.path),
-      ],
-    );
-    if (input == null || !mounted) return;
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-    ErrorReport? report;
-    try {
-      final config = await SessionConfig.load();
-      final pickedLog = input.sessionLogPath == null
-          ? null
-          : File(input.sessionLogPath!);
-      report = await ErrorReporter.build(
-        trigger: 'User-initiated report (Report a problem)',
-        userDescription: input.description,
-        config: config,
-        sessionLog: pickedLog,
-        attachmentPaths: input.screenshotPaths,
-      );
-    } catch (e) {
-      logSwallowed('error_report_build', e);
-      report = null;
-    }
-    if (!mounted) return;
-    Navigator.of(context).pop(); // dismiss spinner
-    if (report == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not create the report.')),
-      );
-      return;
-    }
-    final saved = report;
-    // Round 190 (owner decision): no email option here anymore — the share
-    // sheet and the GitHub issue link are the offered channels (the dormant
-    // email plumbing stays in ErrorReporter for a possible revival).
-    final share = await showDialog<bool>(
-      context: context,
-      builder: (_) => ReportSavedDialog(report: saved),
-    );
-    if (share == true && mounted) await ErrorReporter.share(saved);
-  }
+  /// Opens "Send feedback" (also after a crash and restart): the last-used settings and one
+  /// session of the user's choice go into the report.
+  Future<void> _sendFeedback() => showFeedbackScreen(
+    context,
+    trigger: 'Send feedback (Home)',
+    sessions: [for (final s in _sessions) (name: s.name, logPath: s.logFile.path)],
+  );
 
   /// The About dialog (round 183; replaced the landing-screen tagline): a
   /// condensed version of the README's Overview, the app version (from the
@@ -539,13 +489,12 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
               title: const Text('Show tips and notes'),
               onTap: _toggleTipsAndNotes,
             ),
-            // Round 190 (owner request): always reachable, also after a crash
-            // and restart.
-            item(Icons.bug_report_outlined, 'Report a problem', _reportProblem),
+            // Always reachable, also after a crash and restart.
+            item(Icons.feedback_outlined, 'Send feedback', _sendFeedback),
             const Divider(height: 1),
             item(Icons.share_outlined, 'Share FaunaPulse', shareFaunaPulse),
             // Round 303 (owner): "Support FaunaPulse" only repeated Share and
-            // Report a problem here; its box stays on the home screen.
+            // Send feedback here; its box stays on the home screen.
             item(Icons.format_quote_outlined, 'Cite FaunaPulse', () => showCitation(context)),
             // Google Play asks for the privacy policy inside the app too (see
             // ErrorReporter.privacyPolicyUrl); opens in the browser.
@@ -848,7 +797,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
                       ],
                     ),
                     const SizedBox(height: 28),
-                    SupportFaunaPulseCard(onReportProblem: _reportProblem),
+                    SupportFaunaPulseCard(onSendFeedback: _sendFeedback),
                   ],
                 ),
               ),
@@ -932,89 +881,6 @@ class _BarItem extends StatelessWidget {
       ],
     ),
   );
-}
-
-/// Shown after a problem report is written to disk: its size, what Share
-/// bundles (any screenshot copies), the GitHub issue link and the share
-/// action. Pops true to open the share sheet, null/false for Close (keep the
-/// file, send nothing). Round 317: no file path and no "find it later over
-/// USB" any more: reports live in internal app storage (no USB access, and no
-/// screen lists old reports), so Share now is the only way out. Round 190:
-/// the developer-email field and "Email…" action
-/// are gone (owner decision — don't encourage emailed reports); with no
-/// TextEditingController left this is a plain StatelessWidget again.
-class ReportSavedDialog extends StatelessWidget {
-  final ErrorReport report;
-  const ReportSavedDialog({super.key, required this.report});
-
-  @override
-  Widget build(BuildContext context) {
-    final zip = report.bundleZip;
-    final shots = report.attachments.length;
-    final samples = report.bundledNames.length - shots;
-    // Round 191: with screenshots/session samples everything is zipped into
-    // ONE shareable file (multi-file mixed-type shares were dropped whole
-    // by some targets — owner's WhatsApp test).
-    final bundleNote = zip == null
-        ? ''
-        : 'Share sends everything as one bundle '
-              '(${zip.uri.pathSegments.last}: the report'
-              '${shots > 0 ? ' + $shots screenshot${shots == 1 ? '' : 's'}' : ''}'
-              '${samples > 0 ? ' + $samples session file sample${samples == 1 ? '' : 's'}' : ''}). ';
-    return AlertDialog(
-      actionsOverflowDirection: VerticalDirection.up,
-      title: DialogTitle(const Text('Report ready'), onClose: () => Navigator.of(context).pop()),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'The report is ready (${report.humanSize}). '
-            '$bundleNote'
-            'Tap Share… to send it now (for example with a messaging app or '
-            'to a cloud drive). After you close this window, you cannot open '
-            'this report again (not in the app and not from a computer).',
-            style: const TextStyle(fontSize: 13),
-          ),
-          const SizedBox(height: 10),
-          // Round 189 (owner request): the public issue tracker as the
-          // suggested channel — open an issue and paste the report's text.
-          InkWell(
-            onTap: () => openExternalLink(ErrorReporter.githubIssuesUrl, 'report_open_issues'),
-            child: const Text.rich(
-              TextSpan(
-                style: TextStyle(fontSize: 12, color: Colors.white54),
-                children: [
-                  TextSpan(
-                    text: 'You can also open a GitHub issue and paste the '
-                        'report\'s text there (issues are public, so read the text '
-                        'first): ',
-                  ),
-                  TextSpan(
-                    text: ErrorReporter.githubIssuesUrl,
-                    style: TextStyle(color: Colors.lightBlueAccent),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(true),
-          child: const Text(
-            'Share…',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-        ),
-      ],
-    );
-  }
 }
 
 /// The menu's About dialog content (extracted as a public widget in round

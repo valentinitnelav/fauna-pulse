@@ -229,7 +229,7 @@ FaunaPulse is a **research preview (beta)**, provided as a free, experimental fi
 
 NOTE:
 
-> FaunaPulse is in beta: it works, but it is still being tested and improved, so please report problems as [GitHub issues](https://github.com/valentinitnelav/fauna-pulse/issues).
+> FaunaPulse is in beta: it works, but it is still being tested and improved. Please send problems and ideas from the app (**Menu** → **Send feedback**), by email to biodiv.pulse@gmail.com, or as [GitHub issues](https://github.com/valentinitnelav/fauna-pulse/issues).
 
 **Install the app.** The easiest way is Google Play, which also notifies you when there are new versions available:
 
@@ -412,7 +412,7 @@ AI models run directly on the phone and everything recorded stays in the app's f
 - Install FaunaPulse only from Google Play, from the [GitHub Releases](https://github.com/valentinitnelav/fauna-pulse/releases) page of this repository, or with Obtainium from that page. Do not install copies from other places.
 - Import model files, name lists and FaunaLapse zips only from people or websites you trust. Models from the app's own list come from a fixed version on Hugging Face and are checked with a checksum (a fingerprint of the file) before use.
 - Saved and shared crops include the session position (GPS). For sites that must stay private, such as sites of rare species, turn off "Add the position to exported crops" in Session settings (Photos tab).
-- Problem reports leave out the position and the field notes you typed. Still, read a report before you post it in a public place.
+- Feedback reports leave out the position and the field notes you typed. Still, read a report before you post it in a public place.
 - Use a screen lock on field phones and install Android's security updates. On Android 10 and older, other apps with the storage permission can read the session folder.
 - To report a security problem privately, see [`SECURITY.md`](SECURITY.md).
 

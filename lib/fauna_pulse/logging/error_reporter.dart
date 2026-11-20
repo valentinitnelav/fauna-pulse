@@ -1,14 +1,13 @@
-// FaunaPulse — error reporting.
+// FaunaPulse: feedback reports ("Send feedback" in the Home menu).
 //
-// Builds a single, self-contained plain-text diagnostic report and saves it in
-// the app's internal storage (not reachable over USB), so a problem (e.g. an
-// incompatible AI model that won't run) can be sent to the developer with Share.
-// The report bundles:
-//   * app version + device / Android version,
-//   * a short description of what went wrong (the "trigger") and any error text,
+// Builds one self-contained plain-text report and saves it in the app's internal storage (not
+// reachable over USB), then zips it with the tester's screenshots, so feedback can be sent by
+// email or shared. The report bundles:
+//   * a report ID, app version + device / Android version,
+//   * the tester's own words and what triggered the report (and any error text),
 //   * the most recent saved crash files (see crash_store.dart),
 //   * the session settings in effect,
-//   * a head + tail sample of the latest session log (if any),
+//   * sampled files of one chosen session (see report_bundle.dart),
 //   * this app's recent log output ("logcat", captured natively).
 //
 // "logcat" = the stream of log lines Android apps print while running; it usually
@@ -16,14 +15,14 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' show Random;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show compute, visibleForTesting;
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/session_config.dart';
 
@@ -32,36 +31,69 @@ import 'crash_store.dart';
 import 'report_bundle.dart';
 import 'diagnostics.dart';
 
-/// A saved error report on disk, plus its size for showing the user.
+/// A saved feedback report on disk: the .txt, the screenshot copies and the one zip that is
+/// sent.
 class ErrorReport {
   final File file;
+
+  /// Size of [shareFile], the file that is sent.
   final int sizeBytes;
 
-  /// Screenshot copies saved next to the .txt (round 190).
+  /// Six letters or digits, in the .txt header and the email subject: it tells two emails
+  /// apart and lets a reply name the report.
+  final String id;
+
+  /// The app's `version+build`, for example `0.12.0-beta.1+17` ('unknown' when unreadable).
+  final String appVersion;
+
+  /// Screenshot copies saved next to the .txt, as they are in the zip.
   final List<File> attachments;
 
-  /// The single shareable bundle (round 191): .txt + screenshots + sampled
-  /// session files, zipped. Built whenever the report has more than the bare
-  /// .txt — sharing several files of mixed types made some targets (the
-  /// owner's WhatsApp test) drop ALL attachments, so Share always sends
-  /// either the .txt alone or this one zip. Null when nothing else exists
-  /// or zipping failed.
+  /// The one file that is sent: .txt + screenshots + sampled session files, zipped. One file
+  /// of one type, because sharing several files of mixed types made some apps (WhatsApp in
+  /// the owner's test) drop every attachment. Null only when zipping failed: then the .txt
+  /// alone is sent.
   final File? bundleZip;
 
-  /// Zip member names beyond the .txt itself (screenshots + samples) — for
-  /// the saved-dialog summary.
+  /// Zip member names beyond the .txt itself (screenshots + samples).
   final List<String> bundledNames;
+
+  /// What was left out to keep the zip small enough for an email, as a sentence; null when
+  /// nothing was.
+  final String? leftOut;
 
   const ErrorReport({
     required this.file,
     required this.sizeBytes,
+    required this.id,
+    required this.appVersion,
     this.attachments = const [],
     this.bundleZip,
     this.bundledNames = const [],
+    this.leftOut,
   });
 
-  /// What Share actually sends: the bundle when one exists, else the .txt.
+  /// What is sent: the bundle, or the .txt when zipping failed.
   File get shareFile => bundleZip ?? file;
+
+  String get subject => ErrorReporter.feedbackSubject(appVersion, id);
+
+  /// The email text: the tester's own words first (so they can be read on a phone without
+  /// opening the zip), then one line on what is attached.
+  String messageText(String userText) {
+    final shots = attachments.length;
+    final String attached;
+    if (bundleZip == null) {
+      attached = "Attached: a text file with the app's technical details ($humanSize).";
+    } else {
+      final pictures = shots == 0 ? '' : '$shots screenshot${shots == 1 ? '' : 's'} and ';
+      attached = "Attached: one zip file with ${pictures}the app's technical details ($humanSize).";
+    }
+    return [
+      if (userText.trim().isNotEmpty) userText.trim(),
+      '($attached${leftOut == null ? '' : ' $leftOut'})',
+    ].join('\n\n');
+  }
 
   /// Size in human-readable units (e.g. "1.8 MB", "742 KB").
   String get humanSize {
@@ -76,8 +108,12 @@ class ErrorReport {
 }
 
 class ErrorReporter {
-  /// A public issue tracker link, shown in the report footer. Leave empty to
-  /// omit the "Or open a GitHub issue" line from generated reports.
+  /// Where feedback goes: the tester's own email app sends it there ([email]). Public on
+  /// purpose (it is also the Google Play contact and is named in the README and the privacy
+  /// policy), so it is written here, once. FaunaLapse sends to it too.
+  static const String feedbackEmail = 'biodiv.pulse@gmail.com';
+
+  /// The public issue tracker, named in the report's footer for people who use GitHub.
   static const String githubIssuesUrl =
       'https://github.com/valentinitnelav/fauna-pulse/issues';
 
@@ -93,15 +129,34 @@ class ErrorReporter {
   static const String privacyPolicyUrl =
       '$githubRepoUrl/blob/main/PRIVACY_POLICY.md';
 
-  /// Where the "Email…" button sends reports. Deliberately empty by default —
-  /// the address is handed to testers privately, never shipped in the app —
-  /// and stored app-wide (shared_preferences), NOT in SessionConfig, so it can
-  /// never leak into a session.jsonl start record that gets shared.
-  static const String _recipientEmailPrefsKey = 'report_recipient_email';
+  /// Largest zip [build] makes. Gmail sends emails of up to 25 MB, other services less, and
+  /// an email grows by about a third on its way (attachments travel as text).
+  static const int maxZipBytes = 20 * 1024 * 1024;
 
-  /// Builds the report text and writes it to `error_reports/` under the app's
-  /// internal support directory (not reachable over USB; Share is the way out).
-  /// Returns the saved file and its size; never throws (best-effort sections).
+  /// Room kept for the .txt when the zip is planned (its logcat and crash parts are text,
+  /// which a zip makes several times smaller).
+  static const int _txtAllowanceBytes = 1024 * 1024;
+
+  /// Report files older than this are deleted when a new report is made: no screen opens
+  /// them again, and an email app that waited for a network has sent them by then.
+  static const Duration _keepReportsFor = Duration(days: 14);
+
+  /// The email subject. Feedback emails are sorted by its start, so keep "FaunaPulse
+  /// feedback" exact (FaunaLapse writes "FaunaLapse feedback").
+  static String feedbackSubject(String appVersion, String id) => 'FaunaPulse feedback $appVersion $id';
+
+  /// No 0/O and no 1/I: a person may read the ID out or type it into a reply.
+  static const _idLetters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+  @visibleForTesting
+  static String newReportId([Random? random]) {
+    final r = random ?? Random.secure();
+    return String.fromCharCodes([for (var i = 0; i < 6; i++) _idLetters.codeUnitAt(r.nextInt(_idLetters.length))]);
+  }
+
+  /// Builds the report text and the zip in `error_reports/` under the app's internal support
+  /// directory (the only folder the report FileProvider serves; not reachable over USB).
+  /// Never throws for a failing part (each part is best-effort).
   static Future<ErrorReport> build({
     required String trigger,
     String? userDescription,
@@ -112,18 +167,83 @@ class ErrorReporter {
     int logcatLines = 2000,
     int sessionLogHeadLines = 30,
     int sessionLogTailLines = 200,
+    int zipLimitBytes = maxZipBytes,
   }) async {
     final now = DateTime.now();
+    final id = newReportId();
+    final version = await _appVersion();
+    final dir = await _reportsDir();
+    await _deleteOldReports(dir, now);
+    final stamp = now
+        .toIso8601String()
+        .replaceAll(':', '-')
+        .replaceAll('.', '-');
+    final base = '${dir.path}/feedback_${stamp}_$id';
+
+    // Screenshots: the picker hands out temp-cache copies that expire, so each is copied NOW,
+    // as a JPEG of limited size where it was not one ([feedbackScreenshotJpeg]). A failing
+    // screenshot is logged and skipped: the report itself must never fail because of one.
+    var attachments = <File>[];
+    for (var i = 0; i < attachmentPaths.length; i++) {
+      try {
+        final src = File(attachmentPaths[i]);
+        if (!src.existsSync()) continue;
+        final picked = await src.readAsBytes();
+        final bytes = await compute(feedbackScreenshotJpeg, picked) ?? picked;
+        final copy = File('${base}_screenshot${i + 1}${pictureExtension(bytes, src.path)}');
+        await copy.writeAsBytes(bytes, flush: true);
+        attachments.add(copy);
+      } catch (e) {
+        logSwallowed('report_attach_copy', e);
+      }
+    }
+
+    // Sampled session files: its event records, saved logcats and analysis-run summaries
+    // travel as zip members (report_bundle.dart says what is kept).
+    final log = sessionLog != null && sessionLog.existsSync() ? sessionLog : null;
+    var extras = log != null ? await collectSessionExtras(log.parent) : const <ReportExtra>[];
+
+    // Below [zipLimitBytes]: the session samples go first, then screenshots from the end.
+    // Planned from the sizes before zipping, which is an upper bound (text shrinks in a zip,
+    // JPEGs do not).
+    var room = zipLimitBytes - _txtAllowanceBytes;
+    final leftOutParts = <String>[];
+    final shotSizes = [for (final f in attachments) f.lengthSync()];
+    final samplesSize = extras.fold<int>(0, (sum, e) => sum + e.content.length);
+    if (extras.isNotEmpty && samplesSize + shotSizes.fold<int>(0, (a, b) => a + b) > room) {
+      extras = const [];
+      leftOutParts.add('the session files');
+    } else {
+      room -= samplesSize;
+    }
+    var keep = 0;
+    while (keep < attachments.length && shotSizes[keep] <= room) {
+      room -= shotSizes[keep++];
+    }
+    if (keep < attachments.length) {
+      for (final f in attachments.sublist(keep)) {
+        _deleteQuietly(f);
+      }
+      final n = attachments.length - keep;
+      leftOutParts.add('$n screenshot${n == 1 ? '' : 's'}');
+      attachments = attachments.sublist(0, keep);
+    }
+    final leftOut = leftOutParts.isEmpty
+        ? null
+        : 'Left out to keep the email below ${zipLimitBytes ~/ (1024 * 1024)} MB: '
+              '${leftOutParts.join(' and ')}.';
+
     final b = StringBuffer();
-    b.writeln('==== FaunaPulse error report ====');
+    b.writeln('==== FaunaPulse feedback ====');
+    b.writeln('Report ID: $id');
+    b.writeln('Version:   $version');
     b.writeln('Generated: ${now.toIso8601String()}');
     b.writeln('Trigger:   $trigger');
     b.writeln();
 
-    // The user's own words come first — it's the most useful context for the
-    // developer. Stored verbatim, including any markdown the user typed.
+    // The user's own words come first: the most useful context for the developer.
     if (userDescription != null && userDescription.trim().isNotEmpty) {
-      b.writeln('-- What the user reported --');
+      b.writeln('-- What the user wrote --');
       b.writeln(userDescription.trim());
       b.writeln();
     }
@@ -163,19 +283,11 @@ class ErrorReporter {
       b.writeln();
     }
 
-    // Sampled session files (round 191): when the report is about a session,
-    // its event records / saved logcats / analysis-run summaries travel as
-    // separate bundle members (see report_bundle.dart for what is kept).
-    // Collected here, BEFORE the body's session section, because they decide
-    // its shape (round 192, owner review): with samples in the zip the old
-    // embedded head+tail log excerpt is redundant, so the .txt only points
-    // at them — it is embedded only as the no-zip fallback further down.
-    final extras = sessionLog != null && sessionLog.existsSync()
-        ? await collectSessionExtras(sessionLog.parent)
-        : const <ReportExtra>[];
-    if (sessionLog != null && sessionLog.existsSync()) {
+    // With samples in the zip the .txt only points at them; without (none found, or left out
+    // for size) it carries a head + tail excerpt of the log itself.
+    if (log != null) {
       if (extras.isNotEmpty) {
-        b.writeln('-- Session data: ${sessionLog.parent.path} --');
+        b.writeln('-- Session data: ${log.parent.path} --');
         b.writeln(
           'Sampled files from this session travel as separate members of '
           'the report zip (list at the end of this report).',
@@ -183,12 +295,12 @@ class ErrorReporter {
         b.writeln();
       } else {
         b.writeln(
-          '-- Session log: ${sessionLog.path} '
+          '-- Session log: ${log.path} '
           '(first $sessionLogHeadLines + last $sessionLogTailLines lines) --',
         );
         b.writeln(
           await _sampledLog(
-            sessionLog,
+            log,
             sessionLogHeadLines,
             sessionLogTailLines,
           ),
@@ -212,51 +324,15 @@ class ErrorReporter {
     );
     b.writeln();
 
-    // Round 190: email is deliberately NOT suggested (owner decision — no
-    // mail-server load); the issue tracker leads, the share sheet follows
-    // (round 317: no USB copy, reports live in internal app storage). The
-    // dormant email plumbing (emailTo + the recipient pref) stays in code for
-    // a possible later revival.
+    // For a person who got this file another way (Share another way, for example a colleague
+    // in a messaging app). Reports live in internal app storage, so there is no USB copy.
     b.writeln('==== How to send this report ====');
-    if (githubIssuesUrl.isNotEmpty) {
-      b.writeln(
-        'Open a GitHub issue and paste this report\'s text (attach the '
-        'screenshots if any): $githubIssuesUrl',
-      );
-    }
+    b.writeln('Please send this file by email to $feedbackEmail.');
     b.writeln(
-      'Or send it from the app with Share (any messaging app or a cloud '
-      'drive).',
+      'Or open a GitHub issue and paste its text (issues are public, so '
+      'read it first): $githubIssuesUrl',
     );
 
-    final dir = await _reportsDir();
-    final stamp = now
-        .toIso8601String()
-        .replaceAll(':', '-')
-        .replaceAll('.', '-');
-    final file = File('${dir.path}/report_$stamp.txt');
-
-    // Screenshot attachments (round 190): the picker hands out temp-cache
-    // copies that expire, so each is copied NOW into error_reports/ (the only
-    // folder the report FileProvider serves) next to the .txt, sharing its
-    // stamp. Failures are logged and skipped — the report itself must never
-    // fail because a screenshot did.
-    final attachments = <File>[];
-    for (var i = 0; i < attachmentPaths.length; i++) {
-      try {
-        final src = File(attachmentPaths[i]);
-        if (!src.existsSync()) continue;
-        final dotExt = attachmentPaths[i].contains('.')
-            ? attachmentPaths[i].substring(attachmentPaths[i].lastIndexOf('.'))
-            : '.jpg';
-        final copy = await src.copy(
-          '${dir.path}/report_${stamp}_screenshot${i + 1}$dotExt',
-        );
-        attachments.add(copy);
-      } catch (e) {
-        logSwallowed('report_attach_copy', e);
-      }
-    }
     if (attachments.isNotEmpty) {
       b.writeln();
       b.writeln('-- Attached screenshots (${attachments.length}) --');
@@ -273,60 +349,63 @@ class ErrorReporter {
       }
     }
 
+    if (leftOut != null) {
+      b.writeln();
+      b.writeln(leftOut);
+    }
+
+    final file = File('$base.txt');
     await file.writeAsString(b.toString());
 
-    // One shareable file (round 191): zip whenever anything beyond the bare
-    // .txt exists. On failure the report still stands — Share then sends
-    // the .txt alone (screenshots stay on disk next to it).
-    File? zip;
-    if (attachments.isNotEmpty || extras.isNotEmpty) {
-      zip = await writeReportZip(
-        File('${dir.path}/report_$stamp.zip'),
-        reportTxt: file,
-        screenshots: attachments,
-        extras: extras,
-      );
-    }
+    // On failure the report still stands: the .txt alone is sent (screenshots stay on disk
+    // next to it).
+    final zip = await writeReportZip(
+      File('$base.zip'),
+      reportTxt: file,
+      screenshots: attachments,
+      extras: extras,
+    );
     // Round 192: if zipping failed, the shared .txt would carry NO session
     // data (its body only points at the zip members) — append the classic
     // embedded log excerpt so the fallback file stays self-sufficient.
-    if (zip == null && extras.isNotEmpty && sessionLog != null) {
+    if (zip == null && extras.isNotEmpty && log != null) {
       final fb = StringBuffer()
         ..writeln()
         ..writeln(
           '-- Session log (bundle zip failed; embedded fallback): '
-          '${sessionLog.path} '
+          '${log.path} '
           '(first $sessionLogHeadLines + last $sessionLogTailLines lines) --',
         )
         ..writeln(
           await _sampledLog(
-            sessionLog,
+            log,
             sessionLogHeadLines,
             sessionLogTailLines,
           ),
         );
       await file.writeAsString(fb.toString(), mode: FileMode.append);
     }
-    final size = await file.length();
     return ErrorReport(
       file: file,
-      sizeBytes: size,
+      sizeBytes: await (zip ?? file).length(),
+      id: id,
+      appVersion: version,
       attachments: attachments,
       bundleZip: zip,
       bundledNames: [
         for (final f in attachments) f.uri.pathSegments.last,
         for (final e in extras) e.name,
       ],
+      leftOut: leftOut,
     );
   }
 
-  /// The description the user typed and did not send yet (round 362), '' when there is none.
-  /// "Describe the problem" used to lose the text without a word when the user left it by
+  /// The text the user typed and did not send yet (round 362), '' when there is none.
+  /// The feedback screen used to lose the text without a word when the user left it by
   /// mistake (Back, X, Home), or when Android closed the app while they picked screenshots in
-  /// the photo picker. It also stays after Continue, until [share] hands the report to
-  /// another app: a report cannot be opened again once its window is closed, so the kept text
-  /// is the way to correct it and make it again. Kept in a file of the reports folder, not in
-  /// the saved settings: those go into Android's backup, and a user's free text should not.
+  /// the photo picker. It stays until [email] or [share] hands the report to another app.
+  /// Kept in a file of the reports folder, not in the saved settings: those go into Android's
+  /// backup, and a user's free text should not.
   static Future<String> loadDraft() async {
     try {
       final f = await _draftFile();
@@ -352,64 +431,76 @@ class ErrorReporter {
   }
 
   /// Not a `.txt`: [listReports] takes every `.txt` of the folder for a report.
-  static Future<File> _draftFile() async => File('${(await _reportsDir()).path}/description_draft.md');
+  static Future<File> _draftFile() async => File('${(await _reportsDir()).path}/$_draftName');
 
-  /// Opens the OS share sheet (email, Drive, etc.) with the report attached.
-  static Future<void> share(ErrorReport report) async {
+  static const _draftName = 'description_draft.md';
+
+  /// Opens the phone's email app with the feedback address, the subject, [userText] and the
+  /// zip filled in. Android's share window cannot fill in an address, so this goes through
+  /// the native `sendEmail` (diagnostics.dart). Returns false when the phone has no email app.
+  /// An opened email app counts as handed over, as a share does: the draft is cleared.
+  /// Whether the user then presses Send cannot be known; email apps keep their own draft.
+  static Future<bool> email(ErrorReport report, String userText) async {
+    final opened = await Diagnostics.sendEmail(
+      path: report.shareFile.path,
+      to: feedbackEmail,
+      subject: report.subject,
+      body: report.messageText(userText),
+    );
+    if (opened) await saveDraft('');
+    return opened;
+  }
+
+  /// Opens Android's share window with the report ([title] over its list of apps). Returns
+  /// whether it went to an app.
+  static Future<bool> share(ErrorReport report, String userText, {String? title}) async {
     // ONE file, always (round 191): the r190 multi-file share (.txt +
     // images) made WhatsApp deliver only the caption with every attachment
     // dropped (owner field test) — mixed MIME types are the suspect. The
-    // bundle zip (or the bare .txt when there is nothing else) is a single
+    // bundle zip (or the bare .txt when zipping failed) is a single
     // attachment of a single type, which every target handles.
     final result = await SharePlus.instance.share(
       ShareParams(
         files: [XFile(report.shareFile.path)],
-        subject: 'FaunaPulse error report',
-        text: 'FaunaPulse error report attached.',
+        subject: report.subject,
+        title: title,
+        text: '${report.messageText(userText)}\n\nFeedback for the FaunaPulse developer: $feedbackEmail',
       ),
     );
-    // Handed to another app (or the phone cannot tell): the description is sent, and the next
-    // "Describe the problem" starts empty. A share sheet closed without choosing an app sent
-    // nothing: the text stays as the draft.
-    if (result.status != ShareResultStatus.dismissed) await saveDraft('');
+    // A share window closed without choosing an app sent nothing: the text stays as the
+    // draft. Otherwise (or when the phone cannot tell) the next feedback starts empty.
+    final handed = result.status != ShareResultStatus.dismissed;
+    if (handed) await saveDraft('');
+    return handed;
   }
 
-  /// DORMANT since round 190 (owner decision: don't encourage emailed
-  /// reports — mail-server load). No UI calls this anymore; kept, with the
-  /// recipient-email prefs pair below, in case a direct-email channel is
-  /// revived later. Opens an email app with the recipient, subject and the
-  /// report already attached (share_plus cannot pre-fill a recipient, so
-  /// this goes through the native `sendEmail` — see diagnostics.dart).
-  /// Returns false when no email app could be opened. Note it attaches only
-  /// the .txt — a revival must extend the native intent for the round-190
-  /// screenshot attachments.
-  static Future<bool> emailTo(ErrorReport report, String recipient) async {
-    return Diagnostics.sendEmail(
-      path: report.file.path,
-      to: recipient.trim(),
-      subject: 'FaunaPulse error report',
-      body: 'FaunaPulse error report attached.',
-    );
-  }
-
-  /// The saved "send reports to" address ('' when not set yet).
-  static Future<String> loadRecipientEmail() async {
+  /// Deletes the files of reports made before [_keepReportsFor] (each report leaves a .txt,
+  /// its screenshot copies and a zip), never the draft.
+  static Future<void> _deleteOldReports(Directory dir, DateTime now) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getString(_recipientEmailPrefsKey)?.trim() ?? '';
+      for (final f in dir.listSync().whereType<File>()) {
+        if (f.uri.pathSegments.last == _draftName) continue;
+        if (now.difference(f.lastModifiedSync()) > _keepReportsFor) _deleteQuietly(f);
+      }
     } catch (e) {
-      logSwallowed('report_email_load', e);
-      return '';
+      logSwallowed('report_delete_old', e);
     }
   }
 
-  /// Persists the "send reports to" address so it only has to be typed once.
-  static Future<void> saveRecipientEmail(String email) async {
+  static void _deleteQuietly(File f) {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_recipientEmailPrefsKey, email.trim());
+      f.deleteSync();
     } catch (e) {
-      logSwallowed('report_email_save', e);
+      logSwallowed('report_delete_file', e);
+    }
+  }
+
+  static Future<String> _appVersion() async {
+    try {
+      final p = await PackageInfo.fromPlatform();
+      return p.buildNumber.isEmpty ? p.version : '${p.version}+${p.buildNumber}';
+    } catch (_) {
+      return 'unknown';
     }
   }
 

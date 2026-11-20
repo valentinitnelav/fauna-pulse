@@ -714,7 +714,7 @@ There you find:
 └── site_photos_waiting/   # site photos taken before a recording starts (moved into its session)
 ```
 
-Models, error reports and crash files are in private internal app storage, and are deliberately
+Models, feedback reports and crash files are in private internal app storage, and are deliberately
 absent from this USB-visible folder. An upgraded installation may still contain old `models/`
 or `error_reports/` folders from an earlier version.
 

@@ -18,15 +18,74 @@
 //     several files of MIXED types (text/plain + image/*) makes some targets
 //     drop every attachment (WhatsApp delivered only the caption in the
 //     owner's test); a single application/zip goes through everywhere.
+//
+//  3. Keeping the zip small enough for an email: screenshots become JPEGs of
+//     limited size ([feedbackScreenshotJpeg]).
 
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' show max;
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:image/image.dart' as img;
 
 import 'app_error_hooks.dart';
 import 'error_reporter.dart' show redactReportLine;
+
+/// Long side and JPEG quality of a screenshot in a feedback zip: text on a phone screenshot
+/// stays readable, and the file is a few hundred KB instead of 1 to 3 MB as a PNG.
+const kFeedbackShotMaxSide = 1600;
+const kFeedbackShotQuality = 85;
+
+/// Pictures larger than this are not decoded here (about 64 MB of memory in Dart). The photo
+/// picker has already scaled every picture Android can read to [kFeedbackShotMaxSide], so a
+/// larger one is a file Android could not read; it goes into the zip unchanged.
+const _maxConvertPixels = 16000000;
+
+/// A picked screenshot as the feedback zip carries it: a JPEG of at most
+/// [kFeedbackShotMaxSide] px on the long side, with no EXIF block (the hidden data of a photo,
+/// which can hold the position where it was taken: the photo picker copies it into its scaled
+/// copy). Null when [bytes] cannot be converted (unknown format, damaged, too large): the
+/// caller then copies the file unchanged. Every picture is encoded again, also a JPEG the
+/// picker already scaled; a PNG with a transparency channel (as Android saves screenshots) is
+/// one the picker keeps as a PNG. Pure Dart and slow (a few tenths of a second for a scaled
+/// screenshot, more for a large PNG), so callers run it in an isolate.
+Uint8List? feedbackScreenshotJpeg(Uint8List bytes) {
+  try {
+    final decoder = img.findDecoderForData(bytes);
+    final info = decoder?.startDecode(bytes);
+    if (decoder == null || info == null) return null;
+    final longSide = max(info.width, info.height);
+    if (info.width * info.height > _maxConvertPixels) return null;
+    var image = decoder.decode(bytes);
+    if (image == null) return null;
+    // Upright as the EXIF block says, then without it (the encoder would write it again).
+    image = img.bakeOrientation(image)..exif = img.ExifData();
+    if (longSide > kFeedbackShotMaxSide) {
+      final wide = image.width >= image.height;
+      image = img.copyResize(
+        image,
+        width: wide ? kFeedbackShotMaxSide : null,
+        height: wide ? null : kFeedbackShotMaxSide,
+        interpolation: img.Interpolation.average,
+      );
+    }
+    return img.encodeJpg(image, quality: kFeedbackShotQuality);
+  } catch (_) {
+    return null; // the file then goes in unchanged
+  }
+}
+
+/// The file extension that matches the content of [bytes] (the photo picker names a scaled
+/// copy after the original, so `Screenshot.png` can hold a JPEG), else the one of [path].
+String pictureExtension(Uint8List bytes, String path) {
+  if (bytes.length > 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) return '.jpg';
+  if (bytes.length > 3 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E) return '.png';
+  final name = path.split('/').last;
+  return name.contains('.') ? name.substring(name.lastIndexOf('.')) : '.jpg';
+}
 
 /// One sampled diagnostic file, ready to become a zip member.
 typedef ReportExtra = ({String name, String content});

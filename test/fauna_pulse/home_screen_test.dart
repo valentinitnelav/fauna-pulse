@@ -422,7 +422,7 @@ void main() {
     expect(items, [
       'Download & import models',
       'Show tips and notes',
-      'Report a problem',
+      'Send feedback',
       'Share FaunaPulse',
       'Cite FaunaPulse',
       'Privacy policy',
@@ -551,7 +551,7 @@ void main() {
   testWidgets('the support box with the donation link (GitHub release builds)', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: SupportFaunaPulseCard(donationLink: true, onReportProblem: () {})),
+        home: Scaffold(body: SupportFaunaPulseCard(donationLink: true, onSendFeedback: () {})),
       ),
     );
     expect(find.text('Sponsor on GitHub'), findsOneWidget);
