@@ -69,15 +69,19 @@ In the code, "pack" means such a file of either kind.
 - `models`: one entry per model, with `id` (the `<model>` part of its file names, unique),
   `kind` (`detection_model` or `identification_model`), `title`, `purpose`, optional `note`,
   `licence` and `source` (the authors' page: a repository or a Hugging Face page).
+  No citation field (round 277, owner): a citation changes (a preprint becomes a journal
+  paper) and the authors keep theirs up to date on that page. The screen asks users to cite
+  the original model from there.
 - `family` (optional, round 390): the name shared by the models of one family that have one
   Hugging Face repository (`MegaDetector V6` for c and e, `flat-bug` for n and s). Where a page
   lists several of their files ("Choose other models" of "What do you want to watch?"), they
   sit under that name with the `purpose` shown once, so give the models of one family the same
-  `purpose` and let each file's `note` say how it differs (compare files with each other, not
-  with kinds of phones: "about 3 times slower than ..." stays true as phones change).
-  No citation field (round 277, owner): a citation changes (a preprint becomes a journal
-  paper) and the authors keep theirs up to date on that page. The screen asks users to cite
-  the original model from there.
+  `purpose` and let each file's `note` say how it differs.
+- Speed in `note` and `purpose` (round 391, owner): no numbers and no kinds of phones ("most
+  phones", "phones with a fast GPU"), because other phones, settings and app versions give
+  other times. Say the order ("the fastest of the four", "slower than 320 px") when it follows
+  from the model and picture size; the times measured on named test phones belong on the model
+  card, which every ⓘ card links.
 - `file` (optional): the file offered for download. An entry without it is known but not
   offered (its files on the phone still show its details).
 - `files` (round 390, detection models only): instead of `file`, several files of the same
@@ -170,8 +174,8 @@ names a repository that does not exist.
 
 - The MegaDetector file of release `v0.8.0-alpha.1` (`MDV6-yolov10-c_int8_256.tflite`, the
   same bytes as `mdv6-yolov10c_256_w8a32.tflite`) stays online. Since round 390 the app no
-  longer offers it (it is a `former_files` entry): the 320 px fp16 file finds more animals and
-  runs on phone GPUs. Development builds from round
+  longer offers it (it is a `former_files` entry): the 320 px fp16 files run on phone GPUs.
+  Development builds from round
   268 to round 313 (never released) download it from there, and the model card names it. The
   released v0.8.0-alpha.1 carries the same file inside its APK.
 

@@ -28,7 +28,7 @@
         },
         {
           "name": "mdv6-yolov10c_640_fp16.tflite",
-          "note": "Compact, 640 px: finds more of the small or distant animals; about 3 to 4 times slower than compact 320 px.",
+          "note": "Compact, 640 px: slower than 320 px; try it for smaller or more distant animals.",
           "bytes": 4899960,
           "sha256": "330c828a19b6521b15cb162248a3fff172a3f4b47d3e8fd54fe8a758f8314751",
           "url": "https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/8e06c919a320806147c008933ef51be32052614e/mdv6-yolov10c_640_fp16.tflite"
@@ -40,7 +40,7 @@
           "bytes": 2548785,
           "sha256": "32ca01921bb6acee00d8e78f6b3a0194760bd8d8b27b17bf4aefe12e3075c9e6",
           "url": "https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/009a5a95c07ad60c71226c668b437af7a6213c3c/mdv6-yolov10c_256_w8a32.tflite",
-          "note": "An older file of this model, no longer offered: the 320 px file finds more animals and can use the graphics chip (GPU)."
+          "note": "An older file of this model, no longer offered: the 320 px files can use the graphics chip (GPU)."
         }
       ]
     },
@@ -55,14 +55,14 @@
       "files": [
         {
           "name": "mdv6-yolov10e_320_fp16.tflite",
-          "note": "Larger, 320 px: the authors' larger model; about 7 to 18 times slower than compact 320 px.",
+          "note": "Larger, 320 px: the authors' larger model, slower than the compact one.",
           "bytes": 59867209,
           "sha256": "7fa169cc3eb7e96978d04f681bb996c116d6240ce08f5f332bc3bb9cde74eb51",
           "url": "https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/8e06c919a320806147c008933ef51be32052614e/mdv6-yolov10e_320_fp16.tflite"
         },
         {
           "name": "mdv6-yolov10e_640_fp16.tflite",
-          "note": "Larger, 640 px: the slowest; about 3 to 4 times slower than larger 320 px.",
+          "note": "Larger, 640 px: the slowest of the four.",
           "bytes": 59942809,
           "sha256": "fe1adcb0f3d3454cead091e22b1c56a2b498120c3d2bf1e676b1047b6de28456",
           "url": "https://huggingface.co/Valen-Peregrine/mdv6-tflite/resolve/8e06c919a320806147c008933ef51be32052614e/mdv6-yolov10e_640_fp16.tflite"
@@ -90,7 +90,7 @@
       "title": "flat-bug s (larger)",
       "family": "flat-bug",
       "purpose": "Insects and other arthropods: finds land arthropods, best on plain, flat backgrounds (trained mostly on pictures from traps, scans and lab trays). On flowers it can miss some insects: then try the insectDCT detector.",
-      "note": "About 3.5 times the size of flat-bug n, and about 2 to 3 times slower per picture.",
+      "note": "About 3.5 times the file size of flat-bug n, and slower.",
       "licence": "MIT",
       "source": "https://github.com/darsa-group/flat-bug",
       "file": {
@@ -163,7 +163,7 @@
       "kind": "identification_model",
       "title": "BioCLIP 2",
       "purpose": "Any organism: names what it sees, choosing from a name list.",
-      "note": "Fast on phones whose graphics chip can run it.",
+      "note": "Can use the phone's graphics chip (GPU) where the phone allows it.",
       "licence": "MIT",
       "source": "https://huggingface.co/imageomics/bioclip-2",
       "file": {
@@ -344,7 +344,7 @@
       "kind": "identification_model",
       "title": "BioCLIP 2.5",
       "purpose": "Any organism: newer and larger than BioCLIP 2, names what it sees from a name list.",
-      "note": "Slow: on most phones it runs on the main processor only, seconds per picture.",
+      "note": "Larger than BioCLIP 2, and today it runs on the main processor (CPU) only, so it takes much longer per picture.",
       "licence": "MIT",
       "source": "https://huggingface.co/imageomics/bioclip-2.5-vith14",
       "file": {

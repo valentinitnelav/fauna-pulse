@@ -10538,3 +10538,8 @@ Asked: offer the four new MegaDetector files, check on a phone that the app read
 each model family under one heading. Open: fauna-pulse-models' publish check reads one file per
 model (hand-off note there); the Galaxy M12 CPU threads, a separate round if wanted.
 
+## Round 391 (2026-11-20): model notes without speed numbers
+Asked: follow the owner's new rule from fauna-pulse-models (speeds only as measured on named test
+phones) in the model notes, with no numbers on screen. Open: the MegaDetector card edits in
+fauna-pulse-models are not committed there yet.
+

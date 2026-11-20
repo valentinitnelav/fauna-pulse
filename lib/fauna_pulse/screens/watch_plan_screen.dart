@@ -484,11 +484,12 @@ class _WatchPlanScreenState extends State<WatchPlanScreen> {
     ),
   );
 
-  /// What a slower detection file means (round 390, owner: compare the files with each other,
-  /// never with kinds of phones, whose speed changes every year).
+  /// What a slower detection file means (rounds 390 and 391, owner: no speed numbers and no
+  /// kinds of phones on screen, because other phones, settings and app versions give other
+  /// times; the times measured on named test phones are on each model card).
   static const _slowerNote =
       'A slower file checks fewer pictures per second on the camera screen ("det … fps") and '
-      'warms the phone more. In videos checked afterwards it only takes longer.';
+      'can warm the phone more. In videos checked afterwards it only takes longer.';
 
   /// For each of [find]: the first file of the run of two or more files of one family in a row
   /// (round 390: MegaDetector V6 c and e at 320 and 640 px, flat-bug n and s), whose family name
