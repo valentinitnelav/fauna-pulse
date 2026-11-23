@@ -46,6 +46,7 @@ import '../models/field_notes.dart';
 import '../session/detector_engine.dart';
 import '../session/location_fix.dart';
 import '../logging/app_error_hooks.dart';
+import '../logging/past_sessions.dart' show importedAtOf;
 import '../logging/photo_box_matcher.dart';
 import '../logging/session_log_index.dart';
 import '../logging/device_storage.dart';

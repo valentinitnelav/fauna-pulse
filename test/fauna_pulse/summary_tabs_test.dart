@@ -234,6 +234,51 @@ void main() {
   );
 
   testWidgets(
+    'round 396: Setup Overview of imported videos: the import, the first and last clip, no session duration',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final tmp = Directory.systemTemp.createTempSync('summary_overview_import');
+      addTearDown(() {
+        try {
+          tmp.deleteSync(recursive: true);
+        } catch (_) {}
+      });
+      final june12 = DateTime(2026, 6, 12, 12, 3, 38).millisecondsSinceEpoch;
+      final june26 = DateTime(2026, 6, 26, 8, 10).millisecondsSinceEpoch;
+      final importedAt = DateTime(2026, 11, 23, 14, 5, 10);
+      File('${tmp.path}/session.jsonl').writeAsStringSync(
+        [
+          '{"type":"start_of_session","time_ms":$june12,"source":"imported_video",'
+              '"imported_at":"${importedAt.toUtc().toIso8601String()}",'
+              '"video":{"clips":2,"total_duration_ms":840000,"total_bytes":1000}}',
+          '{"type":"end_of_session","time_ms":$june26,"ended_normally":true,"source":"imported_video"}',
+        ].join('\n'),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SessionSummaryScreen(logFile: File('${tmp.path}/session.jsonl'), initialTabIndex: 2),
+        ),
+      );
+      await pumpUntilFound(tester, find.text('Overview'));
+
+      expect(find.text('Imported'), findsOneWidget);
+      expect(find.text('2026-11-23, 14:05:10'), findsOneWidget);
+      expect(find.text('First clip starts'), findsOneWidget);
+      expect(find.text('2026-06-12, 12:03:38'), findsOneWidget);
+      expect(find.text('Last clip ends'), findsOneWidget);
+      expect(find.text('2026-06-26, 08:10:00'), findsOneWidget);
+      expect(find.text('Filmed time (all clips)'), findsOneWidget);
+      for (final gone in ['Date', 'Start time', 'End time', 'Session duration']) {
+        expect(find.text(gone), findsNothing, reason: gone);
+      }
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    },
+  );
+
+  testWidgets(
     'Photos tab: a smaller sample after viewing a later photo starts at the first photo again',
     (tester) async {
       // The red "RangeError ... Not in inclusive range 0..9: 36" screen: the viewer kept its

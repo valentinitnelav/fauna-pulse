@@ -46,6 +46,14 @@ String sessionDate(DateTime d) => '${d.year}-${_two(d.month)}-${_two(d.day)}';
 /// The time of day, `hh:mm:ss`.
 String sessionTime(DateTime d) => '${_two(d.hour)}:${_two(d.minute)}:${_two(d.second)}';
 
+/// The days the clips of an imported session were filmed (round 396):
+/// "Filmed 2026-06-12" or "Filmed 2026-06-12 → 2026-06-26". The row's own
+/// date is the import day; the hours are in the session summary.
+String filmedDaysLabel(({DateTime from, DateTime to}) f) {
+  final a = sessionDate(f.from), b = sessionDate(f.to);
+  return a == b ? 'Filmed $a' : 'Filmed $a → $b';
+}
+
 class SessionTile extends StatelessWidget {
   final PastSession session;
   final VoidCallback onTap;
@@ -138,7 +146,9 @@ class SessionTile extends StatelessWidget {
                 Flexible(
                   child: Text(
                     // "14:30:05 → 15:42:11"; "—" when there is no end record.
-                    '${sessionTime(s.start)} → ${s.end != null ? sessionTime(s.end!) : '—'}',
+                    s.kind == RecordingKind.importedVideos
+                        ? (s.filmed != null ? filmedDaysLabel(s.filmed!) : '—')
+                        : '${sessionTime(s.start)} → ${s.end != null ? sessionTime(s.end!) : '—'}',
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Colors.white70,
@@ -148,7 +158,7 @@ class SessionTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 6),
-                _DurationPill(s.duration),
+                _DurationPill(s.duration, filmed: s.kind == RecordingKind.importedVideos),
               ],
             ),
           ],
@@ -183,22 +193,33 @@ class SessionTile extends StatelessWidget {
 
 /// The session length in a small rounded pill: amber with a timer for a
 /// session with an end record, orange with a warning and "incomplete" when
-/// it has none (a crash or a forced stop).
+/// it has none (a crash or a forced stop). For imported videos ([filmed]) it
+/// is the clips' summed length, with a film icon, so it does not read as the
+/// time from the first clip to the last.
 class _DurationPill extends StatelessWidget {
   final Duration? duration;
-  const _DurationPill(this.duration);
+  final bool filmed;
+  const _DurationPill(this.duration, {this.filmed = false});
 
   @override
   Widget build(BuildContext context) {
     final complete = duration != null;
     final color = complete ? Colors.amber : Colors.orange;
-    return Container(
+    final pill = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(complete ? Icons.timer_outlined : Icons.warning_amber_rounded, size: 13, color: color),
+          Icon(
+            !complete
+                ? Icons.warning_amber_rounded
+                : filmed
+                ? Icons.movie_outlined
+                : Icons.timer_outlined,
+            size: 13,
+            color: color,
+          ),
           const SizedBox(width: 4),
           Text(
             complete ? formatSessionDuration(duration!) : 'incomplete',
@@ -212,5 +233,6 @@ class _DurationPill extends StatelessWidget {
         ],
       ),
     );
+    return filmed && complete ? Tooltip(message: 'Filmed time (all clips)', child: pill) : pill;
   }
 }

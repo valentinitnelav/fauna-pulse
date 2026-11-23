@@ -55,6 +55,13 @@ RecordingKind recordingKindOf(Map<String, dynamic>? startRecord) {
   return RecordingKind.liveDetection;
 }
 
+/// When an imported session was made: its start record's `imported_at`, or
+/// null for a camera session and for an import older than that key.
+DateTime? importedAtOf(Map<String, dynamic>? startRecord) {
+  final t = startRecord?['imported_at'];
+  return t is String ? DateTime.tryParse(t)?.toLocal() : null;
+}
+
 /// One past session found on disk: its folder name and log file, the real
 /// session [start]/[end] clock times read from the log (falling back to the
 /// file's last-modified time when a record is missing), how long it ran
@@ -63,12 +70,22 @@ RecordingKind recordingKindOf(Map<String, dynamic>? startRecord) {
 /// diagnostic files; null until measured, see [sessionSizes]). [end] and
 /// [duration] are null when the session has no end record (e.g. it crashed
 /// before writing one).
+///
+/// Imported videos (round 396, owner's issue): [start] is the import moment,
+/// [end] is null and [duration] is the clips' summed length, while [filmed]
+/// holds the first clip's start and the last clip's end (the log's start and
+/// end records). Clips filmed in June and in November would otherwise list the
+/// session months back and as five months long, though the gaps were never
+/// filmed. Records stay as they are: per-hour charts and the PC tools need the
+/// filming time. FaunaLapse imports keep their recording time: that is one
+/// continuous recording.
 class PastSession {
   final String name;
   final File logFile;
   final DateTime start;
   final DateTime? end;
   final Duration? duration;
+  final ({DateTime from, DateTime to})? filmed;
   final bool endedNormally;
   final int? sizeBytes;
   final RecordingKind kind;
@@ -89,6 +106,7 @@ class PastSession {
     this.start, {
     this.end,
     this.duration,
+    this.filmed,
     this.endedNormally = false,
     this.sizeBytes,
     this.kind = RecordingKind.liveDetection,
@@ -107,6 +125,7 @@ class PastSession {
     start,
     end: end,
     duration: duration,
+    filmed: filmed,
     endedNormally: endedNormally,
     sizeBytes: bytes,
     kind: kind,
@@ -184,14 +203,21 @@ Future<PastSession?> _scanFolder(Directory entity) async {
   final span = await _readSessionSpan(log);
   final startMs = _msOrNull(span.startRecord?['time_ms']);
   final endMs = span.endMs;
+  final start = startMs != null ? DateTime.fromMillisecondsSinceEpoch(startMs) : null;
+  final end = endMs != null ? DateTime.fromMillisecondsSinceEpoch(endMs) : null;
+  final ran = startMs != null && endMs != null && endMs >= startMs ? Duration(milliseconds: endMs - startMs) : null;
+  final kind = recordingKindOf(span.startRecord);
+  final imported = kind == RecordingKind.importedVideos;
+  final filmedMs = _msOrNull((span.startRecord?['video'] as Map?)?['total_duration_ms']);
   return PastSession(
     entity.path.split('/').last,
     log,
-    startMs != null ? DateTime.fromMillisecondsSinceEpoch(startMs) : log.statSync().modified,
-    end: endMs != null ? DateTime.fromMillisecondsSinceEpoch(endMs) : null,
-    duration: startMs != null && endMs != null && endMs >= startMs ? Duration(milliseconds: endMs - startMs) : null,
+    (imported ? importedAtOf(span.startRecord) : null) ?? start ?? log.statSync().modified,
+    end: imported ? null : end,
+    duration: imported && filmedMs != null ? Duration(milliseconds: filmedMs) : ran,
+    filmed: imported && start != null && end != null && ran != null ? (from: start, to: end) : null,
     endedNormally: span.endedNormally,
-    kind: recordingKindOf(span.startRecord),
+    kind: kind,
     hasAnalysis:
         File('${entity.path}/${PostDetector.outputFileName}').existsSync() ||
         File('${entity.path}/${VideoDetector.outputFileName}').existsSync(),

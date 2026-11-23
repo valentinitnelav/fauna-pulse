@@ -87,7 +87,8 @@ If a video cannot be read or found, see [When a video does not work](#when-a-vid
    animals in these videos** to go on with step 2, or **Done**.
 
 One session per site and day works best. The videos are copied, so they take storage twice
-until you delete the originals.
+until you delete the originals. **Sessions** lists the new session under the day of the import;
+its row shows the days the clips were filmed.
 
 **Or record** the clips with FaunaPulse itself: **Capture trigger (what causes photos)**: **Time-lapse
 photo or video bursts**, then **Save bursts as**: **Video (MP4), find animals later**. These clips are already the ROI square (the area of interest) and carry the

@@ -467,7 +467,9 @@ track IDs on the left axis, with round numbers that follow the tallest bar.
 session duration, model, where the detector ran, whether the session ended normally, battery
 used, where it was saved, the session storage and the free phone storage. The location, the
 field notes and **Site photos** show when they were set; video sessions add *Filmed time (all
-clips)*.
+clips)*. Imported videos show *Imported*, *First clip starts* and *Last clip ends* instead of the
+date, the start and end time and the session duration, because the time between clips was not
+filmed.
 
 - Behind **All session settings (tap to show)** (closed at first) is every setting this session
   recorded (useful for the methods section of a paper). The rows are in groups with small
@@ -490,6 +492,8 @@ that point is still valid (see [DATA_GUIDE.md](DATA_GUIDE.md)).
 
 **Home** → **Sessions** lists every session with its size, start and end time and duration. An
 icon on a row shows that *"Find animals" results exist* or that *Identification results exist*.
+Imported videos are listed by the day they were imported: their row shows the days the clips were
+filmed and, with a film icon, the filmed time of all clips together.
 
 - **Search by name** finds a session by its name.
 - **Filters** (it shows *Filters (…)* when some are set) chooses by date (*Any time*, *Today*,

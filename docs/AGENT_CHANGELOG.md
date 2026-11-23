@@ -10562,3 +10562,6 @@ Play store contact address (owner).
 Asked (owner feedback): with several imported videos, one time change moved the other clips two
 weeks into the future, and the file names and their dates were lost. Open: the owner's own try of
 the file chooser on a phone.
+
+## Round 396 (2026-11-23): imported videos listed by their import time
+Owner's issue #36: an imported session was dated and sorted by its first clip's filming day, and its length ran over the days between clips. Open: the rule for issue #35 (one camera, one spot, one view per session) on the import screen and in VIDEO_ANALYSIS.md.

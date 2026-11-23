@@ -17,12 +17,14 @@ PastSession session(
   RecordingKind kind = RecordingKind.liveDetection,
   bool found = false,
   bool identified = false,
+  ({DateTime from, DateTime to})? filmed,
 }) => PastSession(
   name,
   File('/sessions/$name/session.jsonl'),
   start,
   duration: duration,
-  end: duration == null ? null : start.add(duration),
+  end: duration == null || kind == RecordingKind.importedVideos ? null : start.add(duration),
+  filmed: filmed,
   sizeBytes: bytes,
   kind: kind,
   hasAnalysis: found,
@@ -89,6 +91,55 @@ void main() {
       expect(v.hasIdentification, isTrue);
       expect(v.sizeBytes, greaterThan(1000));
       expect(v.dir.path, videos.path);
+    });
+
+    test('round 396: imported videos are listed by the import, with the filmed time as their length', () async {
+      // Owner's issue: clips filmed on 2026-06-12 and 2026-06-26, imported on
+      // 2026-11-23 after a live session of 2026-11-20.
+      final june12 = DateTime(2026, 6, 12, 12, 3, 38).millisecondsSinceEpoch;
+      final june26 = DateTime(2026, 6, 26, 8, 10).millisecondsSinceEpoch;
+      final nov20 = DateTime(2026, 11, 20, 9).millisecondsSinceEpoch;
+      final importedAt = DateTime(2026, 11, 23, 14, 5, 10);
+      make(
+        'live',
+        '{"type":"start_of_session","time_ms":$nov20,"config":{}}\n'
+            '{"type":"end_of_session","time_ms":${nov20 + 600000},"ended_normally":true}\n',
+      );
+      make(
+        'videos',
+        '{"type":"start_of_session","time_ms":$june12,"source":"imported_video",'
+            '"imported_at":"${importedAt.toUtc().toIso8601String()}",'
+            '"video":{"clips":2,"total_duration_ms":840000}}\n'
+            '{"type":"video_clip","time_ms":$june12,"file":"videos/a.mp4","duration_ms":420000}\n'
+            '{"type":"video_clip","time_ms":${june26 - 420000},"file":"videos/b.mp4","duration_ms":420000}\n'
+            '{"type":"end_of_session","time_ms":$june26,"ended_normally":true,"source":"imported_video"}\n',
+      );
+      // An import older than `imported_at` and the clip totals: the filming
+      // time and the span, as before.
+      make(
+        'old_import',
+        '{"type":"start_of_session","time_ms":${june12 - 60000},"source":"imported_video"}\n'
+            '{"type":"end_of_session","time_ms":$june12,"ended_normally":true,"source":"imported_video"}\n',
+      );
+
+      final all = await scanPastSessions(root: root, withSizes: false);
+      expect(all.map((s) => s.name), ['videos', 'live', 'old_import']);
+      final v = all.first;
+      expect(v.start, importedAt);
+      expect(v.end, isNull, reason: 'an import has no end; the clips have [filmed]');
+      expect(v.duration, const Duration(minutes: 14), reason: 'the clips, not June 12 to June 26');
+      expect(v.filmed?.from, DateTime.fromMillisecondsSinceEpoch(june12));
+      expect(v.filmed?.to, DateTime.fromMillisecondsSinceEpoch(june26));
+      expect(v.withSizeBytes(5).filmed, v.filmed);
+      final old = all.last;
+      expect(old.start, DateTime.fromMillisecondsSinceEpoch(june12 - 60000));
+      expect(old.duration, const Duration(minutes: 1));
+      expect(all[1].filmed, isNull, reason: 'a camera session');
+      expect(all[1].end, isNotNull);
+      // The "Today" filter and "Longest first" go by the import and the clips.
+      final now = DateTime(2026, 11, 23, 18);
+      expect(const SessionFilter(date: DateFilter.today).apply(all, SessionSort.newest, now).map((s) => s.name), ['videos']);
+      expect(const SessionFilter().apply(all, SessionSort.longest, now).map((s) => s.name), ['videos', 'live', 'old_import']);
     });
 
     test('a missing sessions folder gives an empty list', () async {

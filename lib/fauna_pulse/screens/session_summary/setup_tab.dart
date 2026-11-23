@@ -695,13 +695,25 @@ extension _SummarySetupTab on _SessionSummaryScreenState {
         : (start != null && sessionDate(end) != sessionDate(start))
         ? '${sessionDate(end)}, ${sessionTime(end)}'
         : sessionTime(end);
+    String dayAndTime(DateTime d) => '${sessionDate(d)}, ${sessionTime(d)}';
+    // Imported videos (round 396): the session is the import; the log's
+    // start and end are the first clip's start and the last clip's end, and
+    // the time between them was not all filmed (no "Session duration"). Same
+    // rule as the Sessions list (PastSession.filmed).
+    final importedAt = importedAtOf(_startRec);
     return [
       const Text('Overview', style: TextStyle(fontWeight: FontWeight.bold)),
       const SizedBox(height: 4),
       _stat('Capture mode', _captureModeLabel),
-      _stat('Date', start != null ? sessionDate(start) : 'unknown'),
-      _stat('Start time', start != null ? sessionTime(start) : 'unknown'),
-      _stat('End time', endLabel),
+      if (_importedVideoSession) ...[
+        if (importedAt != null) _stat('Imported', dayAndTime(importedAt)),
+        _stat('First clip starts', start != null ? dayAndTime(start) : 'unknown'),
+        _stat('Last clip ends', endLabel),
+      ] else ...[
+        _stat('Date', start != null ? sessionDate(start) : 'unknown'),
+        _stat('Start time', start != null ? sessionTime(start) : 'unknown'),
+        _stat('End time', endLabel),
+      ],
       // Round 126: the session's single location fix, when one was set.
       if (SessionLocation.fromJson(
             (_startRec?['location'] as Map?)?.cast<String, dynamic>(),
@@ -710,10 +722,8 @@ extension _SummarySetupTab on _SessionSummaryScreenState {
         _stat('Location', '${loc.label} (${locationSourceLabel(loc.source)})'),
       // Round 297: the field notes saved with the session.
       ..._fieldNoteRows(),
-      _stat('Session duration', _durationLabel),
-      // Imported videos (round 229): the clips' total length. The session
-      // runs from the first clip's start to the last one's end, gaps
-      // included, and those gaps were not filmed.
+      if (!_importedVideoSession) _stat('Session duration', _durationLabel),
+      // Imported videos (round 229): the clips' total length.
       if (((_startRec?['video'] as Map?)?['total_duration_ms'] ??
               (_recordedVideoSession ? _clipTotals.durationMs : null))
           case final num filmedMs)

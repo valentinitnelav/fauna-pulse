@@ -19,7 +19,13 @@ final _now = DateTime(2026, 10, 2, 12);
 final _sessions = [
   session('meadow_timelapse', DateTime(2026, 10, 2, 8), duration: const Duration(minutes: 5), kind: RecordingKind.timeLapse),
   session('meadow_live', DateTime(2026, 9, 27, 8), duration: const Duration(minutes: 30), found: true),
-  session('river_videos', DateTime(2026, 9, 10, 8), duration: const Duration(hours: 2), kind: RecordingKind.importedVideos),
+  session(
+    'river_videos',
+    DateTime(2026, 9, 10, 8),
+    duration: const Duration(hours: 2),
+    kind: RecordingKind.importedVideos,
+    filmed: (from: DateTime(2026, 6, 12, 12, 3), to: DateTime(2026, 6, 26, 8, 10)),
+  ),
   session('garden_motion_with_a_rather_long_name_for_a_small_phone', DateTime(2026, 8, 1, 8), kind: RecordingKind.motion),
 ];
 
@@ -213,6 +219,20 @@ void main() {
     await tester.tap(find.text('Select sessions'));
     await tester.pumpAndSettle();
     expect(find.text('0 selected'), findsOneWidget);
+  });
+
+  testWidgets('round 396: an imported row shows the filming days and the filmed time', (tester) async {
+    await _pumpSessions(tester);
+    final row = find.ancestor(of: find.text('river_videos'), matching: find.byType(SessionTile));
+    expect(find.descendant(of: row, matching: find.text('2026-09-10')), findsOneWidget, reason: 'the import day');
+    expect(find.descendant(of: row, matching: find.text('Filmed 2026-06-12 → 2026-06-26')), findsOneWidget);
+    expect(find.descendant(of: row, matching: find.text('02:00:00')), findsOneWidget);
+    expect(find.descendant(of: row, matching: find.byIcon(Icons.movie_outlined)), findsOneWidget);
+    expect(find.descendant(of: row, matching: find.byTooltip('Filmed time (all clips)')), findsOneWidget);
+    final live = find.ancestor(of: find.text('meadow_live'), matching: find.byType(SessionTile));
+    expect(find.descendant(of: live, matching: find.text('08:00:00 → 08:30:00')), findsOneWidget);
+    expect(find.descendant(of: live, matching: find.byIcon(Icons.timer_outlined)), findsOneWidget);
+    expect(filmedDaysLabel((from: DateTime(2026, 6, 12, 9), to: DateTime(2026, 6, 12, 17))), 'Filmed 2026-06-12');
   });
 
   testWidgets('no sessions yet', (tester) async {
