@@ -76,11 +76,13 @@ If a video cannot be read or found, see [When a video does not work](#when-a-vid
 1. Tap **Import videos…**. The button is on **Home** (step 3, **Or use your own videos**), in
    the ⋮ menu of the **Sessions** screen and on the **Find animals in videos** screen (there it
    reads **Import other videos…** once a session has videos).
-2. Android's photo picker opens, with the camera's videos first. A video saved elsewhere (for
-   example in Download) is found with the picker's own ⋮ menu (**Browse**).
-3. The **Import videos** screen opens. Give the session a name under **Session name**.
-4. Check the line **Filming started**: track IDs per hour and the dashboard use it.
-   **Change…** sets the day, hour and minute.
+2. Android's file chooser opens, with recent videos first. Its ☰ menu opens other folders (for
+   example Download). To pick several videos, touch and hold the first one, then tap the others.
+3. The **Import videos** screen opens. It suggests a session name with today's date; change it
+   under **Session name**.
+4. Check the start of each clip under **When filming started**: track IDs per hour and the
+   dashboard use it. **Change…** next to a clip sets its day, hour and minute. With several
+   clips, **Set all clips…** sets them all at once (see below).
 5. Tap **Import 8 clips** (the number of clips you picked). When the copy is done, tap **Find
    animals in these videos** to go on with step 2, or **Done**.
 
@@ -115,10 +117,25 @@ camera's own start time. They go straight to step 2: their session summary opens
 <details>
 <summary>The start time on the Import videos screen</summary>
 
-- The line under **Filming started** says what the file name and the time stored in the video gave.
+- The line under each clip's start says what the file name and the time stored in the video
+  gave. Phone cameras store when filming stopped. A video editor stores when it saved the file,
+  so an edited (for example trimmed) video shows the edit day unless its name holds the date.
+- File names with a date and time are read, also with a two-digit year
+  (`…_260612120338.mp4` = 2026-06-12 12:03:38). A name with the date and time of filming is
+  the most reliable way to keep it.
+- **Set all clips…** asks how:
+  - **Keep the gaps between them**: you set the first clip; the others move by the same amount
+    (a camera whose clock was wrong).
+  - **One after the other**: you set the first clip; each next clip, in name order, starts when
+    the one before ends (one recording saved as several files).
+  - **All at the same time**: every clip starts at the time you set (several cameras started
+    together).
 - After **Change…** the seconds become 0 (the time picker has no seconds).
 - **Back to the time read from the file** (with several clips: **Back to the times read from
-  the files**) undoes the change.
+  the files**) undoes all changes.
+- In the session, spaces and signs in a clip's name become `_` (the screen says
+  "Saved as …"), so that other programs and Windows computers can open the files. The original
+  name stays in the session's records.
 
 </details>
 
@@ -382,8 +399,8 @@ leaves such clips out.
 Live detection + video records 5-minute pieces, and video bursts one clip
 per burst, so a stop loses at most the piece or burst that was recording.
 
-**A video is missing from the photo picker?** The picker lists the camera's videos first. Open
-its own ⋮ menu (**Browse**) to find a video in another folder, for example Download.
+**A video is missing from the file chooser?** The chooser lists recent videos first. Open its
+☰ menu to find a video in another folder, for example Download.
 
 **Older phones.** A phone too slow for live detection can still record and analyse later. On the
 second test phone (Samsung Galaxy M12, 2021, Exynos 850), live detection ran at 3 to 5 frames per

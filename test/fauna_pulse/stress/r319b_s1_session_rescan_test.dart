@@ -10,12 +10,11 @@ import 'dart:io';
 import 'package:fauna_pulse/fauna_pulse/logging/device_thermal.dart';
 import 'package:fauna_pulse/fauna_pulse/models/model_catalog.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/video_analysis_screen.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-// ignore: depend_on_referenced_packages
-import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 // ignore: depend_on_referenced_packages
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 // ignore: depend_on_referenced_packages
@@ -35,14 +34,27 @@ class _FakePaths extends PathProviderPlatform {
   Future<String?> getExternalStoragePath() async => path;
 }
 
-/// The system picker left with Back: nothing chosen.
-class _BackPicker extends ImagePickerPlatform {
+/// The system file chooser left with Back: nothing chosen.
+class _BackPicker extends FilePicker {
   var opened = 0;
 
   @override
-  Future<List<XFile>> getMultiVideoWithOptions({MultiVideoPickerOptions options = const MultiVideoPickerOptions()}) async {
+  Future<FilePickerResult?> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    bool allowCompression = false,
+    int compressionQuality = 0,
+    bool allowMultiple = false,
+    bool withData = false,
+    bool withReadStream = false,
+    bool lockParentWindow = false,
+    bool readSequential = false,
+  }) async {
     opened++;
-    return const [];
+    return null;
   }
 }
 
@@ -71,7 +83,7 @@ void main() {
     Directory('${tmp.path}/cache').createSync();
     PathProviderPlatform.instance = _FakePaths('${tmp.path}/cache');
     picker = _BackPicker();
-    ImagePickerPlatform.instance = picker;
+    FilePicker.platform = picker;
     VideoPlayerPlatform.instance = FakeVideoPlayer();
     wakelockPlusPlatformInstance = FakeWakelock();
     DeviceThermal.resetForTesting();

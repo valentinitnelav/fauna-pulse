@@ -40,7 +40,8 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
 - `models/`: settings and data types. `session_config.dart`: `SessionConfig`, every recording
   setting (source of truth for defaults; migrations in `fromJson`; `buildTracker(fps)`, the one
   tracker builder for camera and videos). Model files: `model_catalog.dart`,
-  `model_file_kind.dart` (kind from the tensor shapes; the export's task word refuses segment, pose, OBB and classify files: the app runs plain detection only, the plugin's native code for the other tasks is gone), `model_file_security.dart`
+  `model_file_kind.dart` (kind from the tensor shapes; plain detection only: the plugin's code for
+  segment, pose, OBB and classify is gone), `model_file_security.dart`
   (`isSupportedModelFileName`, the one format filter; intake checks), `model_import.dart`, `file_download.dart`,
   `model_downloads.dart` (reader of the download list), `models_on_phone.dart`. `list_search.dart`:
   the one search rule (and order of matches) of every search box over a list.
@@ -277,11 +278,8 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   track ID (the model is closed first; the fusion runs in worker isolates, all cores up to 8 on a
   phone with 5 GB of memory or more, 4 below, about 60 MB each, sharing one native-memory copy of
   the pack matrix; a setting overrides the count) → `tracks_<pack>.{csv,json}`, `crops_<pack>.csv`,
-  `summary_<pack>.json`. Method and credits (Dussert et al. 2025; suspect flags after
-  insect-detect-post, Sittinger 2026) are in IDENTIFICATION.md. The pooling rule was checked on
-  expert-named pollinator photos (the plain average is as good, not better, so the rule stays;
-  a threshold fitted for one pooling rule does not hold for another). The 0.6 threshold and the
-  "no organism" check are not tuned.
+  `summary_<pack>.json`. Method, credits and the check of the pooling rule: IDENTIFICATION.md.
+  The 0.6 threshold and the "no organism" check are not tuned.
 - A name list pairs with its model by the first part of the file name (`listBelongsTo`, else the
   header's `model_id`); a classifier pairs with the `.fpack` of the same name. A row counts only
   down to the rank above its first empty slot (`rollUp`).
@@ -290,8 +288,8 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   neighbours). `LabelPack` keeps them in typed fields, not in `header`; a damaged block is left
   out, never an error. Scoring workers get `LabelPack.forWorker()` (an isolate message copies
   what it carries, once per worker). A published name list is never changed: a fix is a new
-  version. The BioCLIP 2 and 2.5 pollinator lists (one per continent) carry both blocks. No world list is offered: its 193,000 names do not fit a phone's memory with this
-  scoring (owner's plan: load only the names on offer, after a check on expert-named photos).
+  version. The BioCLIP 2 and 2.5 pollinator lists (one per continent) carry both blocks. No world list:
+  its 193,000 names do not fit a phone's memory with this scoring.
 - **A choice of names narrows only what is shown** (each crop's candidates, the ladder, the
   identified rank, the best view): countries (one, with its neighbours, or chosen by hand; a
   list's `regions` block) and orders and families chosen by hand (`PackTaxa`, any name list but
@@ -302,12 +300,9 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   in `identification_job_test.dart`; fauna-pulse-models' `reproduce_track_conf.py` repeats the
   rule). Which names a run uses is decided in one place, `nameListForSettings`
   (`name_list_region.dart`), for the scoring and the Identify page; the results record it
-  (`name_list`, `name_list_countries`, `name_list_taxa`). `LabelPack.readHeader` leaves out the
-  names and gives the page their orders and families under `kPackTaxaKey`; the pages that list
-  name lists use `listingHeader` (kept per file while the app runs), import and download checks
-  `readHeader` (always reads the file). The page "Names to
-  choose from" (`name_list_names_screen.dart`) lists the rows of `NameListChoice.rowBits`,
-  read without the vectors (`readNameListNames`).
+  (`name_list`, `name_list_countries`, `name_list_taxa`). Pages that list name lists use
+  `listingHeader` (kept per file while the app runs); import and download checks use `readHeader`
+  (always reads the file).
 - **The session's country** comes from its position and `assets/country_borders.json`
   (`country_lookup.dart`; found on the calling isolate, because the borders are an asset).
   `tool/country_borders/make_country_borders.py` writes that file and the shared test points
@@ -386,11 +381,9 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   edition). Backup = shared preferences only (as `PRIVACY_POLICY.md` says); cleartext traffic
   blocked. CI actions are pinned by commit; the Flutter version in `security_checks.yml` equals
   the local `flutter --version` (change both in the same round).
-- **Icon files:** the Play icon (`ic_launcher-playstore.png`) is a full flat square in the colour
-  of `ic_launcher_background`, with no rounded corners or shadow of its own (Play adds both, so a
-  drawn card shows as a second border). The rounded picture, for the app and the README, is
-  `assets/images/faunapulse_icon.png`. All sizes come from one clean picture: replace them
-  together.
+- **Icon files:** the Play icon (`ic_launcher-playstore.png`) is a full flat square (Play adds
+  corners and a shadow); the rounded picture for the app and the README is
+  `assets/images/faunapulse_icon.png`. All sizes come from one picture: replace them together.
 - **Versioning:** pubspec `version:` is the single source; bump the build number for every tester
   APK; tags `v<version>`. Since 0.9.0 (beta) an update keeps older sessions and saved settings
   readable. Move together: pubspec version, CITATION.cff (`version`, `date-released`, version
@@ -430,7 +423,7 @@ sessions): try it as a side-by-side copy, `-P releaseIdSuffix=.rc` (`test/README
 
 - `flutter analyze`; while working, `flutter test test/fauna_pulse/*_test.dart` (every test file
   outside `stress/`: about 1,100 tests, 2.5 min); before a commit and in CI the whole suite,
-  `flutter test` (about 1,700 tests, 4 min or more). No whole-file `dart format` (the repository
+  `flutter test` (about 1,900 tests, 5 min or more). No whole-file `dart format` (the repository
   is not formatter-clean).
 - Debug APK: `flutter build apk --debug --target-platform android-arm64` (every test phone is
   arm64; about 10 s warm and 125 MB instead of 30 s and 153 MB for three ABIs; release builds keep

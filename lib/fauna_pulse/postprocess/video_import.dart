@@ -24,6 +24,10 @@
 // app kill, the folder carries [kImportUnfinishedMarker] until its last step,
 // and [deleteVideoImportLeftovers] removes such folders, and the photo
 // picker's own copies, at the next start.
+//
+// Round 395 (owner): the user sets each clip's start ([planImport] setMs),
+// not one shift for all: a shift computed on one clip moved clips whose
+// times came from elsewhere into the future.
 
 import 'dart:async';
 import 'dart:convert';
@@ -72,17 +76,35 @@ class ImportClip {
   }
 }
 
-/// Start of every clip after [layOutClips], shifted by [shiftMs] (the
-/// user's correction of the session start on the import screen).
-List<ClipStart> planImport(List<ImportClip> clips, {int shiftMs = 0}) {
-  final laid = layOutClips([
-    for (var i = 0; i < clips.length; i++) ClipStart(clips[i].name, clips[i].durationMs, clips[i].guess, index: i),
-  ]);
-  if (shiftMs == 0) return laid;
-  return [
-    for (final c in laid)
-      ClipStart(c.name, c.durationMs, c.guess, index: c.index, startMs: c.startMs + shiftMs, source: 'user'),
-  ];
+/// Start of every clip after [layOutClips]; [setMs] holds the starts the
+/// user set on the import screen, by clip index.
+List<ClipStart> planImport(List<ImportClip> clips, {Map<int, int> setMs = const {}}) => layOutClips([
+  for (var i = 0; i < clips.length; i++)
+    ClipStart(
+      clips[i].name,
+      clips[i].durationMs,
+      clips[i].guess,
+      index: i,
+      startMs: setMs[i],
+      source: setMs.containsKey(i) ? 'user' : null,
+    ),
+]);
+
+/// The name each clip gets in `videos/`, by clip index, given in [plan]
+/// order ([safeClipName], and `_2` when two picks share a name). The import
+/// screen shows it when it differs from the picked name.
+Map<int, String> clipFileNames(List<ClipStart> plan) {
+  final names = <int, String>{};
+  for (final c in plan) {
+    final base = safeClipName(c.name);
+    final dot = base.lastIndexOf('.');
+    var target = base;
+    for (var k = 2; names.containsValue(target); k++) {
+      target = dot > 0 ? '${base.substring(0, dot)}_$k${base.substring(dot)}' : '${base}_$k';
+    }
+    names[c.index] = target;
+  }
+  return names;
 }
 
 /// Whether [f] is a fragmented MP4: its pictures sit in `moof` boxes after
@@ -144,15 +166,17 @@ class ImportRewriteFailed implements Exception {
       '("-c copy" copies the pictures without re-compressing them). Then import the copy.';
 }
 
-/// A file-system-safe clip name: letters, digits, `_`, `-`, `.` only.
+/// A file-system-safe clip name: letters, digits, `_`, `-`, `.` only, so
+/// the name also works on Windows and in command lines (ffmpeg, scripts)
+/// when a session is copied to a computer.
 String safeClipName(String name) {
   final s = name.trim().replaceAll(RegExp(r'[^A-Za-z0-9_.\-]'), '_');
   return s.isEmpty ? 'clip.mp4' : s;
 }
 
-/// Suggested session name: `video_` plus the first clip's local date.
-String defaultImportName(int firstStartMs) {
-  final t = DateTime.fromMillisecondsSinceEpoch(firstStartMs);
+/// Suggested session name: `video_` plus the import day [t] (round 395,
+/// owner: the filming day is often only a guess, the import day never).
+String defaultImportName(DateTime t) {
   String two(int v) => v.toString().padLeft(2, '0');
   return 'video_${t.year}${two(t.month)}${two(t.day)}';
 }
@@ -167,13 +191,14 @@ Future<Directory> importVideos({
   required Directory sessionsDir,
   required String sessionName,
   required List<ImportClip> clips,
-  int shiftMs = 0,
+  Map<int, int> setMs = const {},
   Map<String, dynamic> startExtras = const {},
   void Function(int done, int total, String name)? onProgress,
   void Function(double fraction)? onRewrite,
   Future<Map<String, dynamic>> Function(String src, String dst) remux = VideoFrameSource.remux,
 }) async {
-  final plan = planImport(clips, shiftMs: shiftMs);
+  final plan = planImport(clips, setMs: setMs);
+  final fileNames = clipFileNames(plan);
 
   final safe = sanitizeSessionName(sessionName).isEmpty ? 'video' : sanitizeSessionName(sessionName);
   var dir = Directory('${sessionsDir.path}/$safe');
@@ -184,21 +209,13 @@ Future<Directory> importVideos({
   // Removed as the last step: a folder that still has it was cut off.
   final unfinished = File('${dir.path}/$kImportUnfinishedMarker')..createSync();
 
-  // Move or copy in start order; two picks with one name get a suffix.
-  final fileNames = <int, String>{};
+  // Move or copy in start order.
   final rewritten = <int, Map<String, dynamic>>{};
   int sizeOf(int index) => (rewritten[index]?['bytes'] as num?)?.toInt() ?? clips[index].sizeBytes;
   for (var i = 0; i < plan.length; i++) {
     final clip = clips[plan[i].index];
     onProgress?.call(i, plan.length, clip.name);
-    final base = safeClipName(clip.name);
-    final dot = base.lastIndexOf('.');
-    var target = base;
-    for (var k = 2; fileNames.containsValue(target); k++) {
-      target = dot > 0 ? '${base.substring(0, dot)}_$k${base.substring(dot)}' : '${base}_$k';
-    }
-    fileNames[plan[i].index] = target;
-    final to = File('${videos.path}/$target');
+    final to = File('${videos.path}/${fileNames[plan[i].index]}');
     if (!clip.fragmented) {
       try {
         await _moveOrCopy(File(clip.path), to);
@@ -250,7 +267,7 @@ Future<Directory> importVideos({
       'clips': plan.length,
       'total_duration_ms': plan.fold<int>(0, (s, c) => s + c.durationMs),
       'total_bytes': [for (var i = 0; i < clips.length; i++) sizeOf(i)].fold<int>(0, (s, b) => s + b),
-      if (shiftMs != 0) 'start_shift_ms': shiftMs,
+      if (setMs.isNotEmpty) 'starts_set_by_user': setMs.length,
     },
   }, at: DateTime.fromMillisecondsSinceEpoch(first));
   for (final c in plan) {
@@ -262,11 +279,13 @@ Future<Directory> importVideos({
       'original_name': clip.name,
       'start_epoch_ms': c.startMs,
       'start_time_source': c.source,
-      if (c.source != c.guess.source) 'start_time_guess_source': c.guess.source,
+      if (c.source != c.guess.source) ...{
+        'start_time_guess_source': c.guess.source,
+        'start_time_guess_ms': c.guess.epochMs,
+      },
       // Round 304: a guess the user did not change (also a file name that
       // disagrees with the time stored in the file, logged as file_name).
       if (c.guess.weak && c.source != 'user') 'start_time_weak': true,
-      if (shiftMs != 0) 'start_time_shift_ms': shiftMs,
       'duration_ms': info.durationMs,
       'size_bytes': sizeOf(c.index),
       if (rw != null) ...{
@@ -349,17 +368,26 @@ bool _hasEndRecord(File log) {
   }
 }
 
-/// The photo picker's folders in the app's cache: Android's picker plugin
-/// copies each picked file to `<cache>/<random id>/<name>` before it returns
-/// (image_picker_android FileUtils.getPathFromUri). Only folders named like
-/// that id and holding nothing but video files (or nothing) count, so other
-/// cache folders and picked screenshots are never touched.
+/// The pickers' folders in the app's cache. The file chooser plugin
+/// (file_picker, for videos since round 395) copies each chosen file to
+/// `<cache>/file_picker/<time in ms>/<name>` before it returns
+/// (FileUtils.openFileStream); the photo picker plugin used before
+/// (image_picker_android FileUtils.getPathFromUri) to
+/// `<cache>/<random id>/<name>`, kept for copies an older version left.
+/// Only folders named like that and holding nothing but video files (or
+/// nothing) count, so other cache folders, picked models and picked
+/// screenshots are never touched.
 List<Directory> pickerVideoCopyFolders(Directory cache) {
   final id = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
+  final ms = RegExp(r'^\d+$');
   final found = <Directory>[];
   if (!cache.existsSync()) return found;
-  for (final d in cache.listSync(followLinks: false).whereType<Directory>()) {
-    if (!id.hasMatch(d.path.split('/').last)) continue;
+  List<Directory> named(Directory dir, RegExp name) => [
+    if (dir.existsSync())
+      for (final d in dir.listSync(followLinks: false).whereType<Directory>())
+        if (name.hasMatch(d.path.split('/').last)) d,
+  ];
+  for (final d in [...named(cache, id), ...named(Directory('${cache.path}/file_picker'), ms)]) {
     final inside = d.listSync(followLinks: false);
     final videosOnly = inside.every(
       (e) => e is File && VideoDetector.videoExtensions.contains(e.path.split('.').last.toLowerCase()),

@@ -133,4 +133,16 @@ void main() {
     final left = cache.listSync().map((e) => e.path.split('/').last).toList()..sort();
     expect(left, ['0b7a3c1e-1111-4222-8333-944455556666', 'data', 'link_download', 'loose.mp4']);
   });
+
+  test("the file chooser's leftover video copies go, a picked model stays (round 395)", () {
+    final picks = Directory('${cache.path}/file_picker')..createSync();
+    final v = Directory('${picks.path}/1795373273001')..createSync();
+    File('${v.path}/VIDT05B01680_260612120338 - Trim.mp4').writeAsBytesSync(List.filled(2000, 1));
+    final m = Directory('${picks.path}/1795373273002')..createSync();
+    File('${m.path}/detector.tflite').writeAsStringSync('model');
+    Directory('${picks.path}/not_a_time').createSync();
+
+    expect(deletePickerCopies(pickerVideoCopyFolders(cache)), 2000);
+    expect(picks.listSync().map((e) => e.path.split('/').last).toList()..sort(), ['1795373273002', 'not_a_time']);
+  });
 }

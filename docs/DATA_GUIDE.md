@@ -244,8 +244,8 @@ The `roi` sub-object (also used in `roi_update`):
 
 **Imported videos:** a session made with **Import videos…** has `source: "imported_video"` in
 its start record, plus `imported_at`, `file_token`, the app/build fields and a `video` summary
-(`clips`, `total_duration_ms`, `total_bytes`, and `start_shift_ms` when the user corrected the
-start). It has no camera fields and no `config`, because no camera ran. Its `time_ms` is the
+(`clips`, `total_duration_ms`, `total_bytes`, and `starts_set_by_user`, the number of clips
+whose start the user set). It has no camera fields and no `config`, because no camera ran. Its `time_ms` is the
 first clip's start. See §9. (Sessions imported from FaunaLapse: §8b.)
 
 <details>
@@ -1831,8 +1831,7 @@ exists since round 319.
 - `original_name`: The file's name on the phone before the import.
 - `start_epoch_ms`: When the clip started (Unix epoch ms).
 - `start_time_source`: Where that start came from (table below).
-- `start_time_guess_source`: Only when the clip's own guess was replaced (`after_previous` or `user`): what that guess was.
-- `start_time_shift_ms`: Only when the user corrected the start; every clip moves by the same amount.
+- `start_time_guess_source`, `start_time_guess_ms`: Only when the clip's own guess was replaced (`after_previous` or `user`): where that guess came from and its time.
 - `start_time_weak`: Only `true`: the start is a guess the user did not correct (a copy's time, only a day, a clip placed after the previous one, or a file name that disagrees with the time stored in the file). The Dashboard leaves the track IDs of such a session out of its charts by time.
 - `duration_ms`, `size_bytes`: Length and file size. The length comes from the frames' time stamps when the file's header holds none (fragmented MP4s).
 - `rewritten_from` and four more: Only for a clip that was a **fragmented MP4** (below the list).
@@ -1858,18 +1857,18 @@ file's size, and the clip has five more fields:
 | Value | Meaning |
 |---|---|
 | `session_log` | Read back from the `video_clip` record (what the analysis pass uses). |
-| `file_name` | A date and time in the file name (`VID_20260924_155954.mp4`, `PXL_…`, `20260924_155954`), as most camera apps write it. Also a date and time joined by " at " (`Screen Recording 2026-09-24 at 15.59.54.mov`, dots or colons in the time). A 12-hour time (`… at 11.59.54 PM.mov`) is not read: such names give only the day. |
-| `metadata` | The time stored in the file **minus the clip length**: Android phones store when recording *stopped* (checked on a Xiaomi clip). |
+| `file_name` | A date and time in the file name (`VID_20260924_155954.mp4`, `PXL_…`, `20260924_155954`), as most camera apps write it. Also a date and time joined by " at " (`Screen Recording 2026-09-24 at 15.59.54.mov`, dots or colons in the time), and a two-digit year as 12 digits (`…_260612120338`, as some camera traps write it, or `260612_120338`). A 12-hour time (`… at 11.59.54 PM.mov`) is not read: such names give only the day. A day-first date (`14112024`) is not read either, because it cannot be told from a month-first one. |
+| `metadata` | The time stored in the file **minus the clip length**: Android phones store when recording *stopped* (checked on a Xiaomi clip). A video editor stores when it saved the file (a trimmed copy keeps the trim day). |
 | `file_name_date` | Only the day is in the name (WhatsApp: `VID-20260924-WA0005.mp4`); noon is assumed. Uncertain. |
-| `file_time` | The file's modification time minus the length. Uncertain: copying resets it, and the Android file picker copies every file it hands over. |
+| `file_time` | The file's modification time minus the length. Uncertain: copying resets it, and the Android file chooser copies every file it hands over, so this is the import time. |
 | `after_previous` | A clip with an uncertain time that would overlap the clip before it, placed right after that clip (so several WhatsApp clips from one day play one after the other instead of all at noon). Clips with a reliable time never move, so a real overlap (two cameras) stays visible. |
-| `user` | The user set the start on the import screen. The first clip then starts at second 0 (the time picker has no seconds). |
+| `user` | The user set the start on the import screen, for this clip (**Change…**) or for all clips (**Set all clips…**: keep the gaps, one after the other in name order, or all at the same time). A time set by hand starts at second 0 (the time picker has no seconds). |
 | `camera` | Recorded by the app (time-lapse video bursts): the camera's time of the first frame. |
 | `clock` | Recorded by the app, but the camera gave no usable time: the phone's clock when the clip opened. |
 
 When the file name's time and the stored time differ by more than 2 minutes, the name wins, but
 the import screen marks the time as uncertain. Messengers such as WhatsApp remove the stored
-time; video editors reset it to the export time. Under the first clip's start, the import
+time; video editors reset it to the export time. Under each clip's start, the import
 screen says what the file name and the stored time gave.
 
 <details>
@@ -1884,6 +1883,11 @@ screen says what the file name and the stored time gave.
 - Round 306: file names with " at "; with `user`, the first clip starts at second 0 (before, it
   kept the seconds of the guess); the import screen shows what the file name and the stored
   time gave.
+- Round 395: two-digit years in file names; the user sets each clip's start (before, one
+  correction moved every clip by the same amount, logged as `start_shift_ms` in the start record
+  and `start_time_shift_ms` per clip); `start_time_guess_ms` and `starts_set_by_user`. Before,
+  videos picked in Android's photo picker grid kept only a number as `original_name`
+  (`1000071485.mp4`); the import now uses the file chooser, which keeps the names.
 
 </details>
 

@@ -77,19 +77,56 @@ void main() {
     expect(names.every((n) => File('${dir.path}/$n').existsSync()), isTrue);
   });
 
-  test('a corrected start shifts every clip and is logged as the user\'s', () async {
+  test('a start the user set is logged with what was read; the other clip keeps its own (round 395)', () async {
     final dir = await importVideos(
       sessionsDir: sessions,
       sessionName: 'wa',
       clips: [clip('VID-20260924-WA0006.mp4', durationMs: 10000), clip('VID-20260924-WA0005.mp4', durationMs: 10000)],
-      shiftMs: -3 * 3600 * 1000, // noon guess → 09:00
+      setMs: {0: DateTime(2026, 9, 24, 9).millisecondsSinceEpoch},
     );
-    final clips = records(dir).where((r) => r['type'] == 'video_clip').toList();
+    final recs = records(dir);
+    final clips = recs.where((r) => r['type'] == 'video_clip').toList();
     final nine = DateTime(2026, 9, 24, 9).millisecondsSinceEpoch;
-    expect(clips.map((r) => r['start_epoch_ms']), [nine, nine + 10000]);
-    expect(clips.map((r) => r['start_time_source']), ['user', 'user']);
-    expect(clips.map((r) => r['start_time_guess_source']), ['file_name_date', 'file_name_date']);
-    expect(clips.first['start_time_shift_ms'], -3 * 3600 * 1000);
+    final noon = DateTime(2026, 9, 24, 12).millisecondsSinceEpoch;
+    expect(clips.map((r) => r['original_name']), ['VID-20260924-WA0006.mp4', 'VID-20260924-WA0005.mp4']);
+    expect(clips.map((r) => r['start_epoch_ms']), [nine, noon]);
+    expect(clips.map((r) => r['start_time_source']), ['user', 'file_name_date']);
+    expect(clips.first['start_time_guess_source'], 'file_name_date');
+    expect(clips.first['start_time_guess_ms'], noon);
+    expect(clips.first.containsKey('start_time_weak'), isFalse);
+    expect(clips.last['start_time_weak'], isTrue);
+    expect(recs.first['video']['starts_set_by_user'], 1);
+    expect(recs.first['time_ms'], nine);
+  });
+
+  test("the owner's three clips: setting one start moves no other clip into the future (round 395)", () {
+    // One clip with an editor's stored time, two with only the copy time.
+    final copied = DateTime(2026, 11, 22, 19, 47).millisecondsSinceEpoch;
+    ImportClip c(String name, int durationMs, {int? storedMs}) => ImportClip(
+      path: '${cache.path}/$name',
+      name: name,
+      sizeBytes: 1,
+      info: VideoInfo(durationMs: durationMs, creationEpochMs: storedMs),
+      guess: guessClipStart(
+        fileName: name,
+        storedMs: storedMs,
+        durationMs: durationMs,
+        fileModifiedMs: copied,
+        now: DateTime(2026, 11, 22, 19, 48),
+      ),
+    );
+    final clips = [
+      c('VIDT05B01680_260612120338 - Trim.mp4', 9301, storedMs: DateTime(2026, 11, 10, 12, 25, 56).millisecondsSinceEpoch),
+      c('14112024_ipomoea_video34.mp4', 360360),
+      c('Pumpkin1080_square_realtime.mp4', 38372),
+    ];
+    Map<int, int> starts(List<ClipStart> plan) => {for (final p in plan) p.index: p.startMs};
+    final read = starts(planImport(clips));
+    expect(read[0], DateTime(2026, 6, 12, 12, 3, 38).millisecondsSinceEpoch); // from the name
+    final set = DateTime(2026, 11, 22, 19, 44).millisecondsSinceEpoch;
+    final after = starts(planImport(clips, setMs: {0: set}));
+    expect(after, {0: set, 1: read[1], 2: read[2]});
+    expect(after.values.every((ms) => ms <= copied), isTrue);
   });
 
   // Round 252: MP4 boxes are a 4-byte big-endian size, then a 4-letter type.
@@ -164,7 +201,12 @@ void main() {
     expect(clip('a.mp4').problem, isNull);
   });
 
-  test('default name uses the first clip\'s day', () {
-    expect(defaultImportName(DateTime(2026, 9, 4, 23).millisecondsSinceEpoch), 'video_20260904');
+  test('default name uses the import day (round 395)', () {
+    expect(defaultImportName(DateTime(2026, 9, 4, 23)), 'video_20260904');
+  });
+
+  test('saved names: spaces and signs become _, a repeated name gets _2', () {
+    final plan = planImport([clip('my clip (1).mp4', dir: 'a'), clip('my clip (1).mp4', dir: 'b'), clip('ok.mp4')]);
+    expect(clipFileNames(plan).values.toSet(), {'my_clip__1_.mp4', 'my_clip__1__2.mp4', 'ok.mp4'});
   });
 }

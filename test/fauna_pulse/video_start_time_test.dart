@@ -65,6 +65,19 @@ void main() {
       expect(r.time, DateTime(2026, 9, 24, 12));
     });
 
+    test('two-digit years: 12 digits or 6 + 6, only valid and not in the future (round 395)', () {
+      // A camera trap's clip, trimmed later (the owner's feedback file).
+      expect(
+        startFromFileName('VIDT05B01680_260612120338 - Trim.mp4', now: now),
+        (time: DateTime(2026, 6, 12, 12, 3, 38), dateOnly: false),
+      );
+      expect(startFromFileName('cam2_260612_120338.mp4', now: now)!.time, DateTime(2026, 6, 12, 12, 3, 38));
+      expect(startFromFileName('1000071485.mp4', now: now), isNull); // the photo picker's number
+      expect(startFromFileName('123456789012.mp4', now: now), isNull); // month 34
+      expect(startFromFileName('cam_270101120000.mp4', now: now), isNull); // next year
+      expect(startFromFileName('x1260612120338.mp4', now: now), isNull); // 13 digits
+    });
+
     test('rejects impossible and future dates and plain numbers', () {
       expect(startFromFileName('VID_20261340_155954.mp4', now: now), isNull); // month 13
       expect(startFromFileName('VID_20260230_120000.mp4', now: now), isNull); // 30 February
@@ -103,6 +116,23 @@ void main() {
       );
     });
 
+    test('an edited video: the name wins, the note says why the stored time is off (round 395)', () {
+      // Stored 2026-11-10 12:25:56 (the day it was trimmed), 9.3 s long.
+      final g = guessClipStart(
+        fileName: 'VIDT05B01680_260612120338 - Trim.mp4',
+        storedMs: DateTime(2026, 11, 10, 12, 25, 56).millisecondsSinceEpoch,
+        durationMs: 9301,
+        now: DateTime(2026, 11, 23),
+      );
+      expect((g.source, g.weak), ('file_name', true));
+      expect(g.epochMs, DateTime(2026, 6, 12, 12, 3, 38).millisecondsSinceEpoch);
+      expect(
+        g.note,
+        'From the file name: 2026-06-12 12:03:38. The time stored in the video gives 2026-11-10 12:25:46, '
+        '151 days apart. An edited video (for example a trimmed one) stores when it was edited. Check the time.',
+      );
+    });
+
     test('the note says what the file name and the stored time gave (round 306)', () {
       String note(String name, {int? storedMs}) =>
           guessClipStart(fileName: name, storedMs: storedMs, durationMs: 30000, fileModifiedMs: 9, now: now).note;
@@ -114,8 +144,9 @@ void main() {
       );
       expect(
         note('IMG_1234.mp4', storedMs: stop),
-        'The file name holds no date. From the time stored in the video (2026-09-24 16:00:24, when filming '
-        'stopped) minus the clip length.',
+        'The file name holds no date. From the time stored in the video (2026-09-24 16:00:24) minus the clip '
+        'length. Phone cameras store when filming stopped; an edited video (for example a trimmed one) stores '
+        'when it was edited.',
       );
       expect(
         note('VID-20260924-WA0005.mp4', storedMs: stop),
@@ -131,8 +162,8 @@ void main() {
       );
       expect(
         note('clip.mp4'),
-        'The file name holds no date; the video stores no time either, so this is when the file was copied. '
-        'Please set the time it was filmed.',
+        'The file name holds no date; the video stores no time either, so this is when the file was copied '
+        'into the app. Please set the time it was filmed.',
       );
       // A date the checks threw out (a camera clock set wrong) is not "no date".
       expect(
@@ -175,6 +206,20 @@ void main() {
       expect(out.map((c) => c.name), ['VID-20260924-WA0005.mp4', 'VID-20260924-WA0006.mp4', 'VID-20260924-WA0007.mp4']);
       expect(out.map((c) => c.startMs - noon), [0, 10000, 20000]);
       expect(out.map((c) => c.source), ['file_name_date', 'after_previous', 'after_previous']);
+    });
+
+    test('a clip the user set never moves (round 395)', () {
+      ClipStart wa(String n, {int? setMs}) => ClipStart(
+        n,
+        10000,
+        guessClipStart(fileName: n, durationMs: 10000, now: now),
+        startMs: setMs,
+        source: setMs == null ? null : 'user',
+      );
+      final noon = DateTime(2026, 9, 24, 12).millisecondsSinceEpoch;
+      final out = layOutClips([wa('VID-20260924-WA0005.mp4'), wa('VID-20260924-WA0006.mp4', setMs: noon + 5000)]);
+      expect(out.map((c) => c.startMs - noon), [0, 5000]);
+      expect(out.map((c) => c.source), ['file_name_date', 'user']);
     });
 
     test('well-timed overlapping clips (two cameras) keep their times', () {

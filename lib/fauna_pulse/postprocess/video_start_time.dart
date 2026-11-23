@@ -8,7 +8,9 @@
 //     the phone's local time (VID_20260924_155954.mp4, 20260924_155954.mp4);
 //     Pixel phones use UTC (PXL_20260924_135954123.mp4);
 //  3. the time stored inside the file minus the clip length: Android phones
-//     store when filming STOPPED (checked on a Xiaomi clip in round 226);
+//     store when filming STOPPED (checked on a Xiaomi clip in round 226),
+//     but a video editor stores when it saved the file (a trimmed copy kept
+//     its trim day, months after filming), so the name wins over it;
 //  4. only a date in the name (WhatsApp: VID-20260924-WA0005.mp4 keeps the
 //     day the video was SENT, not filmed): a weak guess at noon;
 //  5. the file's modification time minus the clip length: weak, because a
@@ -20,6 +22,10 @@
 // gave, so the import screen shows what was tried before any change; names
 // like "Screen Recording 2026-09-24 at 15.59.54.mov" (date " at " time) are
 // read with their time.
+//
+// Round 395 (owner): names with a two-digit year (260612120338, as some
+// camera traps write them) are read too. The import uses Android's file
+// chooser, because the photo picker hands over only a number as name.
 
 /// A clip start time and where it came from.
 class VideoStartGuess {
@@ -52,6 +58,9 @@ const kStartSourcesAgreeMs = 2 * 60 * 1000;
 final _dateTime = RegExp(
   r'(?<!\d)(20\d\d)[-_]?(\d\d)[-_]?(\d\d)(?:[-_ T]| at )?(\d\d)[-_.:]?(\d\d)[-_.:]?(\d\d)(?!\s?[AaPp]\.?[Mm]\b)',
 );
+// Two-digit year: exactly 12 digits, or 6 + 6 (260612120338, 260612_120338);
+// read only when no four-digit form is in the name.
+final _shortDateTime = RegExp(r'(?<!\d)(\d\d)(\d\d)(\d\d)[-_]?(\d\d)(\d\d)(\d\d)(?!\d)');
 final _dateOnly = RegExp(r'(?<!\d)(20\d\d)[-_]?(\d\d)[-_]?(\d\d)(?!\d)');
 
 /// The start time a file name spells out, or null when it has none.
@@ -68,6 +77,11 @@ final _dateOnly = RegExp(r'(?<!\d)(20\d\d)[-_]?(\d\d)[-_]?(\d\d)(?!\d)');
 
   for (final m in _dateTime.allMatches(name)) {
     final t = build([for (var i = 1; i <= 6; i++) int.parse(m.group(i)!)], utc: name.startsWith('PXL_'));
+    if (t != null) return (time: t, dateOnly: false);
+  }
+  for (final m in _shortDateTime.allMatches(name)) {
+    final v = [for (var i = 1; i <= 6; i++) int.parse(m.group(i)!)];
+    final t = build([2000 + v[0], ...v.skip(1)], utc: false);
     if (t != null) return (time: t, dateOnly: false);
   }
   for (final m in _dateOnly.allMatches(name)) {
@@ -94,12 +108,16 @@ VideoStartGuess guessClipStart({
   if (fromName != null && !fromName.dateOnly) {
     final ms = fromName.time.millisecondsSinceEpoch;
     if (fromStored != null && (fromStored - ms).abs() > kStartSourcesAgreeMs) {
+      // Time zones differ by at most 14 h; a larger gap is usually an edit.
+      final why = (fromStored - ms).abs() <= 14 * 3600 * 1000
+          ? 'Check the time (another time zone?).'
+          : 'An edited video (for example a trimmed one) stores when it was edited. Check the time.';
       return VideoStartGuess(
         ms,
         'file_name',
         weak: true,
         note: 'From the file name: ${_stamp(ms)}. The time stored in the video gives ${_stamp(fromStored)}, '
-            '${_gap(fromStored - ms)} apart. Check the time (another time zone?).',
+            '${_gap(fromStored - ms)} apart. $why',
       );
     }
     final agrees = fromStored == null ? '' : ' The time stored in the video agrees.';
@@ -109,8 +127,9 @@ VideoStartGuess guessClipStart({
     return VideoStartGuess(
       fromStored,
       'metadata',
-      note: '${_nameGave(fileName, fromName)}. From the time stored in the video (${_stamp(storedMs!)}, when '
-          'filming stopped) minus the clip length.',
+      note: '${_nameGave(fileName, fromName)}. From the time stored in the video (${_stamp(storedMs!)}) minus '
+          'the clip length. Phone cameras store when filming stopped; an edited video (for example a trimmed '
+          'one) stores when it was edited.',
     );
   }
   if (fromName != null) {
@@ -127,7 +146,7 @@ VideoStartGuess guessClipStart({
     'file_time',
     weak: true,
     note: '${_nameGave(fileName, null)}; the video stores no time either, so this is when the file was '
-        'copied. Please set the time it was filmed.',
+        'copied into the app. Please set the time it was filmed.',
   );
 }
 
@@ -159,13 +178,17 @@ class ClipStart {
       source = source ?? guess.source;
 
   int get endMs => startMs + durationMs;
+
+  /// Still on an uncertain guess (not placed, not set by the user).
+  bool get movable => guess.weak && source == guess.source;
 }
 
 /// Orders clips by start (then name) and moves a weakly timed clip that
 /// would overlap the one before it to that clip's end (source
 /// `after_previous`), so e.g. three WhatsApp clips of one day play one after
-/// the other instead of all at noon. Well-timed clips never move: an overlap
-/// between them is real (two cameras) and stays visible.
+/// the other instead of all at noon. Well-timed clips and clips the user set
+/// never move: an overlap between them is real (two cameras) and stays
+/// visible.
 List<ClipStart> layOutClips(List<ClipStart> clips) {
   final sorted = [...clips]
     ..sort((a, b) {
@@ -173,13 +196,16 @@ List<ClipStart> layOutClips(List<ClipStart> clips) {
       return c != 0 ? c : a.name.compareTo(b.name);
     });
   final out = <ClipStart>[];
+  // The latest end so far, not the previous clip's: a short clip the user
+  // set can sit inside a long one.
+  int? end;
   for (final c in sorted) {
-    final prev = out.lastOrNull;
-    if (prev != null && c.guess.weak && c.startMs < prev.endMs) {
-      out.add(ClipStart(c.name, c.durationMs, c.guess, index: c.index, startMs: prev.endMs, source: 'after_previous'));
+    if (end != null && c.movable && c.startMs < end) {
+      out.add(ClipStart(c.name, c.durationMs, c.guess, index: c.index, startMs: end, source: 'after_previous'));
     } else {
       out.add(c);
     }
+    if (end == null || out.last.endMs > end) end = out.last.endMs;
   }
   return out;
 }
@@ -193,5 +219,7 @@ String _stamp(int ms) {
 
 String _gap(int ms) {
   final m = (ms.abs() / 60000).round();
-  return m >= 90 ? '${(m / 60).toStringAsFixed(1)} h' : '$m min';
+  if (m < 90) return '$m min';
+  if (m < 48 * 60) return '${(m / 60).toStringAsFixed(1)} h';
+  return '${(m / 1440).round()} days';
 }

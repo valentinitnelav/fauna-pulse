@@ -414,15 +414,16 @@ void main() {
       (
         'IMG_1234.mp4',
         stop,
-        'The file name holds no date. From the time stored in the video (2026-09-24 16:00:24, when filming '
-            'stopped) minus the clip length.',
+        'The file name holds no date. From the time stored in the video (2026-09-24 16:00:24) minus the clip '
+            'length. Phone cameras store when filming stopped; an edited video (for example a trimmed one) '
+            'stores when it was edited.',
         false,
       ),
       (
         'clip.mp4',
         null,
-        'The file name holds no date; the video stores no time either, so this is when the file was copied. '
-            'Please set the time it was filmed.',
+        'The file name holds no date; the video stores no time either, so this is when the file was copied '
+            'into the app. Please set the time it was filmed.',
         true,
       ),
     ]) {
@@ -434,6 +435,26 @@ void main() {
     }
   });
 
+  Future<void> settle(WidgetTester tester) async {
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
+
+  /// In the open date picker: [day] of the shown month, then OK in the
+  /// time picker, which keeps the offered time ([timeHelp] checks which
+  /// picker opened).
+  Future<void> pickDay(WidgetTester tester, String day, String timeHelp) async {
+    await tester.tap(find.text(day)); // the date picker's calendar
+    await tester.pump();
+    await tester.tap(find.text('OK'));
+    await settle(tester);
+    expect(find.text(timeHelp), findsOneWidget);
+    expect(find.text('PM'), findsNothing, reason: 'the time picker counts 24 hours');
+    await tester.tap(find.text('OK'));
+    await settle(tester);
+  }
+
   testWidgets('import screen: a start set by hand ends at second 0, the read time comes back (round 306)', (
     tester,
   ) async {
@@ -441,47 +462,109 @@ void main() {
     await tester.pumpWidget(importScreen(tmp, 'VID_20260924_155954.mp4'));
     await _pumpUntil(tester, find.text('Change…'));
     String sessionName() => tester.widget<TextField>(find.byType(TextField)).controller!.text;
-    expect(find.text('Filming started: 2026-09-24 15:59:54'), findsOneWidget);
+    expect(find.text('2026-09-24 15:59:54 · 30 s'), findsOneWidget);
     expect(find.text('From the file name: 2026-09-24 15:59:54.'), findsOneWidget);
-    expect(sessionName(), 'video_20260924');
+    expect(find.text('Set all clips…'), findsNothing, reason: 'one clip');
+    // Round 395 (owner): the import day, not a guessed filming day.
+    final today = defaultImportName(DateTime.now());
+    expect(sessionName(), today);
 
-    Future<void> settle() async {
-      for (var i = 0; i < 10; i++) {
-        await tester.pump(const Duration(milliseconds: 50));
-      }
-    }
-
-    // Change… to the next day, keeping the time the pickers offer.
-    Future<void> changeToThe25th() async {
-      await tester.tap(find.text('Change…'));
-      await settle();
-      await tester.tap(find.text('25')); // the date picker's calendar
-      await tester.pump();
-      await tester.tap(find.text('OK'));
-      await settle();
-      expect(find.text('Time the first clip started'), findsOneWidget);
-      expect(find.text('PM'), findsNothing, reason: 'the time picker counts 24 hours');
-      await tester.tap(find.text('OK'));
-      await settle();
-    }
-
-    await changeToThe25th();
-    expect(find.text('Filming started: 2026-09-25 15:59:00'), findsOneWidget);
-    expect(find.text('Set by you; every clip moves by the same amount.'), findsOneWidget);
-    expect(sessionName(), 'video_20260925', reason: 'the suggested name follows the day');
+    await tester.tap(find.text('Change…'));
+    await settle(tester);
+    expect(find.text('Day this clip was filmed'), findsOneWidget);
+    await pickDay(tester, '25', 'Time this clip started');
+    expect(find.text('2026-09-25 15:59:00 · 30 s'), findsOneWidget);
+    expect(find.text('Set by you (before: 2026-09-24 15:59:54).'), findsOneWidget);
+    expect(sessionName(), today, reason: 'the name does not follow the day');
 
     await tester.tap(find.text('Back to the time read from the file'));
     await tester.pump();
-    expect(find.text('Filming started: 2026-09-24 15:59:54'), findsOneWidget);
+    expect(find.text('2026-09-24 15:59:54 · 30 s'), findsOneWidget);
     expect(find.text('From the file name: 2026-09-24 15:59:54.'), findsOneWidget);
     expect(find.text('Back to the time read from the file'), findsNothing);
-    expect(sessionName(), 'video_20260924');
+    expect(tester.takeException(), isNull);
+  });
 
-    // A name the user typed stays.
-    await tester.enterText(find.byType(TextField), 'Meadow 7');
-    await changeToThe25th();
-    expect(find.text('Filming started: 2026-09-25 15:59:00'), findsOneWidget);
-    expect(sessionName(), 'Meadow 7');
+  testWidgets('import screen: one clip changed alone, then all clips set three ways (round 395)', (tester) async {
+    // A phone's width, tall enough to show every row at once.
+    tester.view.physicalSize = const Size(1080, 6000);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final tmp = _tempDir('video_import_set_all');
+    // As the owner's import: no date in two names, an edit's time stored in the third.
+    final names = ['b part 2.mp4', 'a part 1.mp4', 'VID_20260924_155954.mp4'];
+    final files = [
+      for (final n in names) PickedVideo((File('${tmp.path}/$n')..writeAsStringSync('video')).path, n, 1000),
+    ];
+    Future<VideoInfo> info(String path) async => VideoInfo(
+      durationMs: path.contains('part') ? 60000 : 30000,
+      width: 1920,
+      height: 1080,
+      mime: 'video/avc',
+      creationEpochMs: path.contains('part 2') ? DateTime(2026, 9, 20, 10).millisecondsSinceEpoch : null,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoImportScreen(files: files, infoFn: info, sessionsDir: Directory('${tmp.path}/sessions')),
+      ),
+    );
+    await _pumpUntil(tester, find.text('Set all clips…'));
+    expect(tester.takeException(), isNull);
+    // A changed name is said, with the reason.
+    expect(find.textContaining('Saved as "b_part_2.mp4": spaces and signs become _'), findsOneWidget);
+    expect(find.textContaining('Saved as "VID_'), findsNothing);
+    // Every row shows its day.
+    expect(find.text('2026-09-24 15:59:54 · 30 s'), findsOneWidget);
+    expect(find.text('2026-09-20 09:59:00 · 1 min 00 s'), findsOneWidget); // stored 10:00 minus 60 s
+
+    // Change… on the camera clip moves only that clip.
+    final rows = find.text('Change…');
+    expect(rows, findsNWidgets(3));
+    // Rows are in start order: "b part 2" (20 September), the camera clip, "a part 1" (copy time).
+    await tester.tap(rows.at(1));
+    await settle(tester);
+    await pickDay(tester, '25', 'Time this clip started');
+    expect(find.text('2026-09-25 15:59:00 · 30 s'), findsOneWidget);
+    expect(find.text('2026-09-20 09:59:00 · 1 min 00 s'), findsOneWidget, reason: 'the other clips stay');
+
+    Future<void> setAll(String how) async {
+      await tester.tap(find.text('Set all clips…'));
+      await settle(tester);
+      expect(find.byIcon(Icons.close), findsOneWidget); // the window's X
+      await tester.tap(find.text(how));
+      await settle(tester);
+    }
+
+    // The first clip in the list is "b part 2" (20 September); its calendar opens on that month.
+    await setAll('All at the same time');
+    expect(find.text('Day all clips were filmed'), findsOneWidget);
+    await pickDay(tester, '21', 'Time all clips started');
+    expect(find.text('2026-09-21 09:59:00 · 1 min 00 s'), findsNWidgets(2));
+    expect(find.text('2026-09-21 09:59:00 · 30 s'), findsOneWidget);
+
+    await setAll('One after the other');
+    await pickDay(tester, '22', 'Time the first clip started');
+    // In name order: VID_…, then "a part 1", then "b part 2".
+    expect(find.text('2026-09-22 09:59:00 · 30 s'), findsOneWidget);
+    expect(find.text('2026-09-22 09:59:30 · 1 min 00 s'), findsOneWidget);
+    expect(find.text('2026-09-22 10:00:30 · 1 min 00 s'), findsOneWidget);
+
+    await setAll('Keep the gaps between them');
+    await pickDay(tester, '23', 'Time the first clip started');
+    expect(find.text('2026-09-23 09:59:00 · 30 s'), findsOneWidget);
+    expect(find.text('2026-09-23 09:59:30 · 1 min 00 s'), findsOneWidget);
+    expect(find.text('2026-09-23 10:00:30 · 1 min 00 s'), findsOneWidget);
+
+    // Cancel and the X leave the times alone.
+    await tester.tap(find.text('Set all clips…'));
+    await settle(tester);
+    await tester.tap(find.text('Cancel'));
+    await settle(tester);
+    expect(find.text('2026-09-23 09:59:00 · 30 s'), findsOneWidget);
+
+    await tester.tap(find.text('Back to the times read from the files'));
+    await tester.pump();
+    expect(find.text('2026-09-24 15:59:54 · 30 s'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

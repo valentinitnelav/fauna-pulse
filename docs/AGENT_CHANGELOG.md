@@ -10557,3 +10557,8 @@ Asked: "Send feedback" instead of "Report a problem": free text and screenshots,
 tester's own email app with one zip, no form. Open: a check on a phone with two email apps; the
 Play store contact address (owner).
 
+
+## Round 395 (2026-11-23): imported videos keep their names, each clip its own start
+Asked (owner feedback): with several imported videos, one time change moved the other clips two
+weeks into the future, and the file names and their dates were lost. Open: the owner's own try of
+the file chooser on a phone.

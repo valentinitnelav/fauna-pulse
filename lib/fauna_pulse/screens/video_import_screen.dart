@@ -25,14 +25,21 @@
 // Round 319 (stress test): a failed pick (storage full) says so in plain
 // words and deletes the picker's half copies; the free-storage check runs
 // again when the app comes back to the front and before the copy starts.
+//
+// Round 395 (owner): Android's file chooser instead of the photo picker,
+// which hands over only a number as the file name (1000071485.mp4), so the
+// date in a name never arrived. Each clip shows its day and has its own
+// Change…; "Set all clips…" keeps the gaps, puts the clips one after the
+// other or starts them all at one time (one shift for all had moved clips
+// whose times came from elsewhere into the future). The suggested session
+// name is the import day.
 
 import 'dart:io';
 import 'dart:math';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show PlatformException;
-import 'package:image_picker/image_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart' show VideoFrameSource, VideoInfo;
@@ -40,23 +47,24 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart' show VideoFrameSource, V
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../logging/past_sessions.dart' show sessionsRoot;
+import '../postprocess/video_detector.dart' show VideoDetector;
 import '../postprocess/video_import.dart';
 import '../postprocess/video_start_time.dart';
+import '../widgets/dialog_title.dart';
 import '../widgets/setting_help.dart';
 import '../widgets/home_button.dart';
 
-/// Picks videos with Android's photo picker and opens [VideoImportScreen]
-/// (round 227; the photo picker since round 277: it looks like the Gallery,
-/// lists the camera's videos first, and its own ⋮ menu browses the phone's
-/// folders). The picker copies every chosen file into the app's cache before
-/// it returns, which takes a while for long videos, so a dialog says so
-/// meanwhile. Closing the picker without a choice just returns (owner: the
-/// hint messages shown then were redundant with the picker's ⋮ menu). Returns
-/// the new session folder when the user chose to find animals in it right
-/// away, else null (also when a session was imported without that choice).
+/// Picks videos with Android's file chooser and opens [VideoImportScreen]
+/// (round 227; the file chooser again since round 395: it keeps the file
+/// names, lists recent videos first and browses the phone's folders). The
+/// chooser copies every chosen file into the app's cache before it returns,
+/// which takes a while for long videos, so a dialog says so meanwhile.
+/// Closing the chooser without a choice just returns. Returns the new
+/// session folder when the user chose to find animals in it right away,
+/// else null (also when a session was imported without that choice).
 Future<String?> pickAndImportVideos(BuildContext context) async {
-  // The photo picker has no progress report: the dialog opens under it and
-  // shows once it closes, while the chosen videos are copied.
+  // The chooser's progress report adds nothing here: the dialog opens under
+  // it and shows once it closes, while the chosen videos are copied.
   showDialog<void>(
     context: context,
     barrierDismissible: false,
@@ -85,19 +93,51 @@ Future<String?> pickAndImportVideos(BuildContext context) async {
   } catch (e) {
     logSwallowed('video_pick_cache', e);
   }
+  String? failure;
   try {
-    final picked = await ImagePicker().pickMultiVideo();
-    files = [for (final x in picked) PickedVideo(x.path, x.name, await x.length())];
-  } catch (e) {
-    logSwallowed('video_pick', e);
-    final message = await failedPickMessage(e, cache: cache, before: before, freeBeforeBytes: freeBefore);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), duration: const Duration(seconds: 10), showCloseIcon: true),
+    Object? error;
+    try {
+      // By ending, not FileType.video: for that the plugin (file_picker
+      // 10.3) sends the list of types as one text, and Android's chooser
+      // then shows every file (seen on the Xiaomi 11T); for endings it sends
+      // a proper list.
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: VideoDetector.videoExtensions.toList(),
+        allowMultiple: true,
+      );
+      files = [
+        for (final f in picked?.files ?? const <PlatformFile>[])
+          if (f.path != null) PickedVideo(f.path!, f.name, f.size),
+      ];
+    } catch (e) {
+      logSwallowed('video_pick', e);
+      error = e;
+    }
+    // The chooser leaves out a file whose copy failed (storage full) and
+    // keeps its half copy, so a copy of this pick it did not hand over failed.
+    final handed = {for (final f in files) f.path};
+    final copyFailed =
+        cache != null &&
+        pickerVideoCopyFolders(cache).any(
+          (d) => !before.contains(d.path) && d.listSync().any((f) => f is File && !handed.contains(f.path)),
+        );
+    if (error != null || copyFailed) {
+      files = const [];
+      failure = await failedPickMessage(
+        cache: cache,
+        before: before,
+        freeBeforeBytes: freeBefore,
+        copyFailed: copyFailed,
       );
     }
   } finally {
     if (context.mounted) Navigator.of(context).pop(); // the dialog
+  }
+  if (failure != null && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(failure), duration: const Duration(seconds: 10), showCloseIcon: true),
+    );
   }
   if (files.isEmpty || !context.mounted) return null;
   return Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => VideoImportScreen(files: files)));
@@ -106,16 +146,16 @@ Future<String?> pickAndImportVideos(BuildContext context) async {
 /// Free storage under which a failed pick is put down to full storage.
 const _kNearlyFullBytes = 64 * 1024 * 1024;
 
-/// After the pick failed with [error]: deletes the copies this pick left in
-/// [cache] (the folders not in [before]) and says what happened in plain
-/// words (round 319). The Android picker reports every failed copy the same way
-/// ("missing_valid_video_uri"), so full storage is told by the space left:
-/// almost none, or the half copies used up what was free before the pick.
-Future<String> failedPickMessage(
-  Object error, {
+/// After a failed pick: deletes every copy this pick left in [cache] (the
+/// folders not in [before]) and says what happened in plain words (round
+/// 319). [copyFailed]: a chosen file was not copied. The chooser does not
+/// say why, so full storage is told by the space left: almost none, or the
+/// half copies used up what was free before the pick.
+Future<String> failedPickMessage({
   Directory? cache,
   Set<String> before = const {},
   int? freeBeforeBytes,
+  bool copyFailed = false,
 }) async {
   final fresh = cache == null ? const <Directory>[] : pickerVideoCopyFolders(cache).where((d) => !before.contains(d.path));
   final freeAtFailure = (await DeviceStorage.read(path: cache?.path)).freeBytes;
@@ -124,7 +164,7 @@ Future<String> failedPickMessage(
       (freeAtFailure != null && freeAtFailure < _kNearlyFullBytes) ||
       (freeBeforeBytes != null && copied > 0 && copied + _kNearlyFullBytes >= freeBeforeBytes);
   if (full) return notEnoughStorageMessage(freeBytes: (await DeviceStorage.read(path: cache?.path)).freeBytes);
-  if (copied > 0 || (error is PlatformException && error.code == 'missing_valid_video_uri')) {
+  if (copied > 0 || copyFailed) {
     return 'One of the videos could not be copied into the app. Try again, or pick the videos one at a '
         'time to find the one that fails.';
   }
@@ -176,15 +216,11 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
   /// Files left out, with the reason in plain language.
   List<(String, String)> _rejected = const [];
   final _name = TextEditingController();
-
-  /// The session name this screen suggested last (`video_` plus the first
-  /// clip's day); it follows a changed day until the user types their own.
-  String _suggestedName = '';
   Directory? _sessionsDir;
   int? _freeBytes;
 
-  /// The user's correction of the start, applied to every clip.
-  int _shiftMs = 0;
+  /// Starts the user set, by clip index (the others keep the read times).
+  final Map<int, int> _setMs = {};
 
   bool _importing = false;
   int _done = 0;
@@ -235,8 +271,8 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
   Future<void> _clearPickerCache() async {
     if (widget.infoFn != null) return; // tests: no picker ran
     try {
-      // The photo picker (round 277) puts each copy in a folder of its own
-      // in the app's cache; an imported clip was moved away already.
+      // The file chooser puts each copy in a folder of its own in the app's
+      // cache; an imported clip was moved away already.
       final cache = (await getTemporaryDirectory()).path;
       for (final f in widget.files) {
         final copy = File(f.path);
@@ -296,12 +332,12 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
       _rejected = rejected;
       _sessionsDir = sessionsDir;
       _freeBytes = free;
-      if (clips.isNotEmpty) _name.text = _suggestedName = defaultImportName(planImport(clips).first.startMs);
+      if (clips.isNotEmpty) _name.text = defaultImportName(DateTime.now());
       _loading = false;
     });
   }
 
-  List<ClipStart> get _plan => planImport(_clips, shiftMs: _shiftMs);
+  List<ClipStart> get _plan => planImport(_clips, setMs: _setMs);
 
   /// Bytes needed on top of what the picker's copies already use.
   int get _neededBytes => _clips.map((c) => c.sizeBytes).fold(0, max) + kImportSpareBytes;
@@ -312,9 +348,9 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
   /// the line about them has one unit (round 319).
   String _sameUnit(int bytes) => formatBytes(bytes, unitOf: max(_freeBytes ?? 0, _neededBytes));
 
-  Future<void> _changeStart() async {
-    final plan = _plan;
-    final current = DateTime.fromMillisecondsSinceEpoch(plan.first.startMs);
+  /// The date and time pickers, opened on [initialMs]; null when cancelled.
+  Future<int?> _pickStart(int initialMs, {required String dayHelp, required String timeHelp}) async {
+    final current = DateTime.fromMillisecondsSinceEpoch(initialMs);
     final firstDate = DateTime(2000);
     final lastDate = DateTime.now().add(const Duration(days: 1));
     final date = await showDatePicker(
@@ -323,30 +359,64 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
       initialDate: current.isAfter(lastDate) ? lastDate : (current.isBefore(firstDate) ? firstDate : current),
       firstDate: firstDate,
       lastDate: lastDate,
-      helpText: 'Day the first clip was filmed',
+      helpText: dayHelp,
     );
-    if (date == null || !mounted) return;
+    if (date == null || !mounted) return null;
     final time = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(current),
-      helpText: 'Time the first clip started',
-      // 24 hours, as the start line shows it.
+      helpText: timeHelp,
+      // 24 hours, as the clip rows show times.
       builder: (ctx, child) =>
           MediaQuery(data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true), child: child!),
     );
-    if (time == null || !mounted) return;
+    if (time == null || !mounted) return null;
     // Round 306 (owner): the picker has no seconds, so a time set by hand
     // starts at second 0.
-    final picked = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-    _setShift(_shiftMs + picked.millisecondsSinceEpoch - plan.first.startMs);
+    return DateTime(date.year, date.month, date.day, time.hour, time.minute).millisecondsSinceEpoch;
   }
 
-  /// Applies the user's correction to every clip; the suggested session name
-  /// follows the first clip's day while the user has not typed their own.
-  void _setShift(int shiftMs) => setState(() {
-    _shiftMs = shiftMs;
-    if (_name.text == _suggestedName) _name.text = _suggestedName = defaultImportName(_plan.first.startMs);
-  });
+  Future<void> _changeClip(ClipStart c) async {
+    final ms = await _pickStart(
+      c.startMs,
+      dayHelp: 'Day this clip was filmed',
+      timeHelp: 'Time this clip started',
+    );
+    if (ms != null) setState(() => _setMs[c.index] = ms);
+  }
+
+  /// "Set all clips…": how, then the first clip's (or every clip's) start.
+  Future<void> _setAll() async {
+    final how = await showDialog<_SetAll>(context: context, builder: (_) => const _SetAllDialog());
+    if (how == null || !mounted) return;
+    final plan = _plan;
+    final same = how == _SetAll.sameStart;
+    final ms = await _pickStart(
+      plan.first.startMs,
+      dayHelp: same ? 'Day all clips were filmed' : 'Day the first clip was filmed',
+      timeHelp: same ? 'Time all clips started' : 'Time the first clip started',
+    );
+    if (ms == null) return;
+    setState(() {
+      switch (how) {
+        case _SetAll.keepGaps:
+          for (final c in plan) {
+            _setMs[c.index] = c.startMs + ms - plan.first.startMs;
+          }
+        case _SetAll.oneAfterAnother:
+          // In name order: the parts of one recording are numbered.
+          var t = ms;
+          for (final c in [...plan]..sort((a, b) => a.name.compareTo(b.name))) {
+            _setMs[c.index] = t;
+            t += c.durationMs;
+          }
+        case _SetAll.sameStart:
+          for (final c in plan) {
+            _setMs[c.index] = ms;
+          }
+      }
+    });
+  }
 
   Future<void> _import() async {
     final sessionsDir = _sessionsDir;
@@ -380,7 +450,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
         sessionsDir: sessionsDir,
         sessionName: _name.text,
         clips: _clips,
-        shiftMs: _shiftMs,
+        setMs: _setMs,
         startExtras: extras,
         onProgress: (done, total, name) {
           if (mounted) {
@@ -460,8 +530,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
       ];
     }
     final plan = _plan;
-    final first = plan.first;
-    final firstWeak = first.guess.weak && _shiftMs == 0;
+    final names = clipFileNames(plan);
     final totalMs = plan.fold<int>(0, (s, c) => s + c.durationMs);
     final totalBytes = _clips.fold<int>(0, (s, c) => s + c.sizeBytes);
     return [
@@ -485,44 +554,42 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
         ),
       ),
       const SizedBox(height: 16),
-      HelpLabel(
-        label: 'Filming started: ${_dateTime(first.startMs)}',
-        labelStyle: const TextStyle(color: Colors.white),
+      const HelpLabel(
+        label: 'When filming started',
+        labelStyle: TextStyle(color: Colors.white),
         helperText:
-            'Track IDs are placed on the clock from this time, so graphs and exports show when '
-            'insects came. The app reads it from the file name or from the time stored in the '
-            'video; files sent through messengers often lose it. Change… sets the day, hour and '
-            'minute; the seconds become 0 (the time picker has no seconds).',
+            'Track IDs are placed on the clock from these times, so graphs and exports show when '
+            'insects came. The app reads each time from the file name or from the time stored in the '
+            'video. Phone cameras store when filming stopped; an edited video stores when it was '
+            'edited, and files sent through messengers often lose the time. Change… sets one clip, '
+            'Set all clips… every clip at once. The seconds become 0 (the time picker has no seconds).',
       ),
-      const SizedBox(height: 4),
-      Text(
-        _shiftMs != 0 ? 'Set by you; every clip moves by the same amount.' : first.guess.note,
-        style: TextStyle(fontSize: 12.5, color: firstWeak ? Colors.amber : Colors.white54),
-      ),
-      Wrap(
-        spacing: 8,
-        children: [
-          TextButton.icon(
-            onPressed: _importing ? null : _changeStart,
-            icon: const Icon(Icons.edit_calendar, size: 18),
-            label: const Text('Change…'),
-          ),
-          if (_shiftMs != 0)
-            TextButton(
-              onPressed: _importing ? null : () => _setShift(0),
-              child: Text(
-                plan.length == 1 ? 'Back to the time read from the file' : 'Back to the times read from the files',
+      if (plan.length > 1 || _setMs.isNotEmpty)
+        Wrap(
+          spacing: 8,
+          children: [
+            if (plan.length > 1)
+              TextButton.icon(
+                onPressed: _importing ? null : _setAll,
+                icon: const Icon(Icons.edit_calendar, size: 18),
+                label: const Text('Set all clips…'),
               ),
-            ),
-        ],
-      ),
+            if (_setMs.isNotEmpty)
+              TextButton(
+                onPressed: _importing ? null : () => setState(_setMs.clear),
+                child: Text(
+                  plan.length == 1 ? 'Back to the time read from the file' : 'Back to the times read from the files',
+                ),
+              ),
+          ],
+        ),
       const SizedBox(height: 8),
       Text(
         '${plan.length} ${plan.length == 1 ? 'clip' : 'clips'} · ${_length(totalMs)} · ${formatBytes(totalBytes)}',
         style: const TextStyle(fontWeight: FontWeight.bold),
       ),
       const SizedBox(height: 4),
-      for (final c in plan) _clipRow(c),
+      for (final c in plan) _clipRow(c, names[c.index]!),
       if (_rejected.isNotEmpty) ...[
         const SizedBox(height: 12),
         ..._rejectedList(),
@@ -570,17 +637,28 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
     ];
   }
 
-  Widget _clipRow(ClipStart c) {
-    final unsure = c.source == 'after_previous'
+  /// One clip: name, start with its day, where the start came from, the
+  /// name it gets in the session ([savedAs]) when that differs, and its own
+  /// Change….
+  Widget _clipRow(ClipStart c, String savedAs) {
+    final set = c.source == 'user';
+    final flag = c.startMs > DateTime.now().millisecondsSinceEpoch
+        ? ' (in the future: check the day)'
+        : c.source == 'after_previous'
         ? ' (no time of its own: follows the clip before)'
-        : c.guess.weak && _shiftMs == 0
+        : c.movable
         ? ' (time uncertain)'
         : '';
+    const small = TextStyle(fontSize: 12, color: Colors.white54);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.movie_outlined, size: 18, color: Colors.white54),
+          const Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: Icon(Icons.movie_outlined, size: 18, color: Colors.white54),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -588,19 +666,31 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
               children: [
                 Text(c.name, overflow: TextOverflow.ellipsis),
                 Text(
-                  '${_timeOnly(c.startMs)} · ${_length(c.durationMs)}$unsure',
-                  style: TextStyle(fontSize: 12, color: unsure.isEmpty ? Colors.white54 : Colors.amber),
+                  '${_dateTime(c.startMs)} · ${_length(c.durationMs)}$flag',
+                  style: flag.isEmpty ? small : small.copyWith(color: Colors.amber),
                 ),
+                Text(
+                  set ? 'Set by you (before: ${_dateTime(c.guess.epochMs)}).' : c.guess.note,
+                  style: c.guess.weak && !set ? small.copyWith(color: Colors.amber) : small,
+                ),
+                // Round 395 (owner): a changed name is said, with the reason.
+                if (savedAs != c.name)
+                  Text(
+                    'Saved as "$savedAs": spaces and signs become _ so that other programs and Windows '
+                    'computers can open it.',
+                    style: small,
+                  ),
                 if (_clips[c.index].fragmented)
                   const Text(
                     'Fragmented MP4 (as some download tools save videos): the video player cannot jump in it, so the '
                     'app writes it once more as a plain MP4 while importing. Same pictures and sound, '
                     'nothing re-compressed.',
-                    style: TextStyle(fontSize: 12, color: Colors.white54),
+                    style: small,
                   ),
               ],
             ),
           ),
+          TextButton(onPressed: _importing ? null : () => _changeClip(c), child: const Text('Change…')),
         ],
       ),
     );
@@ -656,6 +746,51 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
     if (d.inHours > 0) return '${d.inHours} h ${_two(d.inMinutes % 60)} min';
     if (d.inMinutes > 0) return '${d.inMinutes} min ${_two(d.inSeconds % 60)} s';
     return '${d.inSeconds} s';
+  }
+}
+
+/// How "Set all clips…" sets the starts.
+enum _SetAll { keepGaps, oneAfterAnother, sameStart }
+
+class _SetAllDialog extends StatelessWidget {
+  const _SetAllDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    void close([_SetAll? how]) => Navigator.of(context).pop(how);
+    Widget option(_SetAll how, String title, String why) => ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(title),
+      subtitle: Text(why),
+      onTap: () => close(how),
+    );
+    return AlertDialog(
+      title: DialogTitle(const Text('Set all clips'), onClose: close),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            option(
+              _SetAll.keepGaps,
+              'Keep the gaps between them',
+              'You set the first clip; the others move by the same amount. For a camera whose clock was wrong.',
+            ),
+            option(
+              _SetAll.oneAfterAnother,
+              'One after the other',
+              'You set the first clip; each next clip (in name order) starts when the one before ends. For '
+                  'one recording saved as several files.',
+            ),
+            option(
+              _SetAll.sameStart,
+              'All at the same time',
+              'Every clip starts at the time you set. For several cameras started together.',
+            ),
+          ],
+        ),
+      ),
+      actions: [TextButton(onPressed: close, child: const Text('Cancel'))],
+    );
   }
 }
 
