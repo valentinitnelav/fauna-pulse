@@ -10,11 +10,18 @@
 <h1 align="center">FaunaPulse</h1>
 
 <p align="center">
+  <a href="https://github.com/valentinitnelav/fauna-pulse/releases"><img src="https://img.shields.io/github/v/release/valentinitnelav/fauna-pulse?include_prereleases" alt="GitHub release"></a>
+  <a href="https://doi.org/10.5281/zenodo.22309221"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.22309221.svg" alt="DOI"></a>
+  <a href="https://huggingface.co/collections/Valen-Peregrine/faunapulse-6ad22f04766aed6641688544"><img src="https://img.shields.io/badge/Hugging%20Face-models-blue?logo=huggingface" alt="Models on Hugging Face"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL%20v3-blue.svg" alt="License: AGPL v3"></a>
+</p>
+
+<p align="center">
   <strong>Turn your Android phone into an AI wildlife camera, or into a mini AI workstation for your wildlife photos & videos.</strong>
 </p>
 
 <p align="center">
-  Detect, track and identify fauna with AI that runs on the phone itself: no internet needed in the field.
+  Detect, track and identify fauna with AI that runs on the phone itself. No internet needed in the field.
 </p>
 
 <p align="center">
@@ -22,15 +29,7 @@
 </p>
 
 <p align="center">
-  Multiple object detection & tracking · On-device identification · Add your own AI models · Offline & private
-</p>
-
-<p align="center">
-  <a href="https://play.google.com/store/apps/details?id=com.faunapulse.app"><img src="https://img.shields.io/badge/Google%20Play-FaunaPulse-blue?logo=googleplay" alt="Get it on Google Play"></a>
-  <a href="https://doi.org/10.5281/zenodo.22309221"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.22309221.svg" alt="DOI"></a>
-  <a href="https://github.com/valentinitnelav/fauna-pulse/releases"><img src="https://img.shields.io/github/v/release/valentinitnelav/fauna-pulse?include_prereleases" alt="GitHub release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL%20v3-blue.svg" alt="License: AGPL v3"></a>
-  <a href="https://huggingface.co/collections/Valen-Peregrine/faunapulse-6ad22f04766aed6641688544"><img src="https://img.shields.io/badge/Hugging%20Face-models-blue?logo=huggingface" alt="Models on Hugging Face"></a>
+  <strong>Multiple object detection & tracking · On-device identification · Add your own AI models · Offline & private</strong>
 </p>
 
 <p align="center">
@@ -39,38 +38,33 @@
 
 <p align="center">
   <img
-    src="https://github.com/user-attachments/assets/5b320036-3c86-4a53-b19f-a5d77c45ee3f"
-    alt="Phone setup 1"
-    height="200"
-    align="middle"
+    src="https://github.com/user-attachments/assets/afa7809b-5d0f-431e-9cb7-e92461a403d1"
+    alt="A phone on a tripod in a meadow: a wildlife camera that works by itself"
+    width="15%"
   />
-  &nbsp;&nbsp;
+  &nbsp;
   <img
-    src="https://github.com/user-attachments/assets/7239cd11-3869-49c0-960c-ee0b0b0e0aaf"
-    alt="Phone setup 2"
-    height="200"
-    align="middle"
+    src="https://github.com/user-attachments/assets/f4c67b39-2399-4969-b1c8-c00b07f4c5a2"
+    alt="Illustration: a honey bee tracked on a flower and named on the phone, Apis mellifera 94 %"
+    width="15%"
   />
-  &nbsp;&nbsp;
+  &nbsp;
   <img
-    src="https://github.com/user-attachments/assets/0018244c-6b80-4586-8779-84e68659edf6"
-    alt="Pollinator detection & tracking"
-    height="200"
-    align="middle"
+    src="https://github.com/user-attachments/assets/d1ffc84d-237c-42f2-80bd-56a0aa1d7eb3"
+    alt="Illustration: two deer tracked in a trail-camera video and named on the phone, Odocoileus virginianus 96 %"
+    width="15%"
   />
-  &nbsp;&nbsp;  
+  &nbsp;
   <img
-    src="https://github.com/user-attachments/assets/178e2b09-df9c-4c1b-b8f9-db6c357ed9d5"
-    alt="Pollinator detection & tracking"
-    height="200"
-    align="middle"
+    src="https://github.com/user-attachments/assets/9b4b2cdf-1b8b-441d-bb8d-5960f01c47f0"
+    alt="App screenshot: a confidence for every rank, from kingdom to species"
+    width="15%"
   />
-  &nbsp;&nbsp;
+  &nbsp;
   <img
-    src="https://github.com/user-attachments/assets/baa2b046-e3f3-42a8-98c2-0bfc855fb815"
-    alt="Wildlife detection & tracking"
-    height="200"
-    align="middle"
+    src="https://github.com/user-attachments/assets/21532391-0c71-4133-9967-7c9cd9d8972d"
+    alt="Illustration: the three AI steps on the phone, detect, track and identify"
+    width="15%"
   />
 </p>
 
