@@ -10565,3 +10565,6 @@ the file chooser on a phone.
 
 ## Round 396 (2026-11-23): imported videos listed by their import time
 Owner's issue #36: an imported session was dated and sorted by its first clip's filming day, and its length ran over the days between clips. Open: the rule for issue #35 (one camera, one spot, one view per session) on the import screen and in VIDEO_ANALYSIS.md.
+
+## Round 397 (2026-11-23): one session per camera position
+Owner's issue #35, option B of three: several clips per session stay, one area for all of them, no area or settings per clip. Proposed, not approved: a scale test with many clips, a folder import and a queue over sessions.

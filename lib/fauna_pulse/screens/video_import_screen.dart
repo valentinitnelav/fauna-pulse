@@ -542,6 +542,15 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
             'the phone stay where they are). '
             '10-bit (HDR) videos must be re-exported as ordinary 8-bit ones first.',
       ),
+      const SizedBox(height: 8),
+      // Owner's decision (issue #35, round 397): a session is one camera at one
+      // spot with one view, so one area to analyze serves all its clips; no
+      // area or settings per clip.
+      const Text(
+        'One session per camera position: the same area is analyzed in every clip. Import clips '
+        'from another spot, or filmed after the camera moved, as a new session.',
+        style: TextStyle(color: Colors.white70, fontSize: 13),
+      ),
       const SizedBox(height: 16),
       TextField(
         controller: _name,

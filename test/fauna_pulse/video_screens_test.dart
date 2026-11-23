@@ -369,6 +369,8 @@ void main() {
     await _open(tester);
     await _pumpUntil(tester, find.text('Change…'));
     expect(tester.takeException(), isNull);
+    // Round 397 (issue #35): one session per camera position, said before the import.
+    expect(find.textContaining('One session per camera position'), findsOneWidget);
     // The list builds lazily: scroll to what lies below the fold.
     final list = find.byType(Scrollable).first;
     await tester.scrollUntilVisible(find.text('Left out (2):'), 200, scrollable: list);

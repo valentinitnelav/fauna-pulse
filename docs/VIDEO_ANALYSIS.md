@@ -86,8 +86,10 @@ If a video cannot be read or found, see [When a video does not work](#when-a-vid
 5. Tap **Import 8 clips** (the number of clips you picked). When the copy is done, tap **Find
    animals in these videos** to go on with step 2, or **Done**.
 
-One session per site and day works best. The videos are copied, so they take storage twice
-until you delete the originals. **Sessions** lists the new session under the day of the import;
+One session holds the clips of one camera position: the same area is analyzed in every clip
+(step 2). Import clips from another spot, or filmed after the camera moved, as a new session.
+For many days at one spot, one session per day keeps each session short to review. The videos
+are copied, so they take storage twice until you delete the originals. **Sessions** lists the new session under the day of the import;
 its row shows the days the clips were filmed.
 
 **Or record** the clips with FaunaPulse itself: **Capture trigger (what causes photos)**: **Time-lapse
@@ -152,7 +154,8 @@ camera's own start time. They go straight to step 2: their session summary opens
 **The area to analyze.** The screen proposes the largest square in the middle of the video (a
 video that is already square is used whole). Under **Area to analyze** you can choose **Whole picture** or
 **A square**, and **Change…** the square while the video plays fast (4×, up to 10×). Watching it
-fast shows whether the camera or the flowers move. **Use this square** keeps it.
+fast shows whether the camera or the flowers move. **Use this square** keeps it. The same area
+is used in every clip of the session.
 
 The analysed area is scaled down to the model's input size. So a small insect in a whole 4K
 frame shrinks to a few pixels; a square keeps it large.

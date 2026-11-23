@@ -263,7 +263,8 @@ camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_ch
   `video_detections.jsonl` (boxes normalised to the whole upright frame, the live shape); track
   IDs via `replayTracker` into `post_tracks.jsonl`, `track_ids.csv`, `mot/`. Kept frames use
   `TrackKeepRule` (shared with live capture). The default area is `largestSquareSidePx` (one rule
-  for camera, editor and default).
+  for camera, editor and default). A session is one camera position: one area for all its clips,
+  no area or settings per clip (owner's decision).
 - The video player keeps its play state on a `ValueNotifier`, not the controller (10 Hz rebuilds
   made playback stutter). Video players and runs keep the screen on only through
   `ScreenOn.hold/release` (reference-counted), never WakelockPlus directly.

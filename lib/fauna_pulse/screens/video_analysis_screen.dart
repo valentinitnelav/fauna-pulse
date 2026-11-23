@@ -1508,7 +1508,8 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
               'records, is used whole. "Change…" plays the video fast, so you see whether the camera or the '
               'flowers move and the square still covers them. If the flowers fill only part of the picture, a '
               'smaller square around them helps: insects outside it are ignored, and small insects are found '
-              'more easily. "Whole picture" also includes the edges.',
+              'more easily. "Whole picture" also includes the edges. The same area is used in every clip '
+              'of the session.',
         ),
         const SizedBox(height: 6),
         SegmentedButton<bool>(
