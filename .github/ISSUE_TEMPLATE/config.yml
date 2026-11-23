@@ -1,1 +1,9 @@
 blank_issues_enabled: true
+# The chooser on "New issue": issues are for things to fix or build in the app or its docs;
+# questions, methods and research belong in Discussions (General or Q&A).
+contact_links:
+  - name: Questions, methods and research
+    url: https://github.com/valentinitnelav/fauna-pulse/discussions
+    about: >-
+      Ask a question or discuss computer vision workflows, methods and research ideas.
+      Not about a problem in the app? Start a discussion instead of an issue.

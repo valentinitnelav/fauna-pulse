@@ -10568,3 +10568,6 @@ Owner's issue #36: an imported session was dated and sorted by its first clip's 
 
 ## Round 397 (2026-11-23): one session per camera position
 Owner's issue #35, option B of three: several clips per session stay, one area for all of them, no area or settings per clip. Proposed, not approved: a scale test with many clips, a folder import and a queue over sessions.
+
+## Round 398 (2026-11-23): bug form and Discussions link
+Owner asked to bring the public bug report form up to date and to send questions, methods and research to Discussions (General category is enough). Open: GitHub shows the new forms and the chooser link only after they reach main.

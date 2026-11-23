@@ -223,7 +223,7 @@ FaunaPulse is a **research preview (beta)**, provided as a free, experimental fi
 
 NOTE:
 
-> FaunaPulse is in beta: it works, but it is still being tested and improved. Please send problems and ideas from the app (**Menu** → **Send feedback**), by email to biodiv.pulse@gmail.com, or as [GitHub issues](https://github.com/valentinitnelav/fauna-pulse/issues).
+> FaunaPulse is in beta: it works, but it is still being tested and improved. Please send problems and ideas from the app (**Menu** → **Send feedback**), by email to biodiv.pulse@gmail.com, or as [GitHub issues](https://github.com/valentinitnelav/fauna-pulse/issues). Questions and discussions about methods and research are welcome in [Discussions](https://github.com/valentinitnelav/fauna-pulse/discussions).
 
 **Install the app.** The easiest way is Google Play, which also notifies you when there are new versions available:
 

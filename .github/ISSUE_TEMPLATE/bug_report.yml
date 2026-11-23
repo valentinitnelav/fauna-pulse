@@ -5,13 +5,14 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve FaunaPulse. FaunaPulse is an early research
-        preview, so field reports are especially valuable.
+        Thanks for helping improve FaunaPulse. It is in beta, so bug reports are especially
+        valuable. One problem per issue, please.
 
-        **Tip:** the app has a built-in **Settings → Report a problem** flow that
-        generates a `.txt` report bundling device info, recent crash files,
-        your settings and session-log excerpts. Attaching that file (drag it
-        into the "Diagnostic report" field below) gives us far more to work with.
+        **Tip:** in the app, **Menu → Send feedback** makes one zip file with the technical
+        details (app version, phone, settings, recent log lines and sample files of one
+        session; locations are removed). Attaching it below gives us far more to work with.
+        Everything on this page is public: to send the zip privately, use **Send by email** on
+        that screen instead.
   - type: textarea
     id: what-happened
     attributes:
@@ -23,51 +24,51 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: What did you do, in order, leading up to the problem?
+      description: >-
+        What did you do, in order, leading up to the problem? Name screens by the title at
+        their top.
       placeholder: |
-        1. Opened a new session with model ...
-        2. Set capture mode to ...
-        3. After ~N minutes ...
+        1. On Home, tapped ...
+        2. On the screen "...", chose ...
+        3. After about N minutes ...
     validations:
       required: true
   - type: input
     id: app-version
     attributes:
       label: App version
-      description: Shown in the About dialog (home screen ⋮ menu), e.g. v0.9.0-beta.1 (build 14).
+      description: Shown in Menu → About FaunaPulse, for example v0.12.0-beta.1 (build 17).
     validations:
       required: true
   - type: input
     id: device
     attributes:
       label: Phone model and Android version
-      description: e.g. "Xiaomi 2107113SG, Android 13 / MIUI 14" or "Samsung Galaxy A54, Android 14".
+      description: For example "Xiaomi 11T Pro, Android 14" or "Samsung Galaxy A54, Android 14".
     validations:
-      required: true
-  - type: dropdown
-    id: capture-mode
+      required: false
+  - type: input
+    id: context
     attributes:
-      label: Capture mode in use
-      options:
-        - AI detection (detector)
-        - Motion-triggered
-        - Time-lapse
-        - Not sure / not applicable
+      label: What were you doing?
+      description: >-
+        For example a camera session (live detection, motion or time-lapse), imported videos,
+        identification, the Dashboard.
     validations:
-      required: true
+      required: false
   - type: input
     id: model
     attributes:
       label: Detection model in use
-      description: Which model was selected (e.g. yolo26n, a custom .tflite)? Leave blank for motion/time-lapse.
+      description: Which model was selected, if any (a model from the app's list or your own file).
     validations:
       required: false
   - type: textarea
     id: diagnostic-report
     attributes:
-      label: Diagnostic report / logs
+      label: Screenshots and diagnostic report
       description: >-
-        Attach the file produced by the in-app "Report a problem" flow if you
-        can, and any screenshots. You can drag files directly into this box.
+        Drag files into this box: screenshots (underline or circle the problem) and the zip
+        from Menu → Send feedback. Remember that this page is public.
     validations:
       required: false
