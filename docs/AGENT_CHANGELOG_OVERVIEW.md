@@ -404,8 +404,7 @@ sessions): try it as a side-by-side copy, `-P releaseIdSuffix=.rc` (`test/README
 - **Xiaomi 11T Pro `2107113SG`** (Snapdragon 888, 7.4 GB, Android 14): main phone, debug builds.
   PIN lock (a person unlocks it). It reports the laptop's USB cable as AC power, so keep it awake
   with `svc power stayon true`. Runs hot (camera throttles at ~41-42 °C). Battery voltage reads
-  as 2 cells (the summary halves it). It often shares its mobile internet with the laptop over
-  USB: avoid big downloads while it is connected. `adb shell` reads its sessions under
+  as 2 cells (the summary halves it). `adb shell` reads its sessions under
   `/sdcard/Android/data/com.faunapulse.app/files/sessions/` (no `run-as` needed).
 - **Samsung `SM-M127F`** (Exynos 850, 3.9 GB, Android 13): debug builds.
   `battery_current_ua` is broken. Swipe lock (adb can wake and swipe).

@@ -39,7 +39,7 @@ has no commit yet (`git log --grep '^Round <n>:'`), the work may still belong to
   `docs/`, or git history. Feature details go to those places instead. It says only what is true
   now: when a round changes a rule or where something lives, replace or delete the affected text
   in place (no round numbers, old values or measurements). When the reason for a rule is not
-  obvious, give it in one short clause. Keep it under 35,000 characters (`wc -m`).
+  obvious, give it in one short clause. Keep it under 40,000 characters (`wc -m`).
 - `docs/AGENT_CHANGELOG.md` is the list of rounds. It grew very long, so since round 376 an
   entry is only a few lines and the round's commit message holds the details (*Git related*).
   Never read the file whole. Ask the owner before reading old round entries, and only when past
