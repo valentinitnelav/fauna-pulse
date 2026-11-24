@@ -10581,3 +10581,6 @@ Asked: fix the bugs the stress tests skipped on purpose and the small test gaps 
 ## Round 401 (2026-11-24): every saved-setting read guarded
 Owner asked to fix the open point of round 400 (single saved-setting reads that threw on another type) in this session. Nothing open.
 
+## Round 402 (2026-11-24): scale test with many video clips per session
+Asked (hand-off of round 397): find where FaunaPulse breaks or slows with 120 to 2,000 clips per session, on the laptop and the Xiaomi 11T Pro. Open: the owner decides on each finding (import screen, waits, clip list, time left, file names, bulk folder import).
+

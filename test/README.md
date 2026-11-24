@@ -79,6 +79,8 @@ run's note only gives the line), the notification
 permission asked when an analysis starts and the keep-on-screen line (`r319c_b_*`, with the
 shared `r319c_b_identify_fixture.dart`); and the analysis service held until the model's
 memory is given back (`r319c_k_*`).
+`many_clips_scale_test.dart` (round 402) times a session of 120 video clips from import to
+every reader and screen; `--dart-define=MANY_CLIPS_ALL=true` adds 500 and 2,000 clips.
 
 
 ## Security and release gate
