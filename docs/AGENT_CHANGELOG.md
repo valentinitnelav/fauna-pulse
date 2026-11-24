@@ -10575,3 +10575,6 @@ Owner asked to bring the public bug report form up to date and to send questions
 ## Round 399 (2026-11-24): tests checked with planted bugs
 Owner asked whether the ~200 test files are still needed and whether they catch bugs. Open: the 16 known bugs that the stress tests skip on purpose, and a few small screen and edge cases.
 
+## Round 400 (2026-11-24): stress-test bugs fixed
+Asked: fix the bugs the stress tests skipped on purpose and the small test gaps of round 399. Open: other single saved-setting reads (tips, notes) still use typed reads; 5 cases stay skipped with a reason (unreachable input).
+

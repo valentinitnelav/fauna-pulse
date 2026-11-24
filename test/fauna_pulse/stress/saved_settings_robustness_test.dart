@@ -310,13 +310,6 @@ void main() {
 
     double? read(SessionConfig c, String key) => (c.toJson()[key] as num?)?.toDouble();
 
-    // Values a settings box can never hold, but the file can: see each skip.
-    // fromJson clamps every other key to its box range. scheduleDays keeps
-    // 1..365 on purpose, so a longer run saved by an older version still loads.
-    const knownUnclamped = <String, String>{
-      'scheduleDays': 'clamped 1..365 but the screen allows only 1..14, so 365 loads and runs 365 days',
-    };
-
     for (final r in ranges) {
       test('"${r.key}" (box "${r.box}", ${r.lo}..${r.hi}): dirty saved values end up inside the box range', () async {
         final bad = <String>[];
@@ -328,7 +321,7 @@ void main() {
           if (got == null || !inside(r, got)) bad.add('saved $value -> loaded $got');
         }
         expect(bad, isEmpty, reason: 'outside ${r.lo}..${r.hi}: ${bad.join('; ')}');
-      }, skip: knownUnclamped.containsKey(r.key) ? 'BUG: ${knownUnclamped[r.key]}' : null);
+      });
     }
 
     test('stream size saved as 0 or negative gives a usable size', () async {
@@ -620,7 +613,7 @@ void main() {
         }
       }
       expect(failures, isEmpty, reason: failures.join('\n'));
-    }, skip: 'BUG: IdentifyPrefs.load() uses getDouble with no guard; another type throws a TypeError and the identification screen cannot open (identification_assets.dart:188-215)');
+    });
 
     test('a decimal setting saved as a WHOLE NUMBER: load must not throw', () async {
       final failures = <String>[];
@@ -633,7 +626,7 @@ void main() {
         }
       }
       expect(failures, isEmpty, reason: failures.join('\n'));
-    }, skip: 'BUG: same cause: getDouble on a stored int throws a TypeError (identification_assets.dart:188-215)');
+    });
 
     test('a whole-number setting saved as a DECIMAL or TEXT: load must not throw', () async {
       final failures = <String>[];
@@ -648,14 +641,14 @@ void main() {
         }
       }
       expect(failures, isEmpty, reason: failures.join('\n'));
-    }, skip: 'BUG: getInt without a guard (identification_assets.dart:196-210)');
+    });
 
     test('the model name saved as a number: load must not throw', () async {
       SharedPreferences.setMockInitialValues({kIdentifyModelPref: 5, kIdentifyPackPref: true});
       await IdentifyPrefs.load();
-    }, skip: 'BUG: getString without a guard (identification_assets.dart:188-189)');
+    });
 
-    test('absurd numbers are loaded as they are: every value ends up inside the range of its box', () async {
+    test('absurd numbers: every value ends up inside the range of its box', () async {
       // Boxes (identify_settings_fields.dart): crops per track ID 0 (= all) to 100, smallest box 16 to 512,
       // ignore-factor 1 to 100, confidence needed 0.5 to 0.99, crop margin 0 to 0.5, CPU threads 0 to 8.
       SharedPreferences.setMockInitialValues({
@@ -667,6 +660,7 @@ void main() {
         'identify_none_threshold': 7.0,
         'identify_merge_gap_s': -9.0,
         'identify_cpu_threads': 9999,
+        'identify_target_rank': 'kingdom', // the rank menu offers order to species only
       });
       final p = await IdentifyPrefs.load();
       final bad = <String>[
@@ -678,9 +672,10 @@ void main() {
         if (p.noneThreshold < 0.1 || p.noneThreshold > 0.9) 'no-organism threshold ${p.noneThreshold}',
         if (p.mergeGapS < 0.5 || p.mergeGapS > 120) 'merge gap ${p.mergeGapS}',
         if (p.cpuThreads < 0 || p.cpuThreads > 8) 'cpu threads ${p.cpuThreads}',
+        if (p.targetRank != 'family') 'rank ${p.targetRank}',
       ];
       expect(bad, isEmpty, reason: 'outside the box range: $bad');
-    }, skip: 'BUG: IdentifyPrefs.load() does not clamp anything (tau 0 makes every rank "identified", ignore factor 0, negative margin, 9999 threads are used as saved) (identification_assets.dart:188-215)');
+    });
 
     test('the per-model speed key never contains path characters', () {
       for (final name in ['a/b\\c:d*e?"<>|', '../../x', 'ü ö ä 日本', '', 'x' * 500]) {

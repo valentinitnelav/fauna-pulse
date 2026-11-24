@@ -238,6 +238,11 @@ void main() {
     expect(find.textContaining('Species'), findsNothing);
     expect(find.text('Apidae'), findsOneWidget);
     expect(find.text('Named: 1 of 1 track ID.'), findsOneWidget);
+    // Every track ID lacks a time: the chart cards say so, and the notes at the bottom do not
+    // repeat it.
+    await tester.drag(find.byType(ListView), const Offset(0, -2000));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Not in the charts by time'), findsNothing);
   });
 
   testWidgets('360 px, large font, bottom bar: nothing overflows and the end is reachable', (tester) async {

@@ -17,9 +17,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../logging/app_error_hooks.dart';
 import '../models/model_file_security.dart' show fileNameOrder;
 import '../models/model_choice_keys.dart';
+import '../models/saved_prefs.dart';
 import 'crop_worker.dart' show kDefaultCropMargin;
 import 'identification_store.dart' show modelIdOf, modelKey, stemOf;
-import 'label_pack.dart' show isClassListHeader;
+import 'label_pack.dart' show isClassListHeader, kRankNames;
 import 'name_list_region.dart';
 import '../logging/thermal_pause.dart' show kDefaultPauseTempC;
 
@@ -224,31 +225,35 @@ class IdentifyPrefs {
   static String msPerCropKey(String modelName) =>
       'identify_ms_per_crop_${modelName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')}';
 
+  /// Ranges = the boxes in identify_settings_fields.dart (keep in sync); see saved_prefs.dart.
   static Future<IdentifyPrefs> load() async {
     final p = await SharedPreferences.getInstance();
+    final d = IdentifyPrefs();
+    final rank = p.stringOrNull(_kRank);
     return IdentifyPrefs(
-      modelName: p.getString(_kModel),
-      packName: p.getString(_kPack),
-      useGpu: p.getBool(_kGpu) ?? true,
-      cpuThreads: p.getInt(_kThreads) ?? 0,
-      scoringWorkers: p.getInt(_kWorkers) ?? 0,
-      margin: p.getDouble(_kMargin) ?? kDefaultCropMargin,
-      squareCrops: p.getBool(_kSquare) ?? true,
-      minCropPx: p.getInt(_kMinPx) ?? 48,
-      maxCropsPerTrack: p.getInt(_kMaxCrops) ?? 10,
-      tau: p.getDouble(_kTau) ?? 0.6,
-      noneThreshold: p.getDouble(_kNone) ?? 0.5,
-      thermalLimitC: p.getDouble(_kThermal) ?? kDefaultPauseTempC,
-      targetRank: p.getString(_kRank) ?? 'family',
-      mergeVisits: p.getBool(_kMerge) ?? false,
-      mergeGapS: p.getDouble(_kMergeGap) ?? 3,
-      mergeSizeTol: p.getDouble(_kMergeSize) ?? 0.5,
-      mergeMinCos: p.getDouble(_kMergeCos) ?? 0.85,
-      flagMinDurationS: p.getDouble(_kFlagDur) ?? 2,
-      flagMinDetections: p.getInt(_kFlagDet) ?? 3,
-      flagMinDetConf: p.getDouble(_kFlagConf) ?? 0.2,
-      flagMinOrderP: p.getDouble(_kFlagOrderP) ?? 0.5,
-      dropFactor: p.getDouble(_kDrop) ?? 10,
+      modelName: p.stringOrNull(_kModel),
+      packName: p.stringOrNull(_kPack),
+      useGpu: p.boolOr(_kGpu, d.useGpu),
+      cpuThreads: p.intIn(_kThreads, d.cpuThreads, 0, 8),
+      scoringWorkers: p.intIn(_kWorkers, d.scoringWorkers, 0, 8),
+      margin: p.doubleIn(_kMargin, d.margin, 0, 0.5),
+      squareCrops: p.boolOr(_kSquare, d.squareCrops),
+      minCropPx: p.intIn(_kMinPx, d.minCropPx, 16, 512),
+      maxCropsPerTrack: p.intIn(_kMaxCrops, d.maxCropsPerTrack, 0, 100),
+      tau: p.doubleIn(_kTau, d.tau, 0.5, 0.99),
+      noneThreshold: p.doubleIn(_kNone, d.noneThreshold, 0.1, 0.9),
+      thermalLimitC: p.doubleIn(_kThermal, d.thermalLimitC, 35, 45),
+      // The rank menu offers order to species; another value would trip its assertion.
+      targetRank: kRankNames.skip(3).contains(rank) ? rank! : d.targetRank,
+      mergeVisits: p.boolOr(_kMerge, d.mergeVisits),
+      mergeGapS: p.doubleIn(_kMergeGap, d.mergeGapS, 0.5, 120),
+      mergeSizeTol: p.doubleIn(_kMergeSize, d.mergeSizeTol, 0, 1),
+      mergeMinCos: p.doubleIn(_kMergeCos, d.mergeMinCos, 0.5, 0.99),
+      flagMinDurationS: p.doubleIn(_kFlagDur, d.flagMinDurationS, 0, 60),
+      flagMinDetections: p.intIn(_kFlagDet, d.flagMinDetections, 0, 100),
+      flagMinDetConf: p.doubleIn(_kFlagConf, d.flagMinDetConf, 0, 1),
+      flagMinOrderP: p.doubleIn(_kFlagOrderP, d.flagMinOrderP, 0, 1),
+      dropFactor: p.doubleIn(_kDrop, d.dropFactor, 1, 100),
       nameListScope: _scope(p.get(_kListScope)),
       nameListCountry: _country(p.get(_kListCountry)),
       nameListChosenCountries: _countries(p.get(_kListCountries)),

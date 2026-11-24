@@ -29,13 +29,16 @@ class TimeLapsePlan {
   /// photos flow continuously every step.
   final int gapMs;
 
+  /// A step or burst under 1 ms is read as 1 ms and a negative break as 0, so [cycleMs] is never
+  /// 0 and `~/` never divides by zero (asserts are off in release builds). Saved settings and the
+  /// boxes never give such values (step 0.1 s, burst 1 s or more); only code could.
   const TimeLapsePlan({
-    required this.stepMs,
-    required this.burstMs,
-    required this.gapMs,
-  }) : assert(stepMs > 0),
-       assert(burstMs > 0),
-       assert(gapMs >= 0);
+    required int stepMs,
+    required int burstMs,
+    required int gapMs,
+  }) : stepMs = stepMs < 1 ? 1 : stepMs,
+       burstMs = burstMs < 1 ? 1 : burstMs,
+       gapMs = gapMs < 0 ? 0 : gapMs;
 
   /// No break configured: photos never stop.
   bool get continuous => gapMs == 0;

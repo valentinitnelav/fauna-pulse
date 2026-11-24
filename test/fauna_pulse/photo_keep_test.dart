@@ -174,6 +174,7 @@ void main() {
     expect(formatKeepWindow(90), '90 s');
     expect(formatKeepWindow(300), '5 min');
     expect(formatKeepWindow(3600), '1 h');
+    expect(formatKeepWindow(0), '0 s', reason: 'a keep window of 0 is no window, not "0 h"');
     expect(formatKeepDelta(3000), '3 s later');
     expect(formatKeepDelta(-90000), '90 s earlier');
     expect(formatKeepDelta(-120000), '2 min earlier');

@@ -201,12 +201,12 @@ void main() {
       }
     });
 
-    test('a loaded step below 0.0005 s gives stepMs 0 and the plan cannot be built', () {
+    test('a step below 0.0005 s (stepMs 0) still gives a plan', () {
       final c = const SessionConfig().copyWith(captureTrigger: CaptureTrigger.timelapse, stepSeconds: 0.0004);
       expect(() => planFor(c), returnsNormally);
-    }, skip: 'BUG (low): SessionConfig.fromJson now clamps the step to 0.1..10, so a saved file cannot reach this; the plan itself still has no guard if code builds a config with step 0.0004 (TimeLapsePlan asserts)');
+    });
 
-    test('a loaded burst of 0 s and a break of 0 s: cycleMs would be 0 and "~/" divides by zero', () {
+    test('a burst of 0 s and a break of 0 s: the cycle stays above 0, so "~/" never divides by zero', () {
       final c = const SessionConfig().copyWith(
         captureTrigger: CaptureTrigger.timelapse,
         durationSeconds: 0,
@@ -215,7 +215,7 @@ void main() {
       final plan = planFor(c);
       expect(plan.cycleMs, greaterThan(0));
       plan.cycleIndexAt(5);
-    }, skip: 'BUG (low): SessionConfig.fromJson now clamps the duration to >= 1 s, so a saved file cannot reach this; the plan itself still has no guard for burst 0 plus break 0 (assert in debug, IntegerDivisionByZeroException in release)');
+    });
 
     test('isTimeLapseValid with the extremes: no exception, no NaN', () {
       for (final step in [0.1, 10.0, 0.3]) {
@@ -254,7 +254,9 @@ void main() {
       }
       // 5 s at 15 frames per second = 76 photos instead of 1 per step.
       expect(photos, lessThan(10));
-    }, skip: 'BUG (low): SessionConfig.fromJson now clamps the step to >= 0.1 s; TrackKeepRule itself still takes a photo on every frame for step 0 (camera_session_screen.dart:1947)');
+    }, skip: 'NOT FIXED (audit): unreachable input, sensible answer; both callers pass a step of at least 0.1 s '
+        '(SessionConfig.fromJson and VideoAnalysisPrefs.load clamp to the box minimum, the boxes refuse less), and '
+        'a step of 0 means "every frame" by the rule\'s definition');
   });
 
   // -------------------------------------------------------------------------
@@ -406,7 +408,7 @@ void main() {
         final text = planDuration(s);
         expect(text, isNot(startsWith('60.0')), reason: 'planDuration($s) = "$text"');
       }
-    }, skip: 'BUG (low, text): planDuration(59.96) gives "60.0 s" and planDuration(3599.9) gives "60.0 min" instead of "1 min" and "1 h" (plan_sentence.dart:12-15)');
+    });
 
     test('planDuration of 0, a negative and a huge number gives plain text', () {
       expect(planDuration(0), '0 s');
@@ -417,7 +419,7 @@ void main() {
 
     test('planDuration(Infinity) does not throw', () {
       planDuration(double.infinity);
-    }, skip: 'BUG: planDuration(Infinity) throws UnsupportedError (Infinity.toInt()); reachable when a saved number is 1e999 (plan_sentence.dart:12)');
+    });
 
     test('the storage estimate for 14 days of 3 x 8 h windows at 30 FPS and 2048 px is a size, not an overflow', () {
       final c = const SessionConfig().copyWith(
@@ -587,7 +589,9 @@ void main() {
         }
         expect(applied, greaterThan(3), reason: 'duty $duty: 30 ms per frame can do 15 FPS at 50 % load but stays at the floor');
       }
-    }, skip: 'BUG (low): SessionConfig.fromJson now clamps throttleDutyTarget to 0.3..0.8; AdaptiveInferenceThrottle itself still accepts 0 and then stays at the minimum rate (camera_session_screen.dart:2759)');
+    }, skip: 'NOT FIXED (audit): unreachable input, sensible answer; SessionConfig.fromJson clamps throttleDutyTarget '
+        'to 0.3..0.8 and the box refuses other values, and a target load of 0 asks for as little detection as '
+        'allowed, so the minimum rate is the right answer');
 
     test('the throttle with an infinite or tiny inference time does not throw', () {
       for (final ms in [double.infinity, 1e-320, 5e-324]) {

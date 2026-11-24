@@ -66,6 +66,7 @@ import '../identification/identification_choice.dart';
 import '../identification/identification_run.dart';
 import '../models/model_catalog.dart';
 import '../models/model_choice_keys.dart';
+import '../models/saved_prefs.dart';
 import '../models/roi.dart';
 import '../models/session_config.dart';
 import '../postprocess/clip_cleanup.dart';
@@ -198,17 +199,6 @@ class VideoAnalysisPrefs {
       }
     }
 
-    // getDouble/getBool throw when a key holds another type (an int written by
-    // a future version, a hand-edited or damaged prefs file), and that would
-    // keep "Find animals in videos" from opening for good. Read the raw value,
-    // fall back per key, and clamp to the ranges of the boxes in
-    // video_tuning_screen.dart (keep both in sync) so a 0 FPS or 0 s keep step
-    // never reaches the analysis.
-    double d(String key, double def, double lo, double hi) {
-      final v = p.get(key);
-      return v is num && v.isFinite ? v.toDouble().clamp(lo, hi) : def;
-    }
-
     // fromJson casts each field; a wrong-typed field inside valid JSON throws
     // after json() has returned, so guard the whole parse.
     T params<T>(T Function(Map<String, dynamic>) parse, String key, T def) {
@@ -219,22 +209,22 @@ class VideoAnalysisPrefs {
       }
     }
 
-    final keep = p.get(_kKeep);
-    final model = p.get(_kModel);
-    final tracker = p.get(_kTracker);
+    final tracker = p.stringOrNull(_kTracker);
+    // Ranges = the boxes in video_tuning_screen.dart (keep in sync), so a 0 FPS or 0 s keep
+    // step never reaches the analysis (saved_prefs.dart).
     return VideoAnalysisPrefs(
-      modelId: model is String ? model : null,
-      confidence: d(_kConf, 0.25, 0.05, 0.95),
-      iou: d(_kIou, 0.7, 0.05, 0.95),
-      analysisFps: d(_kFps, kDefaultVideoAnalysisFps, 1, 30),
-      thermalLimitC: d(_kThermal, kDefaultPauseTempC, 35, 45),
-      occlusionSeconds: d(_kOcclusion, 3.0, 0.2, 10),
-      minVisitSeconds: d(_kMinVisit, 1.0, 0, 2),
-      sampleSeconds: d(_kSample, 10, 5, 60),
-      keepFrames: keep is bool ? keep : true,
-      keepStepSeconds: d(_kKeepStep, 1.0, 0.1, 10),
-      keepDurationSeconds: d(_kKeepDuration, 10.0, 1, 300),
-      trackerAlgorithm: TrackerAlgorithm.values.asNameMap()[tracker is String ? tracker : null] ?? TrackerAlgorithm.bytetrack,
+      modelId: p.stringOrNull(_kModel),
+      confidence: p.doubleIn(_kConf, 0.25, 0.05, 0.95),
+      iou: p.doubleIn(_kIou, 0.7, 0.05, 0.95),
+      analysisFps: p.doubleIn(_kFps, kDefaultVideoAnalysisFps, 1, 30),
+      thermalLimitC: p.doubleIn(_kThermal, kDefaultPauseTempC, 35, 45),
+      occlusionSeconds: p.doubleIn(_kOcclusion, 3.0, 0.2, 10),
+      minVisitSeconds: p.doubleIn(_kMinVisit, 1.0, 0, 2),
+      sampleSeconds: p.doubleIn(_kSample, 10, 5, 60),
+      keepFrames: p.boolOr(_kKeep, true),
+      keepStepSeconds: p.doubleIn(_kKeepStep, 1.0, 0.1, 10),
+      keepDurationSeconds: p.doubleIn(_kKeepDuration, 10.0, 1, 300),
+      trackerAlgorithm: TrackerAlgorithm.values.asNameMap()[tracker] ?? TrackerAlgorithm.bytetrack,
       trackerParams: params(ByteTrackParams.fromJson, _kByteTrack, const ByteTrackParams()),
       cbiouParams: params(CBiouParams.fromJson, _kCbiou, const CBiouParams()),
     );

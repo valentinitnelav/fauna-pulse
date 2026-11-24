@@ -7,11 +7,15 @@
 import '../models/session_config.dart';
 
 /// A duration in seconds as "10 s", "0.5 s", "30 min", "1.5 min", "2 h".
+/// The unit is chosen after rounding to the one decimal shown, so 59.96 s reads "1 min", not
+/// "60.0 s".
 String planDuration(double seconds) {
+  if (!seconds.isFinite) return '?';
+  double shown(double v) => (v * 10).roundToDouble() / 10;
   String num(double v) => v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
-  if (seconds < 60) return '${num(seconds)} s';
-  if (seconds < 3600) return '${num(seconds / 60)} min';
-  return '${num(seconds / 3600)} h';
+  if (shown(seconds) < 60) return '${num(shown(seconds))} s';
+  if (shown(seconds / 60) < 60) return '${num(shown(seconds / 60))} min';
+  return '${num(shown(seconds / 3600))} h';
 }
 
 /// What will be recorded (first sentence) and when (second sentence).

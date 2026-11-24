@@ -1073,7 +1073,8 @@ class SessionConfig {
     // Frozen wire name: highRes writes "still" (see _captureModeWireName).
     'captureMode': _captureModeWireName(captureMode),
     'targetRoiSavedPx': targetRoiSavedPx,
-    // Legacy key kept one round so an older build can still read this config.
+    // The key captureMode replaced: only builds older than captureMode read it from a new config
+    // (this version reads it only from a config without captureMode, see _captureModeFromJson).
     'fullResPhotos': captureMode == RoiCaptureMode.highRes,
     'occlusionSeconds': occlusionSeconds,
     'minHitsSeconds': minHitsSeconds,
@@ -1113,7 +1114,7 @@ class SessionConfig {
     sessionMinutes: _clampedNum(j, 'sessionMinutes', 60, 1, 5256000).toInt(),
     scheduleEnabled: j['scheduleEnabled'] as bool? ?? false,
     scheduleWindows: _scheduleWindowsFromJson(j['scheduleWindows']),
-    scheduleDays: ((j['scheduleDays'] as num?)?.toInt() ?? 1).clamp(1, 365),
+    scheduleDays: _clampedNum(j, 'scheduleDays', 1, 1, 14).round(),
     folderName: j['folderName'] as String? ?? 'session',
     showFps: j['showFps'] as bool? ?? true,
     showBoxes: j['showBoxes'] as bool? ?? true,

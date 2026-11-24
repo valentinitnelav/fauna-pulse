@@ -335,6 +335,34 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('"Find animals in photos" opens with saved settings of another type or out of range', (tester) async {
+      // Values another app version or a damaged file could hold: each falls back or is clamped
+      // (a wrong type used to throw while loading; a slider asserts on a value outside its range).
+      SharedPreferences.setMockInitialValues({
+        'analysis_model': 5,
+        'analysis_confidence': 'high',
+        'analysis_iou': 7.0,
+        'analysis_keep_gap': -1,
+        'analysis_occlusion_s': 99,
+        'analysis_sahi_enabled': 'yes',
+        'analysis_sahi_tile_px': 2.5,
+        'analysis_sahi_merge_iou': 0,
+      });
+      tester.view.physicalSize = const Size(360, 24000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final dir = _session(insect: (t) => t >= 2000 && t <= 5000);
+      _photoFiles(dir);
+      await openAnalysis(tester, dir);
+      await openAllFolds(tester);
+      final sliders = tester.widgetList<Slider>(find.byType(Slider)).toList();
+      expect(sliders, isNotEmpty);
+      for (final s in sliders) {
+        expect(s.value, inInclusiveRange(s.min, s.max));
+      }
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('"Find animals in photos" finds the track IDs of close photos (360 px)', (tester) async {
       SharedPreferences.setMockInitialValues({});
       simulateBottomSystemBar(tester);

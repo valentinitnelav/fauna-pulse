@@ -36,6 +36,7 @@ import '../logging/device_storage.dart';
 import '../logging/past_sessions.dart' show sessionsRoot;
 import '../models/model_catalog.dart';
 import '../models/model_choice_keys.dart';
+import '../models/saved_prefs.dart';
 import '../models/session_config.dart';
 import '../postprocess/photo_keep.dart';
 import '../postprocess/photo_tracker.dart';
@@ -212,28 +213,30 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     final sessions = await _scanSessions();
     final (idChoice, alsoIdentify) = await AlsoIdentify.load(widget.identificationChoice);
     if (!mounted) return;
-    final savedModel = prefs.getString(_prefModel);
+    final savedModel = prefs.stringOrNull(_prefModel);
     setState(() {
       _sessions = sessions;
       _models = models;
       _idChoice = idChoice;
       _alsoIdentify = alsoIdentify;
-      _confidence = prefs.getDouble(_prefConf) ?? 0.25;
-      _iou = prefs.getDouble(_prefIou) ?? 0.7;
-      _keepGap = prefs.getDouble(_prefKeepGap) ?? 2.0;
-      _occlusionSeconds = prefs.getDouble(_prefOcclusion) ?? 3.0;
-      _minVisitSeconds = prefs.getDouble(_prefMinVisit) ?? 0.2;
-      _sahiEnabled = prefs.getBool(_prefSahiEnabled) ?? false;
+      // Ranges = this screen's sliders and boxes (keep in sync; a slider asserts on a value
+      // outside its range); see saved_prefs.dart.
+      _confidence = prefs.doubleIn(_prefConf, 0.25, 0.05, 0.95);
+      _iou = prefs.doubleIn(_prefIou, 0.7, 0.05, 0.95);
+      _keepGap = prefs.doubleIn(_prefKeepGap, 2.0, 0, 3600);
+      _occlusionSeconds = prefs.doubleIn(_prefOcclusion, 3.0, 0.2, 10);
+      _minVisitSeconds = prefs.doubleIn(_prefMinVisit, 0.2, 0, 2);
+      _sahiEnabled = prefs.boolOr(_prefSahiEnabled, false);
       // A tile below 128 px (stored before round 313, when every keystroke
       // was saved) is read as 128.
-      _sahiTilePx = switch (prefs.getInt(_prefSahiTilePx) ?? 0) {
+      _sahiTilePx = switch (prefs.intIn(_prefSahiTilePx, 0, 0, 2048)) {
         <= 0 => 0,
         final px => px < 128 ? 128 : px,
       };
-      _sahiOverlapPct = prefs.getDouble(_prefSahiOverlapPct) ?? 25;
-      _sahiFullPass = prefs.getBool(_prefSahiFullPass) ?? true;
-      _sahiMergeIou = prefs.getDouble(_prefSahiMergeIou) ?? 0.5;
-    _sahiMinBoxPct = prefs.getDouble(_prefSahiMinBoxPct) ?? 0;
+      _sahiOverlapPct = prefs.doubleIn(_prefSahiOverlapPct, 25, 0, 50);
+      _sahiFullPass = prefs.boolOr(_prefSahiFullPass, true);
+      _sahiMergeIou = prefs.doubleIn(_prefSahiMergeIou, 0.5, 0.1, 0.9);
+      _sahiMinBoxPct = prefs.doubleIn(_prefSahiMinBoxPct, 0, 0, 20);
       _model = models.where((m) => m.id == savedModel).firstOrNull ??
           models.firstOrNull;
       _session = widget.initialSessionPath != null
