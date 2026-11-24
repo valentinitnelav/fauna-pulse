@@ -370,7 +370,7 @@ Copy the clips to a computer first if you may want to analyse them again.
   when the clips span several days), then its number of track IDs, then the file name. **All
   clips | With track IDs** above the list narrows it to the clips with track IDs. The ⏮ and ⏭
   buttons (**Previous track ID**, **Next track ID**) go on to the nearest clip that has one;
-  each clip keeps its own track IDs.
+  each clip keeps its own track IDs. A button is grey when no track ID is left in its direction.
 - **Free storage.** A clip where a track ID only ends, with no box of it in the clip, counts as
   a clip without any track ID.
 - **Watch the results** is hidden while the detector runs, the track IDs are found, frames are

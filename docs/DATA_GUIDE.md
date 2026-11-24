@@ -2271,8 +2271,14 @@ The boxes, switches, controls and time bar below work the same there.
   has not finished. Insects outside the square or cut by its edge mean the square should move:
   *Change square and analyze again* opens *Find animals in videos* for the session, and the tab
   reloads on return.
+- **Window.** The video sits in one square window, the same size for every clip and for both
+  views; a clip of another shape gets black bars. What the buttons, boxes and colours mean is
+  behind the ⓘ of **Buttons, boxes and colours** under the controls, and each switch explains
+  itself behind its **Details** ⓘ.
 - **Controls.** Tap the video to pause or play; 5 s back and forward; previous and next track ID
-  (each starts 1 s before the track ID's first sighting; its boxes appear from confirmation on);
+  (each starts 1 s before the track ID's first sighting; its boxes appear from confirmation on;
+  they go on to the nearest other clip with a track ID, and are grey when no track ID is left in
+  that direction);
   speed 0.5×, 1×, 2×, 4×, 5× or 10× (5× and 10× for an overview; the player may skip pictures);
   sound is off until switched on. Tapping a track ID in the list below the player jumps to it.
 - **Time bar.** One bar under the video is both the slider and a map of the clip: cyan where the

@@ -10593,3 +10593,6 @@ Asked (owner, finding 4 of the round 402 scale test): "Find animals in videos" s
 ## Round 405 (2026-11-24): clip list for many clips in the Video tab
 Asked (owner, finding 3 of the round 402 scale test): make the clips with track IDs easy to find among hundreds (start time in each row, a filter, Next track ID going on to the next clip). Open: the bulk-import design (hand-off of 2026-11-23).
 
+## Round 406 (2026-11-24): one square video window; the player's explanations behind ⓘ
+Asked (owner's feedback): the video window changed size with each clip and view, the screen held too much text, and the track ID buttons needed explaining. Open: not looked at on a phone yet.
+

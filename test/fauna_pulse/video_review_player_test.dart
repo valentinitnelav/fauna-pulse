@@ -186,6 +186,18 @@ Future<void> _openTrackList(WidgetTester tester, int n, Finder scrollable) async
   }
 }
 
+/// Opens the ⓘ help under the player, where the box and bar legends sit.
+/// [delta] < 0 when the list is already scrolled past it.
+Future<void> _openPlayerHelp(WidgetTester tester, Finder scrollable, {double delta = 200}) async {
+  await tester.scrollUntilVisible(find.text('Buttons, boxes and colours'), delta, scrollable: scrollable);
+  await tester.pump();
+  await tester.tap(find.text('Buttons, boxes and colours'));
+  await tester.pump();
+}
+
+IconButton _jumpButton(WidgetTester tester, {required bool next}) =>
+    tester.widget<IconButton>(find.widgetWithIcon(IconButton, next ? Icons.skip_next : Icons.skip_previous));
+
 void main() {
   late FakeVideoPlayer player;
   late FakeWakelock wake;
@@ -237,20 +249,37 @@ void main() {
     expect(player.calls.last, 'pause');
     expect(wake.on, isFalse);
 
+    // At the start nothing comes before; the buttons follow the position.
+    expect(_jumpButton(tester, next: false).onPressed, isNull);
     await tester.tap(find.byTooltip('Forward 5 s'));
     await tester.pump();
     expect(player.calls.last, 'seek 5000');
     await tester.tap(find.byTooltip('Previous track ID'));
     await tester.pump();
     expect(player.calls.last, 'seek ${visit.startMs - 1000}');
+    // At the only track ID of the only clip, no track ID is left after it.
+    expect(_jumpButton(tester, next: true).onPressed, isNull);
 
-    // Both views and both box sets draw without errors.
+    // Both views and both box sets draw without errors, in one square window of the same size.
+    final window = find.byKey(const ValueKey('video_window'), skipOffstage: false);
+    final wholeSize = tester.getSize(window);
+    expect(wholeSize.width, moreOrLessEquals(wholeSize.height));
     await tester.scrollUntilVisible(find.text('All boxes'), 200, scrollable: scrollable);
     await tester.tap(find.text('What the detector saw'));
     await tester.pump();
+    expect(tester.getSize(window), wholeSize);
     await tester.tap(find.text('All boxes'));
     await tester.pump();
+    // The explanations wait behind their ⓘ.
+    expect(find.textContaining('every box the detector found', skipOffstage: false), findsNothing);
+    expect(find.textContaining('A new track ID starts only', skipOffstage: false), findsNothing);
+    await _openPlayerHelp(tester, scrollable, delta: -200);
     expect(find.textContaining('every box the detector found'), findsOneWidget);
+    expect(find.textContaining('previous and next track ID: the video goes to 1 s before'), findsOneWidget);
+    expect(find.textContaining('also in the other clips', skipOffstage: false), findsNothing, reason: 'one clip');
+    await tester.scrollUntilVisible(find.text('Details').last, 200, scrollable: scrollable);
+    await tester.tap(find.text('Details').last);
+    await tester.pump();
     // Round 247: the frames with a box are marked on the time bar (round 307: in the boxes' green,
     // each until the next analysed frame), and the note explains what starts a track ID.
     final rawBar = tester.widget<VideoTimelineBar>(find.byKey(const ValueKey('track_id_timeline'), skipOffstage: false));
@@ -362,6 +391,7 @@ void main() {
     ]);
     // The tab's own list (the photo viewer inside it scrolls too).
     final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first;
+    await _openPlayerHelp(tester, scrollable);
     await tester.scrollUntilVisible(find.textContaining('Small white marks: frames kept for a track ID'), 200, scrollable: scrollable);
     await tester.scrollUntilVisible(find.text('Kept frames'), 200, scrollable: scrollable);
     await _pumpUntil(tester, find.text('Show in video'));
@@ -579,6 +609,14 @@ void main() {
     for (final t in ['Square in the wrong place?', 'Change square and analyze again', 'Find animals in videos']) {
       expect(find.text(t, skipOffstage: false), findsNothing, reason: t);
     }
+    // Both switches' explanations wait behind their "Details" ⓘ.
+    expect(find.textContaining('change it under "Area to analyze"', skipOffstage: false), findsNothing);
+    for (final i in [0, 1]) {
+      await tester.scrollUntilVisible(find.text('Details').at(i), 200, scrollable: list);
+      await tester.pump();
+      await tester.tap(find.text('Details').at(i));
+      await tester.pump();
+    }
     expect(find.textContaining('change it under "Area to analyze" above and analyze again', skipOffstage: false), findsOneWidget);
     expect(
       find.textContaining('("Detection, track ID and identification settings" above, Track IDs card)', skipOffstage: false),
@@ -629,6 +667,7 @@ void main() {
     expect(find.textContaining('No track IDs yet'), findsOneWidget);
     expect(tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.skip_next)).onPressed, isNull);
     final scrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable));
+    await _openPlayerHelp(tester, scrollable);
     await tester.scrollUntilVisible(find.textContaining('every box the detector found'), 200, scrollable: scrollable);
     expect(find.text('What the detector saw'), findsNothing, reason: 'whole frame analysed');
     expect(find.text('All boxes'), findsNothing, reason: 'no track IDs to switch from');
@@ -718,9 +757,8 @@ void main() {
     await tap(find.byTooltip('Previous track ID'));
     await _pumpUntil(tester, find.text('15:59:54 · 1 track ID · $a'));
     expect(player.calls.last, 'seek $entry');
-    // At the first clip, nothing comes before it.
-    await tap(find.byTooltip('Previous track ID'));
-    await tester.pump();
+    // At the first clip, nothing comes before it: the button is grey.
+    expect(_jumpButton(tester, next: false).onPressed, isNull);
     expect(player.calls.where((x) => x.startsWith('create')).last, 'create $a');
     expect(tester.takeException(), isNull);
 
@@ -974,6 +1012,10 @@ void main() {
     await _pumpUntil(tester, find.text('Detection afterwards', skipOffstage: false));
     final compare = find.ancestor(of: find.text('Detection afterwards'), matching: find.byType(SegmentedButton<bool>));
     expect(tester.widget<SegmentedButton<bool>>(compare).selected, {true});
+    await tester.scrollUntilVisible(find.text('Details').first, 200, scrollable: find.byType(Scrollable).first);
+    await tester.pump();
+    await tester.tap(find.text('Details').first);
+    await tester.pump();
     expect(find.textContaining('Detection afterwards: the boxes found on this screen', skipOffstage: false), findsOneWidget);
     expect(find.text('Compare with detection afterwards', skipOffstage: false), findsNothing);
 

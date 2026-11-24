@@ -428,18 +428,23 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
   /// Visits are entered 1 s before they start, to see the insect arrive.
   int _visitEntry(TimelineVisit v) => max(0, v.startMs - 1000);
 
-  Future<void> _jumpVisit(ClipBoxes? c, {required bool next}) async {
-    final pos = _posMs.value;
+  /// Where Previous/Next track ID goes inside the open clip from [pos], or null when no track ID
+  /// is left in that direction. The buttons use it too, so a button is enabled only when a tap
+  /// does something.
+  int? _visitTargetInClip(ClipBoxes? c, int pos, {required bool next}) {
+    if (c == null || !c.tracked) return null;
     int? target;
-    for (final v in c?.visits ?? const <TimelineVisit>[]) {
+    for (final v in c.visits) {
       final t = _visitEntry(v);
-      if (next && t > pos + 100) {
-        target = t;
-        break;
-      }
+      if (next && t > pos + 100) return t;
       // Half a second of grace: pressing twice goes one visit further back.
       if (!next && t < pos - 500) target = t;
     }
+    return target;
+  }
+
+  Future<void> _jumpVisit(ClipBoxes? c, {required bool next}) async {
+    final target = _visitTargetInClip(c, _posMs.value, next: next);
     if (target != null) return _seekTo(target);
     // Round 405: none left in this clip: the nearest clip with track IDs, at
     // its first (going back: its last) track ID, playing on if this one played.
@@ -530,14 +535,12 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     return _list(
       children: [
         // Embedded, the host screen gives the heading and says what the player shows (round 309).
+        // The explanation waits behind the ⓘ, so the player and its buttons fit the first screen.
         if (!widget.embedded) ...[
-          Text(
-            widget.live ? "Videos with live detection's boxes" : "Videos with the detector's boxes",
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            widget.live
+          HelpLabel(
+            label: widget.live ? "Videos with live detection's boxes" : "Videos with the detector's boxes",
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+            helperText: widget.live
                 ? 'Plays the ROI videos recorded during this session with the boxes live detection '
                       'found at that moment, so you can see what it caught and what it missed. Tap '
                       'the video to pause or play. Boxes show only on the frames live detection logged '
@@ -546,7 +549,6 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                       'pause or play. Boxes are shown only on the frames the detector analyzed, so at '
                       'higher speeds they can trail a fast insect a little. Sound is off unless you '
                       'switch it on.',
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ],
         ...widget.header,
@@ -600,12 +602,12 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 _allBoxes = false;
               }),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Live detection: the boxes found while recording (the session\'s track IDs). Detection afterwards: '
-              '${here ? 'the boxes found on this screen, with their' : '"Find animals in videos" on these clips, with its'} '
-              'own track ID numbers. Switch at any moment to compare the same frames.',
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            HelpLabel(
+              label: 'Details',
+              helperText:
+                'Live detection: the boxes found while recording (the session\'s track IDs). Detection afterwards: '
+                '${here ? 'the boxes found on this screen, with their' : '"Find animals in videos" on these clips, with its'} '
+                'own track ID numbers. Switch at any moment to compare the same frames.',
             ),
           ],
           if (area != null) ...[
@@ -619,13 +621,13 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               showSelectedIcon: false,
               onSelectionChanged: (s) => setState(() => _aiView = s.first),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Whole frame: the square is the area the detector analyzed; the darker part '
-              'was left out. What the detector saw: zoomed onto that square. If insects sit outside the square or '
-              'on its edge, change it '
-              '${here ? 'under "Area to analyze" above and analyze again' : 'and analyze again (button below)'}.',
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            HelpLabel(
+              label: 'Details',
+              helperText:
+                'Whole frame: the square is the area the detector analyzed; the darker part '
+                'was left out. What the detector saw: zoomed onto that square. If insects sit outside the square or '
+                'on its edge, change it '
+                '${here ? 'under "Area to analyze" above and analyze again' : 'and analyze again (button below)'}.',
             ),
           ],
           // The live log holds tracked boxes only (round 240).
@@ -640,23 +642,20 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               showSelectedIcon: false,
               onSelectionChanged: (s) => setState(() => _allBoxes = s.first),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Track IDs: the boxes "Find track IDs" linked from frame to frame into track IDs. A new '
-              'track ID starts only from a box the detector is at least '
-              '${(_newTrackConf ?? 0.5).toStringAsFixed(2)} sure of (the tracker\'s "New-track '
-              'confidence"); weaker boxes can only continue one. All boxes: what the detector detected at '
-              'the confidence threshold, before any tracking. An insect with boxes here but no '
-              'track ID was probably never that sure: lower "New-track confidence" ('
-              '${here ? '"Detection, track ID and identification settings" above' : 'Find animals in videos → '
-                        '"Detection, track ID and identification settings"'}, Track IDs card) and find the track IDs '
-              'again. The detector does not need to run again for that.',
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            HelpLabel(
+              label: 'Details',
+              helperText:
+                'Track IDs: the boxes "Find track IDs" linked from frame to frame into track IDs. A new '
+                'track ID starts only from a box the detector is at least '
+                '${(_newTrackConf ?? 0.5).toStringAsFixed(2)} sure of (the tracker\'s "New-track '
+                'confidence"); weaker boxes can only continue one. All boxes: what the detector detected at '
+                'the confidence threshold, before any tracking. An insect with boxes here but no '
+                'track ID was probably never that sure: lower "New-track confidence" ('
+                '${here ? '"Detection, track ID and identification settings" above' : 'Find animals in videos → '
+                          '"Detection, track ID and identification settings"'}, Track IDs card) and find the track IDs '
+                'again. The detector does not need to run again for that.',
             ),
           ],
-          if (boxes != null) ..._legend(visits),
-          // A deleted clip has no time bar.
-          if (c != null && boxes != null) ..._barLegend(visits, kept: _keptMs[name]?.isNotEmpty ?? false),
           // Live view (rounds 240, 241): compare with the AI afterwards. Round 309: on "Find animals
           // in videos" itself there is nothing to open, and its main button is above.
           if (_timeline.live && !here) ...[
@@ -883,7 +882,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     // its height, so the controls stay in view.
     final maxHeight = MediaQuery.sizeOf(context).height * 0.55;
     Widget child;
-    var aspect = 16 / 9;
+    var aspect = 1.0;
     if (c == null) {
       child = Container(
         color: Colors.black,
@@ -902,55 +901,78 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     } else {
       final view = aiView ? area! : const Rect.fromLTWH(0, 0, 1, 1);
       aspect = frameAspect * view.width / view.height;
-      child = GestureDetector(
-        onTap: _togglePlay,
-        child: LayoutBuilder(
-          builder: (context, box) {
-            final w = box.maxWidth / view.width;
-            final h = box.maxHeight / view.height;
-            return Stack(
-              clipBehavior: Clip.hardEdge,
-              children: [
-                Positioned(left: -view.left * w, top: -view.top * h, width: w, height: h, child: VideoPlayer(c)),
-                // Repainted every frame while playing: its own layer keeps the
-                // rest of the card from being painted again with it.
-                Positioned.fill(
-                  child: RepaintBoundary(
-                    child: CustomPaint(
-                      painter: _OverlayPainter(
-                        position: _posMs,
-                        waiting: _waiting,
-                        boxesAt: (ms) => boxes == null
-                            ? const []
-                            : visits
-                            ? boxes.trackedAt(ms)
-                            : boxes.rawAt(ms),
-                        view: view,
-                        area: aiView ? null : area,
-                        visits: visits,
-                      ),
+      child = LayoutBuilder(
+        builder: (context, box) {
+          final w = box.maxWidth / view.width;
+          final h = box.maxHeight / view.height;
+          return Stack(
+            clipBehavior: Clip.hardEdge,
+            children: [
+              Positioned(left: -view.left * w, top: -view.top * h, width: w, height: h, child: VideoPlayer(c)),
+              // Repainted every frame while playing: its own layer keeps the
+              // rest of the card from being painted again with it.
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _OverlayPainter(
+                      position: _posMs,
+                      waiting: _waiting,
+                      boxesAt: (ms) => boxes == null
+                          ? const []
+                          : visits
+                          ? boxes.trackedAt(ms)
+                          : boxes.rawAt(ms),
+                      view: view,
+                      area: aiView ? null : area,
+                      visits: visits,
                     ),
                   ),
                 ),
-              ],
-            );
-          },
-        ),
+              ),
+            ],
+          );
+        },
       );
     }
+    // One square window for every clip and both views, the picture fitted inside it with black
+    // bars: a window that took each clip's shape changed size from clip to clip and on every
+    // switch of the view, so the controls under it jumped. Square because the detector's area is
+    // square (it fills the window) and fits landscape and portrait clips alike. A tap anywhere in
+    // the window plays or pauses.
     return Center(
       child: ConstrainedBox(
+        key: const ValueKey('video_window'),
         constraints: BoxConstraints(maxHeight: maxHeight),
-        child: AspectRatio(aspectRatio: aspect, child: ClipRect(child: child)),
+        child: AspectRatio(
+          aspectRatio: 1,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: c == null ? null : _togglePlay,
+            child: ColoredBox(
+              color: Colors.black,
+              child: Center(child: AspectRatio(aspectRatio: aspect, child: ClipRect(child: child))),
+            ),
+          ),
+        ),
       ),
     );
   }
 
   List<Widget> _controls(VideoPlayerController c, ClipBoxes? boxes, {required bool visitsShown}) {
-    final hasVisits = boxes != null && boxes.tracked && boxes.visits.isNotEmpty;
-    // Round 405: also when another clip has track IDs in that direction.
-    final canBack = hasVisits || _clipWithTracks(next: false) >= 0;
-    final canOn = hasVisits || _clipWithTracks(next: true) >= 0;
+    // Round 405: also when another clip has track IDs in that direction. Inside the clip it
+    // depends on the position, so only these two buttons follow it.
+    final clipBefore = _clipWithTracks(next: false) >= 0, clipAfter = _clipWithTracks(next: true) >= 0;
+    Widget jump({required bool next}) => ValueListenableBuilder<int>(
+      valueListenable: _posMs,
+      builder: (_, ms, _) {
+        final can = (next ? clipAfter : clipBefore) || _visitTargetInClip(boxes, ms, next: next) != null;
+        return IconButton(
+          tooltip: next ? 'Next track ID' : 'Previous track ID',
+          onPressed: can ? () => _jumpVisit(boxes, next: next) : null,
+          icon: Icon(next ? Icons.skip_next : Icons.skip_previous),
+        );
+      },
+    );
     final coverage = _coverage(c, boxes, visitsShown: visitsShown);
     return [
       const SizedBox(height: 4),
@@ -985,11 +1007,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
         builder: (_, playing, _) => Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            IconButton(
-              tooltip: 'Previous track ID',
-              onPressed: canBack ? () => _jumpVisit(boxes, next: false) : null,
-              icon: const Icon(Icons.skip_previous),
-            ),
+            jump(next: false),
             IconButton(
               tooltip: 'Back 5 s',
               onPressed: () => _seekTo(_posMs.value - 5000),
@@ -1005,11 +1023,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               onPressed: () => _seekTo(_posMs.value + 5000),
               icon: const Icon(Icons.forward_5),
             ),
-            IconButton(
-              tooltip: 'Next track ID',
-              onPressed: canOn ? () => _jumpVisit(boxes, next: true) : null,
-              icon: const Icon(Icons.skip_next),
-            ),
+            jump(next: true),
             IconButton(
               tooltip: _muted ? 'Sound on' : 'Sound off',
               onPressed: _toggleMute,
@@ -1019,7 +1033,49 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
         ),
       ),
       VideoSpeedChips(speed: _speed, onChanged: _setSpeed),
+      // What the buttons, boxes and bar mean, behind one ⓘ: shown in full they made the screen
+      // a page of text (testers said so). Notes on the state of a clip stay visible above.
+      HelpLabel(
+        label: 'Buttons, boxes and colours',
+        helperChild: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buttonsHelp(),
+            if (boxes != null) ...[
+              ..._legend(visitsShown),
+              ..._barLegend(visitsShown, kept: _keptMs[_clips[_clip]]?.isNotEmpty ?? false),
+            ],
+          ],
+        ),
+      ),
     ];
+  }
+
+  Widget _buttonsHelp() {
+    WidgetSpan icon(IconData i) => WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: Icon(i, size: 16, color: Colors.white70),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text.rich(
+        TextSpan(
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+          children: [
+            icon(Icons.skip_previous),
+            icon(Icons.skip_next),
+            TextSpan(
+              text: ' previous and next track ID: the video goes to 1 s before the track ID starts'
+                  '${_clips.length > 1 ? ', also in the other clips of this session' : ''}. Grey when no '
+                  'track ID is left in that direction. ',
+            ),
+            icon(Icons.replay_5),
+            icon(Icons.forward_5),
+            const TextSpan(text: ' 5 s back or forward. Tap the video to play or pause.'),
+          ],
+        ),
+      ),
+    );
   }
 
   /// Round 307: how much of the clip the time bar's coloured stretches cover, or null when
