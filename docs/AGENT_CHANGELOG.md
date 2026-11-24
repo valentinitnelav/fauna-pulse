@@ -10605,3 +10605,6 @@ Asked (owner): the screens' explanations said "insect" also where they hold for 
 ## Round 409 (2026-11-25): version 0.13.0-beta.1 prepared
 Asked (owner): release 0.13.0-beta.1 after the video player feedback. Open: the owner's push, merge, tag and Play steps; the Data safety answer for feedback by email (owner decides).
 
+## Round 410 (2026-11-25): GitHub checks on Flutter 3.47.9
+Asked (owner): release 0.13.0-beta.1; the GitHub checks still used Flutter 3.47.7, the release laptop 3.47.9. Open: tag, builds from the tag, GitHub release, Zenodo DOI and the Play steps.
+

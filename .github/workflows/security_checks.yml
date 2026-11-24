@@ -34,7 +34,7 @@ jobs:
         with:
           # Keep equal to the Flutter that builds the release (`flutter --version`
           # on the build computer): tests written on a newer Flutter fail on an older one.
-          flutter-version: "3.47.7"
+          flutter-version: "3.47.9"
           channel: stable
           cache: true
 
