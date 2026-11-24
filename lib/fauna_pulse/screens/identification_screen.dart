@@ -36,6 +36,7 @@ import '../identification/identify_phone_log.dart';
 import '../identification/identify_wait_note.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_thermal.dart';
+import '../models/saved_prefs.dart';
 import '../postprocess/video_frame_keeper.dart';
 import '../postprocess/video_tracker.dart';
 import '../widgets/setting_help.dart';
@@ -331,7 +332,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
     final name = m.path.split('/').last;
     // Stored by the last run of this model on this phone.
     final sp = await SharedPreferences.getInstance();
-    final v = sp.getDouble(IdentifyPrefs.msPerCropKey(name));
+    final v = sp.doubleOrNull(IdentifyPrefs.msPerCropKey(name));
     if (!mounted) return;
     setState(() {
       _msPerCrop = v;

@@ -11,6 +11,7 @@ import '../identification/identification_assets.dart';
 import '../identification/identification_choice.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart' show formatBytes;
+import '../models/saved_prefs.dart';
 import '../widgets/setting_help.dart';
 import 'models_screen.dart';
 
@@ -167,7 +168,7 @@ class AlsoIdentify {
         logSwallowed('also_identify_load', e);
       }
     }
-    final on = (await SharedPreferences.getInstance()).getBool(prefKey) ?? choice.anyUsable;
+    final on = (await SharedPreferences.getInstance()).boolOr(prefKey, choice.anyUsable);
     return (choice, on);
   }
 

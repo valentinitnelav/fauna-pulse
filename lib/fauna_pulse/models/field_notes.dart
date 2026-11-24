@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logging/app_error_hooks.dart';
 import '../session/location_fix.dart';
+import 'saved_prefs.dart';
 
 /// What kind of input a field takes.
 enum FieldNoteKind { text, number, notes }
@@ -344,7 +345,7 @@ class FieldNotes {
 
   static Future<FieldNotes> load() async {
     try {
-      final raw = (await SharedPreferences.getInstance()).getString(prefsKey);
+      final raw = (await SharedPreferences.getInstance()).stringOrNull(prefsKey);
       if (raw == null) return const FieldNotes();
       return fromJson((jsonDecode(raw) as Map).cast<String, dynamic>());
     } catch (e) {

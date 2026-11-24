@@ -36,6 +36,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/saved_prefs.dart';
 import '../models/schedule_window.dart';
 import '../models/session_config.dart';
 

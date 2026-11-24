@@ -10578,3 +10578,6 @@ Owner asked whether the ~200 test files are still needed and whether they catch 
 ## Round 400 (2026-11-24): stress-test bugs fixed
 Asked: fix the bugs the stress tests skipped on purpose and the small test gaps of round 399. Open: other single saved-setting reads (tips, notes) still use typed reads; 5 cases stay skipped with a reason (unreachable input).
 
+## Round 401 (2026-11-24): every saved-setting read guarded
+Owner asked to fix the open point of round 400 (single saved-setting reads that threw on another type) in this session. Nothing open.
+

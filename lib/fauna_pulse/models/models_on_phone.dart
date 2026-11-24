@@ -27,6 +27,7 @@ import '../identification/identification_store.dart' show modelIdOf, modelKey, s
 import '../logging/app_error_hooks.dart';
 import 'model_catalog.dart';
 import 'model_choice_keys.dart';
+import 'saved_prefs.dart';
 import 'session_config.dart';
 
 /// How many models of each kind are on the phone.
@@ -135,8 +136,8 @@ Future<ModelChoice> currentModelChoice(Set<String> onPhone) async {
 
     final config = await SessionConfig.load();
     final prefs = await SharedPreferences.getInstance();
-    final idModel = present(prefs.getString(kIdentifyModelPref));
-    final nameList = present(prefs.getString(kIdentifyPackPref));
+    final idModel = present(prefs.stringOrNull(kIdentifyModelPref));
+    final nameList = present(prefs.stringOrNull(kIdentifyPackPref));
     final both = idModel != null && nameList != null;
     return (
       detector: present(config.modelPath),
@@ -199,7 +200,7 @@ Future<Map<String, ModelChoice>> watchChoices(Iterable<String> useIds) async {
   String? name(String s) => s.isEmpty ? null : s;
   return {
     for (final id in useIds)
-      if (prefs.getStringList(_watchChoiceKey(id)) case [final d, final m, final l])
+      if (prefs.stringListOrNull(_watchChoiceKey(id)) case [final d, final m, final l])
         id: (detector: name(d), idModel: name(m), nameList: name(l)),
   };
 }

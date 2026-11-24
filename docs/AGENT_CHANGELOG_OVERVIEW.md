@@ -77,8 +77,9 @@ Android field app (Flutter + Kotlin). A phone on a tripod watches a square Regio
 Settings outside `SessionConfig` are shared preferences: Find in photos `analysis_*` (its
 tracker = the camera's), Find in videos `video_analysis_*` (own tracker values, never touching the
 camera's), Identify `identify_*`, the chosen models, `home_watch_use`, `watch_choice_<id>`, `watch_country`.
-Their loaders read through `models/saved_prefs.dart` (getDouble and the like throw on another type, and
-a loader that throws keeps its screen from opening); numbers are clamped to their box.
+Every read goes through `models/saved_prefs.dart` (getDouble and the like throw on another type, and a
+loader that throws keeps its screen from opening; `saved_prefs_test` fails on a typed get in `lib/`);
+numbers are clamped to their box.
 
 ## Key invariants
 

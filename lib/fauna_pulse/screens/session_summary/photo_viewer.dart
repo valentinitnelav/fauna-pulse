@@ -564,7 +564,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
       withPosition = loc != null && (await SessionConfig.load()).cropExportPosition;
       // Round 330: "Don't show again" on the message hides only this sentence.
       final note =
-          withPosition && !((await SharedPreferences.getInstance()).getBool(kHideCropPositionNotePrefKey) ?? false)
+          withPosition && !((await SharedPreferences.getInstance()).boolOr(kHideCropPositionNotePrefKey, false))
           ? kCropPositionNote
           : '';
       final cropped = await cropJpegNormRect(

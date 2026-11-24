@@ -208,7 +208,7 @@ extension _CameraRecording on _CameraSessionScreenState {
   Future<void> _ensureUnrestricted() async {
     if (await RecordingKeepAlive.isUnrestricted()) return;
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool(_batteryOptPromptedKey) == true) return;
+    if (prefs.boolOr(_batteryOptPromptedKey, false)) return;
     if (!mounted) return;
     final allow = await showDialog<bool>(
       context: context,

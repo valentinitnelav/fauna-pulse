@@ -87,11 +87,12 @@ extension _SummaryLoading on _SessionSummaryScreenState {
       );
       if (!f.existsSync()) return;
       final prefs = await SharedPreferences.getInstance();
-      final gap = prefs.getDouble('analysis_keep_gap') ?? 2.0;
+      // Ranges as the boxes of Find animals in photos (analysis_screen.dart: keep in sync).
+      final gap = prefs.doubleIn('analysis_keep_gap', 2.0, 0, 3600);
       // Round 179: the review-time tiny-box threshold the analysis screen
       // tunes — applied here too, so the green boxes, keep chips, deletion
       // marks and counts in this review match the cleanup numbers over there.
-      final minBoxPct = prefs.getDouble('analysis_sahi_min_box_pct') ?? 0;
+      final minBoxPct = prefs.doubleIn('analysis_sahi_min_box_pct', 0, 0, 20);
       // Round 163 (E5): read + parse the (possibly large) results file off
       // the UI isolate; only the outcome list is copied back.
       final parsed = await _outcomesOffUi(f.path);
@@ -160,8 +161,8 @@ extension _SummaryLoading on _SessionSummaryScreenState {
   /// Also restores the "Extra graphs" expanded/collapsed viewing preference.
   Future<void> _init() async {
     SharedPreferences.getInstance().then((p) {
-      final expanded = p.getBool(_extraGraphsExpandedKey) ?? false;
-      final bin = p.getInt(_durationBinKey);
+      final expanded = p.boolOr(_extraGraphsExpandedKey, false);
+      final bin = p.intOrNull(_durationBinKey);
       if (mounted &&
           (expanded != _extraGraphsExpanded ||
               (bin != null && _durationBinChoices.contains(bin)))) {

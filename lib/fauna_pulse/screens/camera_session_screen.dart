@@ -38,6 +38,7 @@ import '../logging/session_logger.dart';
 import '../models/model_catalog.dart';
 import '../models/model_file_kind.dart';
 import '../models/roi.dart';
+import '../models/saved_prefs.dart';
 import '../models/schedule_window.dart';
 import '../models/session_config.dart';
 import '../services/recording_keepalive.dart';
@@ -683,8 +684,8 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     // Restore the info-panel expansion preference (round 124).
     SharedPreferences.getInstance()
         .then((p) {
-          final v = p.getBool(_statsExpandedKey) ?? false;
-          _hideSlowHint = p.getBool(kHideSlowPhoneHintPrefKey) ?? false;
+          final v = p.boolOr(_statsExpandedKey, false);
+          _hideSlowHint = p.boolOr(kHideSlowPhoneHintPrefKey, false);
           if (mounted && v != _statsExpanded) {
             setState(() => _statsExpanded = v);
           }
@@ -709,7 +710,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
     });
     SharedPreferences.getInstance()
         .then((p) {
-          final raw = p.getString(_lastLocationKey);
+          final raw = p.stringOrNull(_lastLocationKey);
           if (raw == null || !mounted) return;
           _previousLocation = SessionLocation.fromJson(
             (jsonDecode(raw) as Map).cast<String, dynamic>(),

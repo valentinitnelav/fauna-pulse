@@ -193,7 +193,7 @@ class VideoAnalysisPrefs {
     final p = await SharedPreferences.getInstance();
     Map<String, dynamic> json(String key) {
       try {
-        return (jsonDecode(p.getString(key) ?? '{}') as Map).cast<String, dynamic>();
+        return (jsonDecode(p.stringOrNull(key) ?? '{}') as Map).cast<String, dynamic>();
       } catch (_) {
         return const {};
       }

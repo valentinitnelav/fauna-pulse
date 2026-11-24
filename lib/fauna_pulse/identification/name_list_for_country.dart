@@ -30,6 +30,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/past_sessions.dart';
 import '../models/model_downloads.dart';
+import '../models/saved_prefs.dart';
 import 'country_lookup.dart';
 
 const kNameListCountriesAsset = 'assets/name_list_countries.json';
@@ -167,7 +168,7 @@ Future<UserCountry?> guessUserCountry({
   Future<String?> Function() lastSession = lastSessionCountry,
   Future<({String? network, String? sim})> Function() phone = phoneCountries,
 }) async {
-  final chosen = (await SharedPreferences.getInstance()).getString(kWatchCountryPref);
+  final chosen = (await SharedPreferences.getInstance()).stringOrNull(kWatchCountryPref);
   if (chosen != null && chosen.isNotEmpty) return (code: chosen, source: CountrySource.chosen);
   if (await lastSession() case final c?) return (code: c, source: CountrySource.lastSession);
   final p = await phone();

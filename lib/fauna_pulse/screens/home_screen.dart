@@ -58,6 +58,7 @@ import '../logging/error_reporter.dart';
 import '../logging/past_sessions.dart';
 import '../models/model_downloads.dart';
 import '../models/models_on_phone.dart';
+import '../models/saved_prefs.dart';
 import '../models/session_config.dart';
 import '../perf/slow_phone_hint.dart' show kHideSlowPhoneHintPrefKey;
 import '../widgets/before_record_sheet.dart' show kBeforeRecordSheetKey;
@@ -216,7 +217,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
     if (!mounted) return;
     setState(() {
       _uses = d.uses;
-      _watchUse = prefs.getString(kHomeWatchUsePref);
+      _watchUse = prefs.stringOrNull(kHomeWatchUsePref);
       _lastChoices = last;
     });
   }
@@ -317,8 +318,8 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
   /// "Before you record" sheet back. Read again each time the menu opens.
   Future<void> _loadTipsAndNotesPref() async {
     final prefs = await SharedPreferences.getInstance();
-    final hidden = prefs.getBool(kHideSessionInfoPrefKey) ?? false;
-    final beforeRecord = prefs.getBool(kBeforeRecordSheetKey) ?? true;
+    final hidden = prefs.boolOr(kHideSessionInfoPrefKey, false);
+    final beforeRecord = prefs.boolOr(kBeforeRecordSheetKey, true);
     if (!mounted) return;
     setState(() => _showTipsAndNotes = !hidden && beforeRecord);
   }

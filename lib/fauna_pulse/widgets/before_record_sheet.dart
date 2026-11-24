@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logging/device_storage.dart';
 import '../models/phone_state.dart';
+import '../models/saved_prefs.dart';
 import '../services/phone_settings.dart';
 import '../session/session_guards.dart';
 import 'dialog_title.dart';
@@ -25,7 +26,7 @@ const kBeforeRecordSheetKey = 'before_record_sheet';
 
 Future<bool> beforeRecordSheetEnabled() async {
   try {
-    return (await SharedPreferences.getInstance()).getBool(kBeforeRecordSheetKey) ?? true;
+    return (await SharedPreferences.getInstance()).boolOr(kBeforeRecordSheetKey, true);
   } catch (_) {
     return true;
   }

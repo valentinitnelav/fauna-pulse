@@ -27,6 +27,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logging/app_error_hooks.dart';
+import '../models/saved_prefs.dart';
 
 class CaptureCalibrationCache {
   CaptureCalibrationCache._();
@@ -68,7 +69,7 @@ class CaptureCalibrationCache {
   static Future<(int, int)?> load(String key) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(key);
+      final raw = prefs.stringOrNull(key);
       if (raw == null) return null;
       final parts = raw.split('x');
       if (parts.length != 2) return null;

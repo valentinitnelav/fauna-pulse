@@ -85,7 +85,7 @@ extension _CameraSettingsAndNotes on _CameraSessionScreenState {
   /// Persists the choice so a returning user goes straight to the preview.
   Future<void> _maybeShowSessionInfo() async {
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool(kHideSessionInfoPrefKey) ?? false) return;
+    if (prefs.boolOr(kHideSessionInfoPrefKey, false)) return;
     if (!mounted) return;
     final dontShowAgain = await showDialog<bool>(
       context: context,

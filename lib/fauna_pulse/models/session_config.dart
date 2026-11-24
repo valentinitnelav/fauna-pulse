@@ -17,6 +17,7 @@ import '../tracking/tracker.dart';
 import '../logging/app_error_hooks.dart';
 import 'bundled_models.dart';
 import 'model_choice_keys.dart';
+import 'saved_prefs.dart';
 import 'schedule_window.dart';
 
 /// SharedPreferences key for the one-time "setup tips" reminder dialog. When the
@@ -1218,10 +1219,8 @@ class SessionConfig {
   static Future<SessionConfig> load() async {
     final prefs = await SharedPreferences.getInstance();
     try {
-      // getString sits inside the try because it casts (`as String?`) and
-      // throws if the key ever holds another type (hand-edited prefs, a future
-      // bug); every screen awaits load() unguarded, so it must never throw.
-      final raw = prefs.getString(_prefsKey);
+      // Every screen awaits load() unguarded, so it must never throw.
+      final raw = prefs.stringOrNull(_prefsKey);
       if (raw == null) return const SessionConfig();
       return SessionConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
     } catch (e) {

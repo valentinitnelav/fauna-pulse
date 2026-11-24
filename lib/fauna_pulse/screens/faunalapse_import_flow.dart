@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../logging/past_sessions.dart';
+import '../models/saved_prefs.dart';
 import '../postprocess/faunalapse_import.dart';
 import '../widgets/dialog_title.dart';
 import '../widgets/dont_show_again_box.dart';
@@ -21,7 +22,7 @@ const kHideFaunaLapseImportInfoPrefKey = 'faunapulse_hide_faunalapse_import_info
 
 Future<String?> pickAndImportFaunaLapse(BuildContext context) async {
   final prefs = await SharedPreferences.getInstance();
-  if (!(prefs.getBool(kHideFaunaLapseImportInfoPrefKey) ?? false)) {
+  if (!(prefs.boolOr(kHideFaunaLapseImportInfoPrefKey, false))) {
     if (!context.mounted) return null;
     var hide = false;
     final ok = await showDialog<bool>(
