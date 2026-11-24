@@ -5,6 +5,7 @@
 // memory peak and the time. The bounds are loose: the point is that the
 // peak stays near the size of the result, not several times the file.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -19,6 +20,25 @@ const _fps = 15;
 const _frames = _fps * 3600;
 
 int _mb(int bytes) => bytes ~/ (1024 * 1024);
+
+/// Runs [run] and returns its result with the memory peak DURING it, sampled
+/// every millisecond (the reader yields between chunks, so the timer runs).
+/// `ProcessInfo.maxRss` cannot be used here: it is the peak of the whole
+/// process, so on a busy laptop it still held the previous test's peak and
+/// this test failed in 2 of 3 full runs (2026-11-24) although the reader was
+/// fine (+5 MB; a reader of the whole file: +25 MB).
+Future<(T, int)> _withPeakRss<T>(Future<T> Function() run) async {
+  final before = ProcessInfo.currentRss;
+  var peak = before;
+  final timer = Timer.periodic(const Duration(milliseconds: 1), (_) => peak = max(peak, ProcessInfo.currentRss));
+  try {
+    final result = await run();
+    peak = max(peak, ProcessInfo.currentRss);
+    return (result, peak - before);
+  } finally {
+    timer.cancel();
+  }
+}
 
 /// session.jsonl of a live session with the ROI recorded as video.
 Future<void> _writeLiveLog(File f) async {
@@ -104,15 +124,16 @@ void main() {
     final f = File('${tmp.path}/${VideoDetector.outputFileName}');
     await _writeRunFile(f);
     final fileMb = _mb(f.lengthSync());
-    final rssBefore = ProcessInfo.currentRss;
     final sw = Stopwatch()..start();
-    final s = (await VideoRunSamples.parseFile(f.path))!;
+    final (parsed, peak) = await _withPeakRss(() => VideoRunSamples.parseFile(f.path));
     sw.stop();
-    final peakMb = _mb(max(ProcessInfo.maxRss, ProcessInfo.currentRss) - rssBefore);
+    final s = parsed!;
+    final peakMb = _mb(peak);
     // ignore: avoid_print
     print('VideoRunSamples.parseFile($fileMb MB, ${s.frames} frames): ${sw.elapsedMilliseconds} ms, process memory peak +$peakMb MB');
     expect(s.frames, _frames);
     expect(s.samples, hasLength(360));
-    expect(peakMb, lessThan(fileMb * 2));
+    // Streaming: +4 to 5 MB, also on a busy laptop; the whole file at once: +16 MB.
+    expect(peakMb, lessThan(fileMb), reason: 'the parser must stream the file, not read it whole');
   });
 }

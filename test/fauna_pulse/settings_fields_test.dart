@@ -27,6 +27,7 @@ import 'dart:io';
 import 'package:fauna_pulse/fauna_pulse/identification/identification_assets.dart' show IdentifyPrefs;
 import 'package:fauna_pulse/fauna_pulse/models/session_config.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/identify_settings_fields.dart';
+import 'package:fauna_pulse/fauna_pulse/screens/models_screen.dart' show NoModelNotice;
 import 'package:fauna_pulse/fauna_pulse/screens/settings_sheet.dart';
 import 'package:fauna_pulse/fauna_pulse/screens/video_analysis_screen.dart' show VideoAnalysisPrefs;
 import 'package:fauna_pulse/fauna_pulse/screens/video_tuning_screen.dart';
@@ -489,6 +490,20 @@ void main() {
     expect(draft.value!.trackerParams.toJson(), const ByteTrackParams().toJson());
     expect(tester.widget<TextField>(box).controller!.text, '0.10');
     expect(find.textContaining('Not changed'), findsNothing, reason: 'the reset value is shown without an old note');
+  });
+
+  // A planted bug that showed this notice in the wrong case passed every test
+  // (2026-11-24). The test's app folder holds no model file.
+  testWidgets('camera Settings: with no detection model on the phone, the Detection tab says so', (tester) async {
+    await openSheet(tester, autoSize, SettingsDraft());
+    await tester.tap(find.text('Detection').first);
+    // The model scan reads the (empty) folder for real: give it real time,
+    // and check only after it ended (while it runs, the tab shows no notice).
+    for (var i = 0; i < 10; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump(const Duration(milliseconds: 150));
+    }
+    expect(find.byType(NoModelNotice), findsOneWidget);
   });
 
   testWidgets('camera Settings: the session length unit changes how it is shown, never the length', (tester) async {

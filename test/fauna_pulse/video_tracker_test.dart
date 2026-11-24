@@ -81,6 +81,20 @@ String _iso(int ms) => isoWithOffset(DateTime.fromMillisecondsSinceEpoch(ms));
 void main() {
   const config = SessionConfig(); // occlusion 3 s, minimum visit 0.2 s
 
+  // A run keeps an old frame file only when it shows the same picture. The
+  // area is usually the same for every clip of a session, so the clip and the
+  // moment must count too (a planted bug that dropped them passed every test,
+  // 2026-11-24).
+  test('a kept frame is the same picture only with the same clip, moment and area', () {
+    KeptFrame f({String clip = 'a.mp4', int ptsUs = 1000000, List<int> roiPx = const [0, 0, 640, 640]}) =>
+        KeptFrame(file: 'f.jpg', clip: clip, ptsUs: ptsUs, frameMs: 0, roiPx: roiPx, trackIds: const [1]);
+    expect(f().samePicture(f()), isTrue);
+    expect(f().samePicture(f(clip: 'b.mp4')), isFalse, reason: 'another clip, same area');
+    expect(f().samePicture(f(ptsUs: 2000000)), isFalse, reason: 'another moment, same area');
+    expect(f().samePicture(f(roiPx: const [0, 0, 480, 480])), isFalse, reason: 'another area');
+    expect(f().samePicture(f(roiPx: const [0, 0, 640])), isFalse, reason: 'a damaged area');
+  });
+
   group('VideoTracker.run', () {
     test('one insect gives one track ID, and every file is written', () async {
       final lines = [

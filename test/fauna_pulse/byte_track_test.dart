@@ -28,6 +28,28 @@ void main() {
     }
   });
 
+  // The speed is smoothed for each axis on its own line. Planted bugs
+  // (2026-11-24) showed that a wrong factor on either axis passed every test:
+  // with one insect the distance fallback still joins the boxes. So the
+  // prediction itself is checked: after a steady walk it is one step ahead.
+  for (final (axis, dx, dy) in [('sideways', 0.01, 0.0), ('up and down', 0.0, 0.01)]) {
+    test('an insect walking steadily $axis keeps one id and is predicted one step ahead', () {
+      final tracker = ByteTracker(params: const ByteTrackParams(minHitsToConfirm: 3));
+      final ids = <int>{};
+      late Track last;
+      for (var f = 0; f < 30; f++) {
+        final box = Rect.fromLTWH(0.30 + f * dx, 0.30 + f * dy, 0.10, 0.10);
+        final tracks = tracker.update([det(box)], f * 100);
+        if (f >= 2) ids.addAll(tracks.map((t) => t.id));
+        if (tracks.isNotEmpty) last = tracks.first;
+      }
+      expect(ids, hasLength(1), reason: 'one insect, one track ID');
+      final step = last.predictedBox.center - last.box.center;
+      expect(step.dx, closeTo(dx, 0.001), reason: 'predicted step sideways');
+      expect(step.dy, closeTo(dy, 0.001), reason: 'predicted step up and down');
+    });
+  }
+
   test('two separated objects get distinct ids', () {
     final tracker = ByteTracker(
       params: const ByteTrackParams(minHitsToConfirm: 2),

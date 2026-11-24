@@ -114,8 +114,12 @@ void main() {
     return dir;
   }
 
+  // Waits by real time, not by a count of steps: 300 steps (3 to 6 s) were too
+  // short on a busy laptop (2 false failures in a full run, 2026-11-24). It
+  // still stops as soon as [done] is true.
   Future<void> pumpUntil(WidgetTester tester, bool Function() done, String what) async {
-    for (var i = 0; i < 300 && !done(); i++) {
+    final sw = Stopwatch()..start();
+    while (!done() && sw.elapsed < const Duration(seconds: 20)) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
       await tester.pump(const Duration(milliseconds: 20));
     }

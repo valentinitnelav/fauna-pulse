@@ -429,6 +429,44 @@ void main() {
       dir.deleteSync(recursive: true);
     });
 
+    // A planted bug (2026-11-24) let the square reach past the right edge and
+    // no test noticed: the square must stay whole and inside the photo.
+    test('an area at the right edge gives a whole square from inside the photo', () async {
+      final dir = Directory.systemTemp.createTempSync('edge_crop_test');
+      // 96 x 96, the last 8 columns red: the square must end with them.
+      final pic = img.Image(width: 96, height: 96);
+      for (var y = 0; y < 96; y++) {
+        for (var x = 88; x < 96; x++) {
+          pic.setPixelRgb(x, y, 255, 0, 0);
+        }
+      }
+      final s = RoiCaptureScheduler(
+        framesDir: dir,
+        sessionToken: 'S',
+        stepMs: 1000,
+        durationMs: 5000,
+        mode: RoiCaptureMode.highRes,
+        targetPx: 640,
+        syncCompanion: false,
+        fastCaptureFn: () async => null,
+        highResCaptureFn: () async => RawHighRes(
+          bytes: Uint8List.fromList(img.encodeJpg(pic, quality: 100)),
+          rotationDegrees: 0,
+          isFront: false,
+        ),
+        roiProvider: () => const Roi(centerX: 0.97, centerY: 0.5, sideFraction: 0.5),
+        streamDims: () => (640, 480),
+        highResDims: () => (96, 96),
+      );
+      final pending = s.evaluate([track(1)], 10000)!;
+      await s.capture(pending);
+      final saved = img.decodeJpg(File('${dir.path}/${pending.fileName}').readAsBytesSync())!;
+      expect((saved.width, saved.height), (64, 64), reason: 'half of 96, snapped to a multiple of 32');
+      expect(saved.getPixel(63, 32).r, greaterThan(200), reason: 'the square ends at the photo\'s right edge');
+      expect(saved.getPixel(0, 32).r, lessThan(60), reason: 'and starts inside it');
+      dir.deleteSync(recursive: true);
+    });
+
     test('disabled companion writes only the high-res photo', () async {
       final dir = Directory.systemTemp.createTempSync('companion_off_test');
       final s = highResScheduler(dir, syncCompanion: false);

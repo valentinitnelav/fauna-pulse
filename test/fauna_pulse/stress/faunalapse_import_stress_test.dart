@@ -399,7 +399,10 @@ void main() {
       expect(Directory('${root.path}/$_folder/roi_frames').listSync(), hasLength(n));
       final recs = File('${root.path}/$_folder/session.jsonl').readAsLinesSync();
       expect(recs.where((l) => l.contains('"timelapse_capture"')), hasLength(n));
-      expect(sw.elapsed, lessThan(const Duration(seconds: 30)));
-    });
+      // About 10 s on a quiet laptop and up to 3 times that on a busy one (it
+      // hit the default 30 s test timeout once, 2026-11-24): the limits catch
+      // an import that became many times slower, not a busy laptop.
+      expect(sw.elapsed, lessThan(const Duration(seconds: 90)));
+    }, timeout: const Timeout(Duration(minutes: 3)));
   });
 }

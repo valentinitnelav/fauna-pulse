@@ -10571,3 +10571,7 @@ Owner's issue #35, option B of three: several clips per session stay, one area f
 
 ## Round 398 (2026-11-23): bug form and Discussions link
 Owner asked to bring the public bug report form up to date and to send questions, methods and research to Discussions (General category is enough). Open: GitHub shows the new forms and the chooser link only after they reach main.
+
+## Round 399 (2026-11-24): tests checked with planted bugs
+Owner asked whether the ~200 test files are still needed and whether they catch bugs. Open: the 16 known bugs that the stress tests skip on purpose, and a few small screen and edge cases.
+

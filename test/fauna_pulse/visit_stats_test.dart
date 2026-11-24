@@ -39,6 +39,15 @@ void main() {
       expect(h.overflow, isTrue);
     });
 
+    // The first duration past the last bar is the edge case: a planted bug
+    // that let it make a 61st bar passed every test (2026-11-24).
+    test('a visit exactly one bar past the last goes into the overflow bar', () {
+      final h = visitDurationHistogram(const [60000], 1, maxBars: 60);
+      expect(h.values.length, 60);
+      expect(h.values.last, 1);
+      expect(h.overflow, isTrue);
+    });
+
     test('negative/zero durations count in bin 0, never crash', () {
       final h = visitDurationHistogram(const [-5, 0], 1);
       expect(h.values, [2]);

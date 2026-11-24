@@ -322,9 +322,34 @@ void main() {
     },
   );
 
-  test('isoWithOffset has millisecond precision and an offset', () {
-    final s = isoWithOffset(DateTime(2026, 6, 13, 19, 3, 12, 123));
-    expect(s, contains('2026-06-13T19:03:12.123'));
-    expect(RegExp(r'[+-]\d{2}:\d{2}$').hasMatch(s), isTrue);
+  // The shape alone let a planted bug through (2026-11-24: "+01:60" in
+  // winter in Germany), so the text must also name the same moment. A
+  // computer on UTC (CI) has offset 0 and cannot show a wrong offset; the
+  // laptop runs check summer and winter.
+  test('isoWithOffset has millisecond precision and the right offset (summer and winter)', () {
+    for (final dt in [DateTime(2026, 6, 13, 19, 3, 12, 123), DateTime(2026, 1, 13, 7, 3, 12, 5)]) {
+      final s = isoWithOffset(dt);
+      expect(RegExp(r'[+-]\d{2}:[0-5]\d$').hasMatch(s), isTrue, reason: s);
+      expect(DateTime.parse(s).isAtSameMomentAs(dt), isTrue, reason: '$s names another moment than $dt');
+    }
+    expect(isoWithOffset(DateTime(2026, 6, 13, 19, 3, 12, 123)), contains('2026-06-13T19:03:12.123'));
+  });
+
+  // Records are written (not only queued) while the session runs, also those
+  // logged without a flush: when Android ends the app, what is still queued
+  // is lost. A planted bug that held them back until the end passed every
+  // test (2026-11-24).
+  test('records logged without a flush reach the file before the session ends', () async {
+    final file = File('${tmp.path}/session.jsonl');
+    final logger = SessionLogger(file)..open();
+    logger.logStart({'session_id': 'abc'});
+    await logger.flushNow();
+    logger.logRawDetections({'boxes': <Object>[]});
+    logger.logTrackEvent({'event': 'new', 'track_id': 1});
+    for (var i = 0; i < 100 && file.readAsLinesSync().length < 3; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(file.readAsLinesSync(), hasLength(3), reason: 'written while the session runs');
+    await logger.close();
   });
 }
