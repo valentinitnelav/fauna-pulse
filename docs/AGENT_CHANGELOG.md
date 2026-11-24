@@ -10599,3 +10599,6 @@ Asked (owner's feedback): the video window changed size with each clip and view,
 ## Round 407 (2026-11-24): "Insects on flowers"; pollinating insects, not pollinators
 Asked (owner): "pollinators" read as if all pollinators were insects (birds and bats pollinate too); the Home answer became "Insects on flowers" and texts that meant insects say so. Open: a wider check of "insect" in other screens' texts.
 
+## Round 408 (2026-11-24): "animal" where any animal is meant
+Asked (owner): the screens' explanations said "insect" also where they hold for any animal; the setting "Small-insect tiling" became "Tiling for small animals". Open: the user docs still describe most settings with insects (the main use).
+

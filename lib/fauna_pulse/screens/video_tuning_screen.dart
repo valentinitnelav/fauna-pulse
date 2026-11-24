@@ -182,7 +182,7 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
         label: 'Confidence threshold: ${_p.confidence.toStringAsFixed(2)}',
         help:
             'Minimum score for a detection to count. 0.25 is the live camera\'s default. Lower finds more '
-            'faint boxes: they can keep an insect\'s track ID while it is half-hidden, and "New-track '
+            'faint boxes: they can keep an animal\'s track ID while it is half-hidden, and "New-track '
             'confidence" (Track IDs card) decides which boxes may start one. A change here means analyzing '
             'the videos again. A change of New-track confidence only means finding the track IDs again, '
             'which takes a few seconds. So, to try settings: analyze once with a low confidence, then try '
@@ -217,8 +217,8 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
         label: 'IoU threshold: ${_p.iou.toStringAsFixed(2)}',
         help:
             'IoU = how much two boxes overlap (0 to 1). When two boxes overlap more than this, only the '
-            'more confident box is kept, so one insect gets one box. Lower removes more overlapping boxes '
-            'but can drop one of two insects sitting close together. 0.7 is the live camera\'s default.',
+            'more confident box is kept, so one animal gets one box. Lower removes more overlapping boxes '
+            'but can drop one of two animals sitting close together. 0.7 is the live camera\'s default.',
         value: _p.iou,
         min: 0.05,
         max: 0.95,
@@ -292,7 +292,7 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
         ...t.algorithmPicker(),
         t.newTrackField(
           extraHelp:
-              ' If "All boxes" on the session\'s Video tab shows an insect that never gets a track ID, it '
+              ' If "All boxes" on the session\'s Video tab shows an animal that never gets a track ID, it '
               'was probably never this sure: lower this and find the track IDs again (the videos do not '
               'need to be analyzed again). The live camera has its own value.',
         ),
@@ -304,12 +304,12 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
           decimals: 1,
           unitSuffix: 's',
           helperText:
-              'How long an insect can vanish (for example behind a petal) and keep its track ID. Longer: fewer '
-              'track IDs split in two; too long: two insects can merge into one. Keep it well above the '
+              'How long an animal can vanish (for example behind a petal) and keep its track ID. Longer: fewer '
+              'track IDs split in two; too long: two animals can merge into one. Keep it well above the '
               'time between two analyzed frames. Default 3 s, as on the live camera.',
           warning: occFrames < 2
               ? 'Only $occFrames analyzed ${occFrames == 1 ? 'frame' : 'frames'} at ${_fmtFps(fps)} frames per second: '
-                    'an insect the detector misses in ${occFrames + 1} frames in a row gets a new track ID.'
+                    'an animal the detector misses in ${occFrames + 1} frames in a row gets a new track ID.'
               : null,
           onChanged: (x) => _edit(() => _p.occlusionSeconds = x),
         ),
@@ -321,9 +321,9 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
           decimals: 1,
           unitSuffix: 's',
           helperText:
-              'How long an insect must be seen before it counts as a track ID; shorter sightings are '
+              'How long an animal must be seen before it counts as a track ID; shorter sightings are '
               'dropped as noise. The detector must find it in this many analyzed frames in a row (shown '
-              'below), so an insect it sees only on and off is dropped too when the value is high. '
+              'below), so an animal it sees only on and off is dropped too when the value is high. '
               'At least $kMinDetectionsInARow detections in a row are always needed. Default 1 s: at 5 '
               'frames per second that is 5 detections, while the live camera\'s 0.2 s would be the '
               'minimum of $kMinDetectionsInARow, so a false box seen in two frames would become a track ID. '
@@ -346,7 +346,7 @@ class _VideoTuningScreenState extends State<VideoTuningScreen> {
             title: 'Keep frames of each track ID',
             helperText:
                 'Saves pictures of every track ID from the videos, like the photos the live camera takes, so '
-                'you can look at the insects and identify them. Uses some storage: one picture is about '
+                'you can look at the animals and identify them. Uses some storage: one picture is about '
                 'as big as a live photo. On by default.',
             statusText: !_p.keepFrames && widget.keptSaved > 0
                 ? 'Finding track IDs again with this off removes the ${widget.keptSaved} frames saved before; '

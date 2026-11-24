@@ -27,8 +27,8 @@ extension _SettingsPhotosTab on _SettingsSheetState {
         helperText:
             'Photos (default) saves one photo of the yellow square (ROI) '
             'every "Photo step". Video saves each burst as one MP4 clip, so '
-            'an insect can be followed from picture to picture; it needs more '
-            'storage (estimate below). Insects and their track IDs are found '
+            'an animal can be followed from picture to picture; it needs more '
+            'storage (estimate below). Animals and their track IDs are found '
             'later: Sessions screen, the session\'s ⋮ menu → "Find animals in '
             'videos".',
       ),
@@ -69,7 +69,7 @@ extension _SettingsPhotosTab on _SettingsSheetState {
               '"Find animals in videos" reads by default, so no stored frame '
               'goes unused. Higher rates (up to the camera frame rate cap on '
               'the Power tab) give smoother clips and help with very fast '
-              'insects, but need more storage; with fewer frames a fast insect '
+              'animals, but need more storage; with fewer frames a fast animal '
               'may move too far between two frames to be recognised as the '
               'same one.',
           onChanged: (v) => setState(() => _c = _c.copyWith(timeLapseVideoFps: v.round())),
@@ -153,7 +153,7 @@ extension _SettingsPhotosTab on _SettingsSheetState {
                   '${widget.sensorWidth > 0 ? ' (up to ${widget.sensorWidth}×${widget.sensorHeight} on this phone)' : ''}'
                   ' have more pixels, but each one pauses detection for up to '
                   'about 1.5 s (longer on older phones), is taken a fraction of '
-                  'a second later, and is often blurred, so a fast insect may '
+                  'a second later, and is often blurred, so a fast animal may '
                   'be gone or unsharp. Auto takes a fast crop when it reaches '
                   '"Saved photo side" above, and a high-res photo otherwise.',
             ),
@@ -190,10 +190,10 @@ extension _SettingsPhotosTab on _SettingsSheetState {
               title: 'Also save a fast crop with each high-res photo',
               helperText:
                   'Only for high-res photos. A high-res photo is taken up to '
-                  'about 1 s after the detection, so a fast insect can be gone '
+                  'about 1 s after the detection, so a fast animal can be gone '
                   'from it. With this on, the fast crop from the moment of the '
                   'detection is saved next to it ("…_live.jpg"): smaller, but '
-                  'the insect is in it. On by default; adds about 50–200 KB per '
+                  'the animal is in it. On by default; adds about 50–200 KB per '
                   'photo.',
               value: _c.highResSyncCompanion,
               onChanged: (v) =>
@@ -214,7 +214,7 @@ extension _SettingsPhotosTab on _SettingsSheetState {
         title: 'Square (1:1) export crops',
         helperText:
             'Forces the crop-and-export box in the summary photo viewer to '
-            'a square. Off = free rectangle that can fit the insect\'s '
+            'a square. Off = free rectangle that can fit the animal\'s '
             'shape. The "1:1" chip next to the crop box toggles this same '
             'setting.',
         value: _c.cropSquareLock,

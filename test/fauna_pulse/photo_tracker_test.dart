@@ -412,12 +412,12 @@ void main() {
       _photoFiles(dir);
       final list = await openAnalysis(tester, dir);
       expect(find.byType(Slider), findsNothing);
-      expect(find.text('Small-insect tiling (SAHI)'), findsNothing);
-      expect(find.text('Confidence 0.25, IoU 0.70, small-insect tiling off'), findsOneWidget);
+      expect(find.text('Tiling for small animals (SAHI)'), findsNothing);
+      expect(find.text('Confidence 0.25, IoU 0.70, tiling for small animals off'), findsOneWidget);
       await openFold(tester, list, 'Advanced settings');
       expect(find.text('Confidence threshold: 0.25'), findsOneWidget);
       expect(find.text('IoU threshold: 0.70'), findsOneWidget);
-      expect(find.text('Small-insect tiling (SAHI)'), findsOneWidget);
+      expect(find.text('Tiling for small animals (SAHI)'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 

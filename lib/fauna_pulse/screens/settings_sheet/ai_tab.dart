@@ -31,7 +31,7 @@ extension _SettingsAiTab on _SettingsSheetState {
             'import models… (also in the home screen\'s Menu). '
             'The input resolution shown under the list is the square size '
             'every camera frame is shrunk to for the model: smaller runs '
-            'faster, larger sees tiny insects better.',
+            'faster, larger sees tiny animals better.',
         // Round 240: buttons wrap under the label (two in one row with it
         // overflowed a 360-px-wide phone by 42 px); one since round 267.
         child: Wrap(
@@ -190,10 +190,10 @@ extension _SettingsAiTab on _SettingsSheetState {
         label: 'Tracking',
         labelStyle: TextStyle(color: Colors.white70, fontSize: 16),
         helperText:
-            'Tracking links each insect\'s detections across frames into '
+            'Tracking links each animal\'s detections across frames into '
             'one track ID. In pollination ecology a track ID usually stands '
-            'for one visit (an insect\'s stay on the flower), the basis of the '
-            'visitation rate; some can be false detections, or one insect '
+            'for one visit (an animal\'s stay on the flower), the basis of the '
+            'visitation rate; some can be false detections, or one animal '
             'split into two track IDs. The two settings below are the ones that matter in most '
             'sessions; the defaults suit insects that land and stay on a '
             'flower. The algorithm choice and its own settings are under '
@@ -490,10 +490,10 @@ extension _SettingsAiTab on _SettingsSheetState {
           decimals: 1,
           unitSuffix: 's',
           helperText:
-              'How long an insect can be out of sight (for example behind a '
-              'petal) before its track ID ends. Longer = an insect that comes '
+              'How long an animal can be out of sight (for example behind a '
+              'petal) before its track ID ends. Longer = an animal that comes '
               'back keeps its track ID instead of getting a second one; too '
-              'long may join two different insects. Default 3 s, enough for a '
+              'long may join two different animals. Default 3 s, enough for a '
               'short hide on a flower (0.2–10 s).',
           onChanged: (v) =>
               setState(() => _c = _c.copyWith(occlusionSeconds: v)),
@@ -508,7 +508,7 @@ extension _SettingsAiTab on _SettingsSheetState {
           decimals: 1,
           unitSuffix: 's',
           helperText:
-              'How long an insect must be seen without a break before it gets '
+              'How long an animal must be seen without a break before it gets '
               'a counted track ID; shorter sightings are dropped as noise. '
               'Lower (for example 0.1) also counts brief touchdowns but lets '
               'in more false track IDs; higher (for example 0.5) counts only '
@@ -537,7 +537,7 @@ extension _SettingsAiTab on _SettingsSheetState {
               'Records the ROI square as MP4 clips (a new clip every 5 minutes, in the session\'s '
               'videos folder) while the detector detects live. Afterwards the session summary plays '
               'the clips with the boxes live detection found, so you can see what it caught and what '
-              'it missed, count the insects by hand, or run the detector again on the clips ("Find animals in '
+              'it missed, count the animals by hand, or run the detector again on the clips ("Find animals in '
               'videos"). Off by default: it costs storage (estimate below) and heat, because every '
               'frame of the clip is processed even while the motion gate lets the detector sleep.',
           value: _c.liveAiVideo,

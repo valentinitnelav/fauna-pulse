@@ -246,7 +246,7 @@ extension _SettingsPowerTab on _SettingsSheetState {
             'shown below when the gate is on). This saves a lot of heat and '
             'battery during long empty periods. Made for a mounted phone: in '
             'the hand, shaking counts as movement, so the gate stays awake; '
-            'that is normal. Off by default, because it can miss an insect '
+            'that is normal. Off by default, because it can miss an animal '
             'that is very small or arrives very slowly. Before using it for '
             'counts, record the same flower once with the gate on and once '
             'with it off, and compare the track IDs.',
@@ -305,7 +305,7 @@ extension _SettingsPowerTab on _SettingsSheetState {
                         'motion returns. Default 3 s.'
                   : 'How long the detector keeps running after the last movement '
                         'or detection. Every new detection restarts this window, '
-                        'so a sitting insect is not lost. Longer = fewer missed animals, '
+                        'so a sitting animal is not lost. Longer = fewer missed animals, '
                         'less heat saving. Default 3 s.',
               onChanged: (v) =>
                   setState(() => _c = _c.copyWith(motionGateWakeSeconds: v)),
@@ -318,7 +318,7 @@ extension _SettingsPowerTab on _SettingsSheetState {
               isInt: true,
               helperText:
                   'How much a pixel\'s brightness (0–255) must change to count as '
-                  'movement. Lower = more sensitive (wakes on small insects, but also '
+                  'movement. Lower = more sensitive (wakes on small animals, but also '
                   'on petal shadows); higher = stricter. Default 25.',
               onChanged: (v) => setState(
                 () => _c = _c.copyWith(
@@ -335,7 +335,7 @@ extension _SettingsPowerTab on _SettingsSheetState {
               unitSuffix: '%',
               helperText:
                   'How much of the ROI must change in one frame to wake the detector. '
-                  'Keep small: an insect covers little of the ROI. Default 0.5%.',
+                  'Keep small: an animal covers little of the ROI. Default 0.5%.',
               onChanged: (v) => setState(
                 () => _c = _c.copyWith(motionGateAreaFraction: v / 100),
               ),
@@ -348,9 +348,9 @@ extension _SettingsPowerTab on _SettingsSheetState {
               isInt: true,
               helperText:
                   'How finely the yellow square is divided when looking for '
-                  'movement. At the default 48, an insect smaller than about 2% '
+                  'movement. At the default 48, an animal smaller than about 2% '
                   'of the square\'s width may not be noticed; at 128, about '
-                  '0.8%. Raise it for very small insects (and lower "Trigger '
+                  '0.8%. Raise it for very small animals (and lower "Trigger '
                   'area" too); higher values use slightly more battery.',
               onChanged: (v) => setState(
                 () => _c = _c.copyWith(
@@ -366,7 +366,7 @@ extension _SettingsPowerTab on _SettingsSheetState {
               isInt: true,
               helperText:
                   'How many camera pictures per second are checked for movement '
-                  'while the detector sleeps. Default 5: an arriving insect is '
+                  'while the detector sleeps. Default 5: an arriving animal is '
                   'noticed within about 0.2 s while the phone stays cool. Higher '
                   'notices it sooner but warms the phone. While the gate sleeps, '
                   'the "Camera" line in the info panel shows about this number; '

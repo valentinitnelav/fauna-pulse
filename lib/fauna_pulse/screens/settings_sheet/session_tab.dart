@@ -117,7 +117,7 @@ extension _SettingsSessionTab on _SettingsSheetState {
           child: Text(
             'Live detection warms the phone: the detector works on the camera picture all session '
             'long, and older or hot phones can drop to a few frames per second, missing fast '
-            'insects. For long or hot sessions, choose "Time-lapse" with "Save bursts as: '
+            'animals. For long or hot sessions, choose "Time-lapse" with "Save bursts as: '
             'Video" and run the detector later at home ("Find animals in videos").',
             style: TextStyle(color: Colors.white60, fontSize: 12),
           ),
@@ -300,7 +300,7 @@ extension _SettingsSessionTab on _SettingsSheetState {
           maxSeconds: 3600,
           helperText:
               'Time between reference photos. Default 30 s (about 120 '
-              'photos per hour); shorter catches insects that stay only briefly but uses '
+              'photos per hour); shorter catches animals that stay only briefly but uses '
               'more storage.',
           onChanged: (v) => setState(() => _c = _c.copyWith(gtFrameSeconds: v)),
         ),
@@ -380,7 +380,7 @@ extension _SettingsSessionTab on _SettingsSheetState {
           HelpSwitchTile(
             title: 'Show detection boxes & track IDs',
             helperText:
-                'The light-blue boxes drawn around each detected insect on '
+                'The light-blue boxes drawn around each detected animal on '
                 'the live picture, with its track ID, name and score (for '
                 'example "#3 bee  Conf.: 0.72").',
             statusText: _c.detectorEnabled

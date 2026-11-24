@@ -679,7 +679,7 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
         labelStyle: TextStyle(color: Colors.white),
         helperText:
             'Track IDs are placed on the clock from these times, so graphs and exports show when '
-            'insects came. The app reads each time from the file name or from the time stored in the '
+            'animals came. The app reads each time from the file name or from the time stored in the '
             'video. Phone cameras store when filming stopped; an edited video stores when it was '
             'edited, and files sent through messengers often lose the time. Change… sets one clip, '
             'Set all clips… every clip at once. The seconds become 0 (the time picker has no seconds).',

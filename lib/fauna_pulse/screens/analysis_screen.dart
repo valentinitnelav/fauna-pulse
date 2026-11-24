@@ -722,7 +722,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                 FoldSection(
                   title: 'Advanced settings',
                   subtitle: 'Confidence ${_confidence.toStringAsFixed(2)}, IoU ${_iou.toStringAsFixed(2)}, '
-                      'small-insect tiling ${_sahiEnabled ? 'on' : 'off'}',
+                      'tiling for small animals ${_sahiEnabled ? 'on' : 'off'}',
                   children: [
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -736,7 +736,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                         _thresholdSlider(
                           label: 'IoU threshold',
                           help:
-                              'IoU = how much two boxes overlap (0 to 1). When two boxes overlap more than this, only the more confident box is kept, so one insect gets one box. Lower removes more overlapping boxes but can drop one of two insects sitting close together. 0.7 is the live camera\'s default.',
+                              'IoU = how much two boxes overlap (0 to 1). When two boxes overlap more than this, only the more confident box is kept, so one animal gets one box. Lower removes more overlapping boxes but can drop one of two animals sitting close together. 0.7 is the live camera\'s default.',
                           value: _iou,
                           onChanged: (v) => setState(() => _iou = v),
                         ),
@@ -956,13 +956,13 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
     return FoldSection(
       // A fixed key: the title follows the switch, the fold stays open.
       key: const ValueKey('fold:sahi'),
-      title: 'Small-insect tiling (SAHI)${_sahiEnabled ? ': on' : ''}',
+      title: 'Tiling for small animals (SAHI)${_sahiEnabled ? ': on' : ''}',
       subtitle:
-          'Cuts each photo into overlapping tiles so tiny insects stay large '
+          'Cuts each photo into overlapping tiles so tiny animals stay large '
           'enough for the model to see.',
       helperText:
           'The model sees every photo shrunk to its own input size, so a '
-          'small insect can end up just a few pixels wide. Tiling analyzes '
+          'small animal can end up just a few pixels wide. Tiling analyzes '
           'the photo piece by piece at model scale instead. Slower (the model '
           'runs several times per photo); worth trying when the model\'s input '
           'size is much smaller than the photos.',
@@ -1019,7 +1019,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           unitSuffix: '%',
           enabled: !_running,
           helperText:
-              'Neighbouring tiles share this much, so an insect on a tile '
+              'Neighbouring tiles share this much, so an animal on a tile '
               'border appears whole in one of them.',
           onChanged: (v) async {
             setState(() => _sahiOverlapPct = v);
@@ -1031,7 +1031,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           title: 'Also run the whole-photo pass',
           titleStyle: const TextStyle(fontSize: 14),
           helperText:
-              'Catches insects larger than one tile (the model runs once more '
+              'Catches animals larger than one tile (the model runs once more '
               'per photo).',
           value: _sahiFullPass,
           onChanged: _running
@@ -1050,7 +1050,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           enabled: !_running,
           helperText:
               'Overlap level at which boxes from different tiles count as '
-              'the SAME insect and merge. Measured against the smaller box, '
+              'the SAME animal and merge. Measured against the smaller box, '
               'so a partial box sitting inside a bigger one merges away. '
               '0.5 is the standard.',
           onChanged: (v) async {
@@ -1104,7 +1104,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         '${_sahiOverlapPct.round()}% overlap → $cols×$rows tiles'
         '${_sahiFullPass ? ' + whole photo' : ''} = $passes passes '
         '≈ $passes× processing time. Expect a few extra kept photos '
-        '(fewer insects missed, a few more false alarms: the safe side '
+        '(fewer animals missed, a few more false alarms: the safe side '
         'for cleanup).';
   }
 
@@ -1198,8 +1198,8 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
         label: 'Track IDs',
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
-            'Follows each insect from photo to photo, as the live camera does with the detector on, so one '
-            'insect seen in many photos counts as one track ID. The summary then shows the track IDs and '
+            'Follows each animal from photo to photo, as the live camera does with the detector on, so one '
+            'animal seen in many photos counts as one track ID. The summary then shows the track IDs and '
             'which photos belong to each, and "Identify organisms" answers per track ID. Takes seconds '
             'and can be repeated with other settings.',
       ),
@@ -1207,11 +1207,11 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
       if (t.tooSparse)
         Text(
           '${step == null ? 'This session\'s photo step is not known, so its photos' : 'Photos ${_numStr(step)} s apart'} '
-          'are too far apart to follow an insect: it can move too far between two photos to be '
+          'are too far apart to follow an animal: it can move too far between two photos to be '
           'recognized as the same one. Finding track IDs needs a photo every '
           '${_numStr(PhotoTracker.maxStepSeconds)} s or more often: for the next session, in Settings set '
           '"Photo step" (Setup tab) to ${_numStr(PhotoTracker.maxStepSeconds)} s or less and "ROI photo '
-          'source" (Photos tab) to "Fast crops only". The photos with an insect still show in Session summary.',
+          'source" (Photos tab) to "Fast crops only". The photos with an animal still show in Session summary.',
           style: const TextStyle(color: Colors.white70, fontSize: 13),
         )
       else ...[
@@ -1254,14 +1254,14 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                   decimals: 1,
                   unitSuffix: 's',
                   helperText:
-                      'How long an insect can be missing (hidden behind a petal, or missed in a photo) and '
+                      'How long an animal can be missing (hidden behind a petal, or missed in a photo) and '
                       'still keep its track ID. Default 3 s, as the live camera. Keep it well above the photo '
                       'step, or every track ID breaks into pieces.',
                   // Counted as the tracker counts: whole photos.
                   warning: step != null &&
                           step > 0 &&
                           SessionConfig(occlusionSeconds: _occlusionSeconds).occlusionFramesFor(1 / step) < 2
-                      ? 'Shorter than two photo steps (${_numStr(step)} s each): an insect missed in two photos '
+                      ? 'Shorter than two photo steps (${_numStr(step)} s each): an animal missed in two photos '
                             'in a row gets a new track ID.'
                       : null,
                   onChanged: (x) async {
@@ -1277,7 +1277,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
                   decimals: 1,
                   unitSuffix: 's',
                   helperText:
-                      'How long an insect must be seen before it counts as a track ID; shorter sightings are '
+                      'How long an animal must be seen before it counts as a track ID; shorter sightings are '
                       'dropped as noise. It is counted in photos in a row (at least two). Default 0.2 s, as '
                       'the live camera.',
                   onChanged: (x) async {
@@ -1417,7 +1417,7 @@ class _AnalysisScreenState extends State<AnalysisScreen> {
           maxSeconds: 3600,
           helperText:
               'Photos within this time of a detection are kept too. This '
-              'keeps photos where the detector missed an insect that is still '
+              'keeps photos where the detector missed an animal that is still '
               'there. Up to 60 minutes; type the number, pick s/min.',
           onChanged: (v) async {
             if (_cleanupBusy) return;

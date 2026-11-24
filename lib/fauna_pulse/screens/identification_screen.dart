@@ -805,7 +805,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         label: 'Run',
         labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         helperText:
-            'The app cuts each saved photo of a track ID around the insect (a crop) and the model names '
+            'The app cuts each saved photo of a track ID around the animal (a crop) and the model names '
             'the crops of one track ID together: one answer per track ID, with a confidence for every '
             'rank. Photos that agree make the answer stronger. Everything runs on this phone; no picture '
             'or data is sent anywhere. A run can take minutes to hours; you can cancel it and continue '
@@ -974,7 +974,7 @@ class _IdentificationScreenState extends State<IdentificationScreen> {
         Text(
           p.stage == 'scoring'
               ? '$done of $total track ID${total == 1 ? '' : 's'} combined'
-              : '$done of $total crop${total == 1 ? '' : 's'} (counted per photo: a photo with several insects adds several crops at once)',
+              : '$done of $total crop${total == 1 ? '' : 's'} (counted per photo: a photo with several animals adds several crops at once)',
           style: const TextStyle(color: Colors.white),
         ),
       Text('Elapsed ${_fmtDuration(elapsed)}'

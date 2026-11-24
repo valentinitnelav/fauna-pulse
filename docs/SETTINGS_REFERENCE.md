@@ -41,7 +41,7 @@ The camera Settings sheet:
 The analysis screens (after a session):
 
 - [Photo analysis (Analysis screen)](#photo-analysis-analysis-screen) (**Find animals in
-  photos**), with [Small-insect tiling (SAHI)](#small-insect-tiling-sahi-inside-advanced-settings),
+  photos**), with [Tiling for small animals (SAHI)](#tiling-for-small-animals-sahi-inside-advanced-settings),
   [Also identify them](#also-identify-them) and [Track IDs](#track-ids)
 - [Video analysis (Find animals in videos screen)](#video-analysis-find-animals-in-videos-screen)
 - [Identification (Identify organisms screen → Advanced settings)](#identification-identify-organisms-screen--advanced-settings)
@@ -696,7 +696,7 @@ control how saved photos are examined again *after* a session, so they are not p
 
 The screen shows only the session, the detection model and the main button (**Analyze N
 photos**). The settings below sit in the closed fold **Advanced settings**. Its line names the values in use (for example "Confidence
-0.25, IoU 0.70, small-insect tiling off").
+0.25, IoU 0.70, tiling for small animals off").
 
 | Setting | Default | What it does |
 |---|---|---|
@@ -729,7 +729,7 @@ settings in the closed **Advanced settings** fold.
 
 </details>
 
-### Small-insect tiling (SAHI), inside Advanced settings
+### Tiling for small animals (SAHI), inside Advanced settings
 
 Normally the whole photo is shrunk down to the model's input size before detection
 ("letterboxing"). A 1024 px photo fed to a 640 px model loses about 40% of its linear

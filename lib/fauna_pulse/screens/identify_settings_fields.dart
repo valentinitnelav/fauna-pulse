@@ -96,7 +96,7 @@ class IdentifySettingsFields extends StatelessWidget {
           helperText:
               'Extra border added on every side of the detector box, as a share of the box\'s '
               'longer side (0.05 = 5 % of it), because legs, antennae and wings stick out by an '
-              'amount that depends on the insect\'s size. Default 0: the model sees the box itself, '
+              'amount that depends on the animal\'s size. Default 0: the model sees the box itself, '
               'with as little flower or background as possible (with "Square crops" on, the square '
               'already adds some along the shorter side). Raise it if legs, antennae or wings look '
               'cut off (the cyan box on a track ID\'s photo in the results shows what was cut out). '
@@ -117,10 +117,10 @@ class IdentifySettingsFields extends StatelessWidget {
           helperText:
               'Boxes smaller than this (longer side, in photo pixels) are skipped. Default 48: the '
               'model looks at every crop at 224 px, so a smaller box is enlarged more than 4 times '
-              'and is mostly blur. On the default 1024 px photos, 48 px is an insect about 5 % of '
-              'the photo side; 96 px would skip every insect under a tenth of it. Each track ID '
+              'and is mostly blur. On the default 1024 px photos, 48 px is an animal about 5 % of '
+              'the photo side; 96 px would skip every animal under a tenth of it. Each track ID '
               'uses its largest boxes first (see "Crops per track ID"), so this mainly decides '
-              'whether insects that stay small in every photo get an answer at all.',
+              'whether animals that stay small in every photo get an answer at all.',
         ),
         NumericSettingField(
           label: 'Crops per track ID (0 = all)',
@@ -194,7 +194,7 @@ class IdentifySettingsFields extends StatelessWidget {
           value: prefs.mergeVisits,
           onChanged: (v) => onEdit(() => prefs.mergeVisits = v),
           helperText:
-              'Helps when the tracker lost an insect for a moment and gave it a new track ID. On: a track '
+              'Helps when the tracker lost an animal for a moment and gave it a new track ID. On: a track '
               'ID that starts within the gap below after another one ended is joined to it when both have a '
               'fitting identification (for example Apidae, then Bombus), look alike to the model and have a '
               'similar box size; the joined track ID is identified again from all its photos. Track IDs at '
@@ -214,7 +214,7 @@ class IdentifySettingsFields extends StatelessWidget {
                 'Time from the end of one track ID to the start of the next. Compare it with the tracker\'s '
                 '"Occlusion tolerance" (3 s by default): over shorter gaps the tracker itself usually '
                 'keeps the same track ID. Longer gaps '
-                'risk joining two different insects of the same species: the appearance check cannot '
+                'risk joining two different animals of the same species: the appearance check cannot '
                 'tell individuals apart, only the time gap can.',
           ),
           NumericSettingField(
@@ -228,7 +228,7 @@ class IdentifySettingsFields extends StatelessWidget {
                 'How alike the two track IDs look to the model, from 0 to 1 (it compares the model\'s '
                 'averaged descriptions of their photos): 1 = the model sees the same thing. Same species '
                 'usually scores 0.8 to 0.95, different families well below. 0.85 is a cautious default; '
-                'lower it if fragments of one insect stay apart.',
+                'lower it if fragments of one animal stay apart.',
           ),
           NumericSettingField(
             label: 'Box size may differ by up to',

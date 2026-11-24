@@ -739,7 +739,7 @@ class _CameraSessionScreenState extends State<CameraSessionScreen>
       _logger?.logAppError({'source': 'detector', 'message': message});
       setState(() {
         _inferenceError =
-            'The detection model failed on a camera picture; insects may be '
+            'The detection model failed on a camera picture; animals may be '
             'missed. If this keeps coming back, choose another model or tap '
             'Report. Details: $message';
         _errorBannerDismissed = false;

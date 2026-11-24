@@ -1174,7 +1174,7 @@ join or sort.
 - **`post_start`:** `model`, `model_name`, `confidence`, `iou`, `use_gpu`, `accelerator` and
   `cpu_16bit` (the engine that really ran, as in the session start record; newer sessions only),
   `photos_total`, `photos_pending`, `app_version`; `reanalyzed_all: true` when **Re-analyze photos already
-  done** forced a full rerun. When small-insect tiling (SAHI) was on, a `sahi` map records the
+  done** forced a full rerun. When tiling for small animals (SAHI) was on, a `sahi` map records the
   tiling settings (below). No `sahi` key = a plain single-pass run.
 - **`post_detection`:** `jpeg` (filename in `roi_frames/`, joinable exactly as in §5),
   `captured_at_ms` (parsed from the filename), `infer_ms`, and `boxes`: each with `class_name`,
