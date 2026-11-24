@@ -28,6 +28,10 @@
 // Round 395 (owner): the user sets each clip's start ([planImport] setMs),
 // not one shift for all: a shift computed on one clip moved clips whose
 // times came from elsewhere into the future.
+//
+// Round 403 (scale test): [clipFileNames] stays linear for many files of one
+// name, and [freeSessionDir] gives the import screen the name the session
+// will really get.
 
 import 'dart:async';
 import 'dart:convert';
@@ -92,16 +96,25 @@ List<ClipStart> planImport(List<ImportClip> clips, {Map<int, int> setMs = const 
 
 /// The name each clip gets in `videos/`, by clip index, given in [plan]
 /// order ([safeClipName], and `_2` when two picks share a name). The import
-/// screen shows it when it differs from the picked name.
+/// screen shows it when it differs from the picked name, on every rebuild.
 Map<int, String> clipFileNames(List<ClipStart> plan) {
   final names = <int, String>{};
+  final used = <String>{};
+  // Next number to try per name: names are only ever added, so every number
+  // below it is still taken. Without it, n picks of one name (copied from
+  // several folders) cost about n * n * n / 2 steps: 13 s for 2,000.
+  final next = <String, int>{};
   for (final c in plan) {
     final base = safeClipName(c.name);
     final dot = base.lastIndexOf('.');
     var target = base;
-    for (var k = 2; names.containsValue(target); k++) {
+    var k = next[base] ?? 2;
+    while (used.contains(target)) {
       target = dot > 0 ? '${base.substring(0, dot)}_$k${base.substring(dot)}' : '${base}_$k';
+      k++;
     }
+    next[base] = k;
+    used.add(target);
     names[c.index] = target;
   }
   return names;
@@ -181,8 +194,20 @@ String defaultImportName(DateTime t) {
   return 'video_${t.year}${two(t.month)}${two(t.day)}';
 }
 
-/// Creates the session under [sessionsDir] (a numeric suffix is added when
-/// the name is taken, as for recordings), moves or copies every clip into
+/// The folder a session called [name] gets under [sessionsDir]: the name
+/// made safe ([sanitizeSessionName], `video` when nothing is left), and
+/// `_2`, `_3`... when it is taken, as for recordings.
+Directory freeSessionDir(Directory sessionsDir, String name) {
+  final safe = sanitizeSessionName(name).isEmpty ? 'video' : sanitizeSessionName(name);
+  var dir = Directory('${sessionsDir.path}/$safe');
+  for (var i = 2; dir.existsSync(); i++) {
+    dir = Directory('${sessionsDir.path}/${safe}_$i');
+  }
+  return dir;
+}
+
+/// Creates the session under [sessionsDir] ([freeSessionDir]: a numeric
+/// suffix when the name is taken), moves or copies every clip into
 /// `videos/` and writes session.jsonl. [startExtras] (device, app version)
 /// go into the start record. A fragmented clip is rewritten by [remux]
 /// instead (default: the native one), reporting its share done through
@@ -200,11 +225,7 @@ Future<Directory> importVideos({
   final plan = planImport(clips, setMs: setMs);
   final fileNames = clipFileNames(plan);
 
-  final safe = sanitizeSessionName(sessionName).isEmpty ? 'video' : sanitizeSessionName(sessionName);
-  var dir = Directory('${sessionsDir.path}/$safe');
-  for (var i = 2; dir.existsSync(); i++) {
-    dir = Directory('${sessionsDir.path}/${safe}_$i');
-  }
+  final dir = freeSessionDir(sessionsDir, sessionName);
   final videos = Directory('${dir.path}/videos')..createSync(recursive: true);
   // Removed as the last step: a folder that still has it was cut off.
   final unfinished = File('${dir.path}/$kImportUnfinishedMarker')..createSync();

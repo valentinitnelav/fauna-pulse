@@ -26,6 +26,11 @@
 // Round 395 (owner): names with a two-digit year (260612120338, as some
 // camera traps write them) are read too. The import uses Android's file
 // chooser, because the photo picker hands over only a number as name.
+//
+// Round 403 (scale test): the explanation that is the same for every clip of
+// one kind ([VideoStartGuess.why]) moved out of the per-clip note: the import
+// screen shows it once above the list, with the number of clips, instead of
+// repeating it on hundreds of rows.
 
 /// A clip start time and where it came from.
 class VideoStartGuess {
@@ -43,7 +48,12 @@ class VideoStartGuess {
   /// file name and the stored time gave (round 306).
   final String note;
 
-  const VideoStartGuess(this.epochMs, this.source, {this.weak = false, this.note = ''});
+  /// Why this kind of guess may be off, the same text for every clip of the
+  /// kind (round 403: shown once above the clip list); empty when nothing
+  /// needs saying.
+  final String why;
+
+  const VideoStartGuess(this.epochMs, this.source, {this.weak = false, this.note = '', this.why = ''});
 }
 
 /// Two sources further apart than this are reported as a disagreement
@@ -110,14 +120,17 @@ VideoStartGuess guessClipStart({
     if (fromStored != null && (fromStored - ms).abs() > kStartSourcesAgreeMs) {
       // Time zones differ by at most 14 h; a larger gap is usually an edit.
       final why = (fromStored - ms).abs() <= 14 * 3600 * 1000
-          ? 'Check the time (another time zone?).'
-          : 'An edited video (for example a trimmed one) stores when it was edited. Check the time.';
+          ? 'The file name and the time stored in the video are a few hours apart (another time zone?). The '
+                'time from the file name is shown.'
+          : 'The time stored in the video is far from the file name. An edited video (for example a trimmed one) '
+                'stores when it was edited, so the time from the file name is shown.';
       return VideoStartGuess(
         ms,
         'file_name',
         weak: true,
         note: 'From the file name: ${_stamp(ms)}. The time stored in the video gives ${_stamp(fromStored)}, '
-            '${_gap(fromStored - ms)} apart. $why',
+            '${_gap(fromStored - ms)} apart.',
+        why: why,
       );
     }
     final agrees = fromStored == null ? '' : ' The time stored in the video agrees.';
@@ -128,8 +141,9 @@ VideoStartGuess guessClipStart({
       fromStored,
       'metadata',
       note: '${_nameGave(fileName, fromName)}. From the time stored in the video (${_stamp(storedMs!)}) minus '
-          'the clip length. Phone cameras store when filming stopped; an edited video (for example a trimmed '
-          'one) stores when it was edited.',
+          'the clip length.',
+      why: 'The start is the time stored in the video minus the clip length, because phone cameras store when '
+          'filming stopped. An edited video (for example a trimmed one) stores when it was edited instead.',
     );
   }
   if (fromName != null) {
@@ -137,16 +151,17 @@ VideoStartGuess guessClipStart({
       fromName.time.millisecondsSinceEpoch,
       'file_name_date',
       weak: true,
-      note: 'Only the day is read from the file name (messengers such as WhatsApp keep the day the video was sent) '
-          'and the video stores no time, so noon is shown. Please set the time it was filmed.',
+      note: 'Only the day is read from the file name; the video stores no time.',
+      why: 'Only the day is in the file name (messengers such as WhatsApp keep the day a video was sent) and the '
+          'video stores no time, so noon is shown.',
     );
   }
   return VideoStartGuess(
     (fileModifiedMs ?? (now ?? DateTime.now()).millisecondsSinceEpoch) - length,
     'file_time',
     weak: true,
-    note: '${_nameGave(fileName, null)}; the video stores no time either, so this is when the file was '
-        'copied into the app. Please set the time it was filmed.',
+    note: '${_nameGave(fileName, null)}; the video stores no time either.',
+    why: 'Neither the file name nor the video holds a time, so the time the file was copied into the app is shown.',
   );
 }
 

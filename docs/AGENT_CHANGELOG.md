@@ -10584,3 +10584,6 @@ Owner asked to fix the open point of round 400 (single saved-setting reads that 
 ## Round 402 (2026-11-24): scale test with many video clips per session
 Asked (hand-off of round 397): find where FaunaPulse breaks or slows with 120 to 2,000 clips per session, on the laptop and the Xiaomi 11T Pro. Open: the owner decides on each finding (import screen, waits, clip list, time left, file names, bulk folder import).
 
+## Round 403 (2026-11-24): Import videos screen for many clips
+Asked (owner, after the scale test of round 402): fix findings 1, 2, 5 and 6 on the Import videos screen, with a fixed Import button and one note in place of notes repeated per clip. Open: the time left (round 404) and the clip list (round 405).
+

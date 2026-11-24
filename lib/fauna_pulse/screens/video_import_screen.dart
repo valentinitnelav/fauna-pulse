@@ -33,6 +33,13 @@
 // other or starts them all at one time (one shift for all had moved clips
 // whose times came from elsewhere into the future). The suggested session
 // name is the import day.
+//
+// Round 403 (scale test with 500 clips, owner's choice of layout): the Import
+// button sits in a bar fixed at the bottom (it was after every clip row, 55
+// screens down); a note that is the same for many clips is said once above
+// the list with their number, and each row keeps a short line; reading the
+// picked clips shows a count (37 s for 500 on the Xiaomi 11T Pro); the
+// suggested name is a free one, and a taken name says what it becomes.
 
 import 'dart:io';
 import 'dart:math';
@@ -47,6 +54,7 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart' show VideoFrameSource, V
 import '../logging/app_error_hooks.dart';
 import '../logging/device_storage.dart';
 import '../logging/past_sessions.dart' show sessionsRoot;
+import '../logging/session_rename.dart' show sanitizeSessionName;
 import '../postprocess/video_detector.dart' show VideoDetector;
 import '../postprocess/video_import.dart';
 import '../postprocess/video_start_time.dart';
@@ -211,6 +219,9 @@ class VideoImportScreen extends StatefulWidget {
 
 class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindingObserver {
   bool _loading = true;
+
+  /// Picked files read so far, for the count while loading.
+  int _read = 0;
   List<ImportClip> _clips = const [];
 
   /// Files left out, with the reason in plain language.
@@ -291,6 +302,10 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
     final clips = <ImportClip>[];
     final rejected = <(String, String)>[];
     for (final f in widget.files) {
+      final read = clips.length + rejected.length;
+      // Not before the first file: that part runs inside initState, where
+      // setState is not allowed.
+      if (read > 0 && mounted) setState(() => _read = read);
       VideoInfo info;
       try {
         info = await infoFn(f.path);
@@ -332,12 +347,17 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
       _rejected = rejected;
       _sessionsDir = sessionsDir;
       _freeBytes = free;
-      if (clips.isNotEmpty) _name.text = defaultImportName(DateTime.now());
+      // A free name, so the session is not saved as video_..._2 without a word.
+      if (clips.isNotEmpty) _name.text = _savedName(defaultImportName(DateTime.now()));
       _loading = false;
     });
   }
 
   List<ClipStart> get _plan => planImport(_clips, setMs: _setMs);
+
+  /// The folder name the session gets for [typed] ([freeSessionDir]).
+  String _savedName(String typed) =>
+      _sessionsDir == null ? typed : freeSessionDir(_sessionsDir!, typed).path.split('/').last;
 
   /// Bytes needed on top of what the picker's copies already use.
   int get _neededBytes => _clips.map((c) => c.sizeBytes).fold(0, max) + kImportSpareBytes;
@@ -511,11 +531,91 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
         // navigation bar and can never be scrolled into view.
         body: SafeArea(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? _reading()
               : ListView(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
                   children: _result != null ? _finished() : _form(),
                 ),
+        ),
+        bottomNavigationBar: _loading || _result != null || _clips.isEmpty ? null : _bar(),
+      ),
+    );
+  }
+
+  /// Round 403: a count while the picked clips are read (75 ms each on the
+  /// Xiaomi 11T Pro, so 37 s for 500 with only a spinner before).
+  Widget _reading() {
+    final n = widget.files.length;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            LinearProgressIndicator(value: n == 0 ? null : _read / n, minHeight: 6),
+            const SizedBox(height: 12),
+            Text(
+              n == 1 ? 'Reading the video…' : 'Reading clip ${min(_read + 1, n)} of $n…',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The bar fixed at the bottom (round 403): the Import button, or the copy's
+  /// progress, and what stops the import, so they stay in view however long
+  /// the clip list is.
+  Widget _bar() {
+    final n = _clips.length;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Not after a failed import that lost the clips: the error line says
+            // to pick them again, and this line would say to come back here.
+            if (!_enoughSpace && !_mustRepick)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Not enough free storage: ${_sameUnit(_freeBytes!)} free, about '
+                  '${_sameUnit(_neededBytes)} needed during the import. Free some space in another app (for example '
+                  'Files), then come back to this screen. If you delete sessions in FaunaPulse instead, pick the '
+                  'videos again afterwards.',
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 12.5),
+                ),
+              ),
+            if (_error != null)
+              // A rewrite failure carries a command and can be long: it scrolls
+              // rather than push the button off a small screen.
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.35),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  // Selectable: the message can carry a command to copy (round 252).
+                  child: SelectableText(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 12.5)),
+                ),
+              ),
+            if (_importing) ...[
+              LinearProgressIndicator(value: (_done + (_rewrite ?? 0)) / n, minHeight: 6),
+              const SizedBox(height: 8),
+              Text(
+                _rewrite == null
+                    ? 'Copying clip ${min(_done + 1, n)} of $n…'
+                    : 'Rewriting clip ${min(_done + 1, n)} of $n as a plain MP4… ${(_rewrite! * 100).round()} %',
+                textAlign: TextAlign.center,
+              ),
+            ] else
+              FilledButton.icon(
+                onPressed: _enoughSpace && !_mustRepick ? _import : null,
+                icon: const Icon(Icons.download_done),
+                label: Text('Import $n ${n == 1 ? 'clip' : 'clips'}'),
+              ),
+          ],
         ),
       ),
     );
@@ -552,15 +652,26 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
         style: TextStyle(color: Colors.white70, fontSize: 13),
       ),
       const SizedBox(height: 16),
-      TextField(
-        controller: _name,
-        enabled: !_importing,
-        decoration: const InputDecoration(
-          labelText: 'Session name',
-          border: OutlineInputBorder(),
-          helperText: 'Letters, digits, spaces, - and _ (anything else becomes _).',
-          helperMaxLines: 2,
-        ),
+      ValueListenableBuilder<TextEditingValue>(
+        valueListenable: _name,
+        builder: (_, value, _) {
+          final safe = sanitizeSessionName(value.text).isEmpty ? 'video' : sanitizeSessionName(value.text);
+          // Not during the import: its own new folder would count as taken
+          // (seen on the phone: "saved as ..._4" while ..._3 was being filled).
+          final saved = _importing ? safe : _savedName(value.text);
+          return TextField(
+            controller: _name,
+            enabled: !_importing,
+            decoration: InputDecoration(
+              labelText: 'Session name',
+              border: const OutlineInputBorder(),
+              helperText: saved == safe
+                  ? 'Letters, digits, spaces, - and _ (anything else becomes _).'
+                  : 'A session called "$safe" exists, so this one is saved as "$saved".',
+              helperMaxLines: 3,
+            ),
+          );
+        },
       ),
       const SizedBox(height: 16),
       const HelpLabel(
@@ -598,51 +709,81 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
         style: const TextStyle(fontWeight: FontWeight.bold),
       ),
       const SizedBox(height: 4),
+      ..._sharedNotes(plan, names),
+      // Read before the import (round 277, owner); above the rows since the
+      // button sits in the bottom bar (round 403).
+      const _Note(
+        'The videos are copied into FaunaPulse, so they take storage twice: the originals stay '
+        'in your Gallery or folder. Nothing leaves the phone. If storage runs short, you can '
+        'delete the originals after the import; the session can copy its videos back to the '
+        'Gallery later (open the session, Video tab, "Copy videos").',
+        icon: Icons.sd_storage_outlined,
+      ),
+      const SizedBox(height: 4),
       for (final c in plan) _clipRow(c, names[c.index]!),
       if (_rejected.isNotEmpty) ...[
         const SizedBox(height: 12),
         ..._rejectedList(),
       ],
-      const SizedBox(height: 16),
-      // Not after a failed import that lost the clips: the error line says
-      // to pick them again, and this line would say to come back here.
-      if (!_enoughSpace && !_mustRepick)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text(
-            'Not enough free storage: ${_sameUnit(_freeBytes!)} free, about '
-            '${_sameUnit(_neededBytes)} needed during the import. Free some space in another app (for example Files), '
-            'then come back to this screen. If you delete sessions in FaunaPulse instead, pick the '
-            'videos again afterwards.',
-            style: const TextStyle(color: Colors.redAccent, fontSize: 12.5),
+    ];
+  }
+
+  /// Round 403 (scale test): what is the same for many clips is said once
+  /// here, with their number, instead of on every row (a 5-line note stood
+  /// 250 times in a list of 500 clips). The rows keep the facts of each clip.
+  List<Widget> _sharedNotes(List<ClipStart> plan, Map<int, String> names) {
+    final total = plan.length;
+    // In the order first met; a start set by hand needs no explanation.
+    final why = <String, ({int n, bool weak})>{};
+    for (final c in plan) {
+      if (c.source == 'user' || c.guess.why.isEmpty) continue;
+      why[c.guess.why] = (n: (why[c.guess.why]?.n ?? 0) + 1, weak: c.guess.weak);
+    }
+    final renamed = plan.where((c) => names[c.index] != c.name).length;
+    final fragmented = _clips.where((c) => c.fragmented).length;
+    String say(int n, String text) {
+      if (total == 1) return text;
+      final which = n == total ? 'All $total clips' : '$n of $total clips';
+      return '$which: ${text[0].toLowerCase()}${text.substring(1)}';
+    }
+
+    return [
+      // First: these files will not be in the session at all.
+      if (_rejected.isNotEmpty)
+        _Note(
+          '${_rejected.length} picked ${_rejected.length == 1 ? 'file is' : 'files are'} left out (listed at the '
+          'end, with the reason).',
+          warn: true,
+        ),
+      for (final MapEntry(key: text, value: (:n, :weak)) in why.entries)
+        _Note(
+          say(
+            n,
+            !weak
+                ? text
+                : n == 1
+                ? '$text Check the start time.'
+                : '$text Check the start times (Set all clips… sets them all at once).',
+          ),
+          warn: weak,
+        ),
+      if (renamed > 0)
+        _Note(
+          say(
+            renamed,
+            'Saved under a new name. Spaces and signs become _ so that other programs and Windows computers can '
+            'open the file, and a name picked twice gets _2.',
           ),
         ),
-      if (_error != null)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          // Selectable: the message can carry a command to copy (round 252).
-          child: SelectableText(_error!, style: const TextStyle(color: Colors.redAccent, fontSize: 12.5)),
+      if (fragmented > 0)
+        _Note(
+          say(
+            fragmented,
+            'A fragmented MP4 (as some download tools save videos). The video player cannot jump in such a file, '
+            'so the app writes it once more as a plain MP4 while importing: same pictures and sound, nothing '
+            're-compressed.',
+          ),
         ),
-      if (_importing) ...[
-        LinearProgressIndicator(value: (_done + (_rewrite ?? 0)) / plan.length, minHeight: 6),
-        const SizedBox(height: 8),
-        Text(
-          _rewrite == null
-              ? 'Copying clip ${min(_done + 1, plan.length)} of ${plan.length}…'
-              : 'Rewriting clip ${min(_done + 1, plan.length)} of ${plan.length} as a plain MP4… '
-                    '${(_rewrite! * 100).round()} %',
-          textAlign: TextAlign.center,
-        ),
-      ] else ...[
-        // Read before the import (round 277, owner).
-        const _StorageNote(),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: _enoughSpace && !_mustRepick ? _import : null,
-          icon: const Icon(Icons.download_done),
-          label: Text('Import ${plan.length} ${plan.length == 1 ? 'clip' : 'clips'}'),
-        ),
-      ],
     ];
   }
 
@@ -678,24 +819,12 @@ class _VideoImportScreenState extends State<VideoImportScreen> with WidgetsBindi
                   '${_dateTime(c.startMs)} · ${_length(c.durationMs)}$flag',
                   style: flag.isEmpty ? small : small.copyWith(color: Colors.amber),
                 ),
-                Text(
-                  set ? 'Set by you (before: ${_dateTime(c.guess.epochMs)}).' : c.guess.note,
-                  style: c.guess.weak && !set ? small.copyWith(color: Colors.amber) : small,
-                ),
-                // Round 395 (owner): a changed name is said, with the reason.
-                if (savedAs != c.name)
-                  Text(
-                    'Saved as "$savedAs": spaces and signs become _ so that other programs and Windows '
-                    'computers can open it.',
-                    style: small,
-                  ),
+                // The reasons are said once above the list (round 403).
+                Text(set ? 'Set by you (before: ${_dateTime(c.guess.epochMs)}).' : c.guess.note, style: small),
+                // Round 395 (owner): a changed name is said.
+                if (savedAs != c.name) Text('Saved as "$savedAs".', style: small),
                 if (_clips[c.index].fragmented)
-                  const Text(
-                    'Fragmented MP4 (as some download tools save videos): the video player cannot jump in it, so the '
-                    'app writes it once more as a plain MP4 while importing. Same pictures and sound, '
-                    'nothing re-compressed.',
-                    style: small,
-                  ),
+                  const Text('Fragmented MP4: written once more as a plain MP4 while importing.', style: small),
               ],
             ),
           ),
@@ -803,33 +932,31 @@ class _SetAllDialog extends StatelessWidget {
   }
 }
 
-/// Round 277 (owner): imported videos are copies, so the user learns before
-/// importing that they take storage twice and how to get it back.
-class _StorageNote extends StatelessWidget {
-  const _StorageNote();
+/// A note above the clip list: an icon and a short text; [warn] for what the
+/// user should check (amber). Round 277 (owner) began it for the note that
+/// imported videos take storage twice.
+class _Note extends StatelessWidget {
+  final String text;
+  final bool warn;
+  final IconData? icon;
+  const _Note(this.text, {this.warn = false, this.icon});
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-    decoration: BoxDecoration(border: Border.all(color: Colors.white24), borderRadius: BorderRadius.circular(8)),
-    child: const Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: EdgeInsets.only(top: 1),
-          child: Icon(Icons.sd_storage_outlined, size: 18, color: Colors.white70),
-        ),
-        SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            'The videos are copied into FaunaPulse, so they take storage twice: the originals stay '
-            'in your Gallery or folder. Nothing leaves the phone. If storage runs short, you can '
-            'delete the originals after the import; the session can copy its videos back to the '
-            'Gallery later (open the session, Video tab, "Copy videos").',
-            style: TextStyle(fontSize: 13, color: Colors.white70),
+  Widget build(BuildContext context) {
+    final color = warn ? Colors.amber : Colors.white70;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(icon ?? (warn ? Icons.warning_amber : Icons.info_outline), size: 18, color: color),
           ),
-        ),
-      ],
-    ),
-  );
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: TextStyle(fontSize: 13, color: color))),
+        ],
+      ),
+    );
+  }
 }

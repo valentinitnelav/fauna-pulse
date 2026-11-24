@@ -228,11 +228,11 @@ void main() {
       });
     }
 
-    // clipFileNames looks for a free name with names.containsValue (a walk over every name so far)
-    // and tries _2, _3, ... one by one, so n clips of one name cost about n * n * n / 2 steps:
-    // 13 s for 2,000 on the laptop (so about 0.2 s for 500). The import screen runs it on every rebuild,
+    // Before round 403 clipFileNames looked for a free name with names.containsValue (a walk over
+    // every name so far) and tried _2, _3, ... one by one, so n clips of one name cost about
+    // n * n * n / 2 steps: 13 s for 2,000 on the laptop. The import screen runs it on every rebuild,
     // also on each progress step of the copy.
-    test('2000 clips that share one name (copied from several folders): file names stay quick', skip: 'BUG: clipFileNames is cubic for repeated names (13 s for 2,000)', () {
+    test('2000 clips that share one name (copied from several folders): file names stay quick', () {
       final cache = Directory('${tmp.path}/cache');
       final clips = [
         for (var i = 0; i < 2000; i++)
@@ -355,19 +355,26 @@ void main() {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 
     for (final n in [120, if (_all) ...[500, 2000]]) {
-      testWidgets('Import videos with $n clips: opens, fits 360 px, the Import button is reachable', (tester) async {
+      testWidgets('Import videos with $n clips: opens, fits 360 px, the Import button stays in view', (tester) async {
         simulateBottomSystemBar(tester);
         final cache = Directory('${tmp.path}/cache');
         final seconds = n == 120 ? 180 : 20;
         final clips = tester.runAsync(() async => _importClips(cache, n, seconds));
         final picked = [for (final c in (await clips)!) PickedVideo(c.path, c.name, c.sizeBytes)];
-        Future<VideoInfo> info(String path) async => VideoInfo(
-          durationMs: seconds * 1000,
-          width: 1920,
-          height: 1080,
-          mime: 'video/avc',
-          creationEpochMs: _clipStart(int.parse(File(path).parent.path.split('/').last), seconds).millisecondsSinceEpoch + seconds * 1000,
-        );
+        // As _importClips: every other clip stores a trim day.
+        Future<VideoInfo> info(String path) async {
+          final i = int.parse(File(path).parent.path.split('/').last);
+          return VideoInfo(
+            durationMs: seconds * 1000,
+            width: 1920,
+            height: 1080,
+            mime: 'video/avc',
+            creationEpochMs: i.isEven
+                ? _clipStart(i, seconds).millisecondsSinceEpoch + seconds * 1000
+                : DateTime(2026, 11, 20, 9).millisecondsSinceEpoch,
+          );
+        }
+
         final open = Stopwatch()..start();
         await tester.pumpWidget(
           MaterialApp(home: VideoImportScreen(files: picked, infoFn: info, sessionsDir: Directory('${tmp.path}/sessions'))),
@@ -379,6 +386,13 @@ void main() {
         final openMs = open.elapsedMilliseconds;
         expect(find.text('Set all clips…'), findsOneWidget);
         expect(tester.takeException(), isNull);
+        // Round 403: the button sits in the bar fixed at the bottom, in view at once.
+        final button = find.text('Import $n clips');
+        expectAboveBottomInset(tester, button);
+        // The reason for the uncertain times is said once, with the count; the rows keep their facts.
+        final reason = '${n ~/ 2} of $n clips: the time stored in the video is far from the file name';
+        expect(find.textContaining(reason), findsOneWidget);
+        expect(find.textContaining('An edited video (for example a trimmed one)'), findsOneWidget);
 
         // One rebuild, as each copied clip's progress step causes during the import.
         final rebuild = Stopwatch()..start();
@@ -386,15 +400,20 @@ void main() {
         await tester.pump();
         final rebuildMs = rebuild.elapsedMilliseconds;
 
+        // Down to the last clip: the button is still in view.
         final list = find.byType(Scrollable).first;
+        final last = find.text(_camName(_clipStart(n - 1, seconds)));
         final scroll = Stopwatch()..start();
-        await tester.scrollUntilVisible(find.text('Import $n clips'), 2000, scrollable: list, maxScrolls: 2000);
+        await tester.scrollUntilVisible(last, 2000, scrollable: list, maxScrolls: 2000);
         await tester.pump();
         final scrollMs = scroll.elapsedMilliseconds;
-        expectAboveBottomInset(tester, find.text('Import $n clips'));
+        expectAboveBottomInset(tester, last);
+        expectAboveBottomInset(tester, button);
+        // Among the rows built here, none repeats the reason.
+        expect(find.textContaining('An edited video (for example a trimmed one)'), findsNothing);
         final height = tester.state<ScrollableState>(list).position.maxScrollExtent;
         _say(
-          'Import videos, $n clips: open $openMs ms, one rebuild $rebuildMs ms, scroll to Import $scrollMs ms, '
+          'Import videos, $n clips: open $openMs ms, one rebuild $rebuildMs ms, scroll to the last clip $scrollMs ms, '
           'list ${(height / 800).toStringAsFixed(0)} phone screens long (800 px each)',
         );
         expect(tester.takeException(), isNull);

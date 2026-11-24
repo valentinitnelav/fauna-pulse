@@ -112,8 +112,10 @@ void main() {
       expect(
         g.note,
         'From the file name: 2026-09-24 15:59:54. The time stored in the video gives 2026-09-24 17:59:54, '
-        '2.0 h apart. Check the time (another time zone?).',
+        '2.0 h apart.',
       );
+      // Round 403: the reason, the same for every such clip, is said once above the list.
+      expect(g.why, contains('another time zone?'));
     });
 
     test('an edited video: the name wins, the note says why the stored time is off (round 395)', () {
@@ -129,13 +131,15 @@ void main() {
       expect(
         g.note,
         'From the file name: 2026-06-12 12:03:38. The time stored in the video gives 2026-11-10 12:25:46, '
-        '151 days apart. An edited video (for example a trimmed one) stores when it was edited. Check the time.',
+        '151 days apart.',
       );
+      expect(g.why, contains('An edited video (for example a trimmed one) stores when it was edited'));
     });
 
-    test('the note says what the file name and the stored time gave (round 306)', () {
-      String note(String name, {int? storedMs}) =>
-          guessClipStart(fileName: name, storedMs: storedMs, durationMs: 30000, fileModifiedMs: 9, now: now).note;
+    test('the note says what the file name and the stored time gave (round 306), the reason apart (round 403)', () {
+      VideoStartGuess guess(String name, {int? storedMs}) =>
+          guessClipStart(fileName: name, storedMs: storedMs, durationMs: 30000, fileModifiedMs: 9, now: now);
+      String note(String name, {int? storedMs}) => guess(name, storedMs: storedMs).note;
       final stop = DateTime(2026, 9, 24, 16, 0, 24).millisecondsSinceEpoch;
       expect(note('VID_20260924_155954.mp4'), 'From the file name: 2026-09-24 15:59:54.');
       expect(
@@ -145,9 +149,9 @@ void main() {
       expect(
         note('IMG_1234.mp4', storedMs: stop),
         'The file name holds no date. From the time stored in the video (2026-09-24 16:00:24) minus the clip '
-        'length. Phone cameras store when filming stopped; an edited video (for example a trimmed one) stores '
-        'when it was edited.',
+        'length.',
       );
+      expect(guess('IMG_1234.mp4', storedMs: stop).why, contains('phone cameras store when filming stopped'));
       expect(
         note('VID-20260924-WA0005.mp4', storedMs: stop),
         startsWith('Only the day is read from the file name. From'),
@@ -156,15 +160,12 @@ void main() {
         note('Screen Recording 2026-09-24 at 11.59.54 PM.mov', storedMs: stop),
         startsWith('Only the day is read from the file name. From'),
       );
-      expect(
-        note('VID-20260924-WA0005.mp4'),
-        allOf(startsWith('Only the day is read from the file name ('), contains('noon')),
-      );
-      expect(
-        note('clip.mp4'),
-        'The file name holds no date; the video stores no time either, so this is when the file was copied '
-        'into the app. Please set the time it was filmed.',
-      );
+      expect(note('VID-20260924-WA0005.mp4'), 'Only the day is read from the file name; the video stores no time.');
+      expect(guess('VID-20260924-WA0005.mp4').why, allOf(contains('WhatsApp'), contains('noon')));
+      expect(note('clip.mp4'), 'The file name holds no date; the video stores no time either.');
+      expect(guess('clip.mp4').why, contains('the time the file was copied into the app is shown'));
+      // Well-timed clips need no reason.
+      expect(guess('VID_20260924_155954.mp4', storedMs: stop).why, isEmpty);
       // A date the checks threw out (a camera clock set wrong) is not "no date".
       expect(
         note('VID_20270101_120000.mp4'),

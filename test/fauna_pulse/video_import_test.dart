@@ -209,4 +209,25 @@ void main() {
     final plan = planImport([clip('my clip (1).mp4', dir: 'a'), clip('my clip (1).mp4', dir: 'b'), clip('ok.mp4')]);
     expect(clipFileNames(plan).values.toSet(), {'my_clip__1_.mp4', 'my_clip__1__2.mp4', 'ok.mp4'});
   });
+
+  test('saved names: a picked name that looks like a numbered one is never given twice (round 403)', () {
+    // In plan order a.mp4 three times, then a_2.mp4, whose own name the second a.mp4 took.
+    final plan = planImport([
+      clip('a.mp4', dir: 'x'),
+      clip('a.mp4', dir: 'y'),
+      clip('a_2.mp4'),
+      clip('a.mp4', dir: 'z'),
+    ]);
+    expect(clipFileNames(plan).values.toSet(), {'a.mp4', 'a_2.mp4', 'a_3.mp4', 'a_2_2.mp4'});
+  });
+
+  test('the session folder: a taken name gets the next free number, as the import uses it (round 403)', () {
+    final sessions = Directory('${cache.path}/sessions');
+    expect(freeSessionDir(sessions, 'trip').path, '${sessions.path}/trip');
+    Directory('${sessions.path}/trip').createSync(recursive: true);
+    Directory('${sessions.path}/trip_2').createSync();
+    expect(freeSessionDir(sessions, ' trip ').path, '${sessions.path}/trip_3');
+    expect(freeSessionDir(sessions, 'my trip!').path, '${sessions.path}/my trip_');
+    expect(freeSessionDir(sessions, '').path, '${sessions.path}/video');
+  });
 }

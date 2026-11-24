@@ -367,19 +367,23 @@ void main() {
       _host(VideoImportScreen(files: files, infoFn: info, sessionsDir: sessions), (r) => popped = r),
     );
     await _open(tester);
-    await _pumpUntil(tester, find.text('Change…'));
+    // Round 403: the button sits in the bar fixed at the bottom, in view without scrolling.
+    final button = find.text('Import 3 clips');
+    await _pumpUntil(tester, button);
     expect(tester.takeException(), isNull);
+    expectAboveBottomInset(tester, button);
     // Round 397 (issue #35): one session per camera position, said before the import.
     expect(find.textContaining('One session per camera position'), findsOneWidget);
     // The list builds lazily: scroll to what lies below the fold.
     final list = find.byType(Scrollable).first;
+    // Said above the clip rows too, as the list of left-out files is at the end.
+    final leftOut = find.text('2 picked files are left out (listed at the end, with the reason).');
+    await tester.scrollUntilVisible(leftOut, 100, scrollable: list);
     await tester.scrollUntilVisible(find.text('Left out (2):'), 200, scrollable: list);
-    final button = find.text('Import 3 clips');
-    await tester.scrollUntilVisible(button, 200, scrollable: list);
-    await tester.pump(); // lay out after the final ensureVisible jump
+    expect(find.text('Change…'), findsWidgets);
     expectAboveBottomInset(tester, button);
     // Round 277 (owner): said before the import, that the videos are copies.
-    expect(find.textContaining('take storage twice'), findsOneWidget);
+    await tester.scrollUntilVisible(find.textContaining('take storage twice'), -200, scrollable: list);
 
     await tester.tap(button);
     await _pumpUntil(tester, find.text('Find animals in these videos'));
@@ -411,30 +415,118 @@ void main() {
   testWidgets('import screen says where the start came from before any change (round 306)', (tester) async {
     final tmp = _tempDir('video_import_source');
     final stop = DateTime(2026, 9, 24, 16, 0, 24).millisecondsSinceEpoch;
-    for (final (name, storedMs, note, unsure) in [
-      ('VID_20260924_155954.mp4', null, 'From the file name: 2026-09-24 15:59:54.', false),
+    // The row's own facts, and (round 403) the reason in a note above the list.
+    for (final (name, storedMs, note, why, unsure) in [
+      ('VID_20260924_155954.mp4', null, 'From the file name: 2026-09-24 15:59:54.', null, false),
       (
         'IMG_1234.mp4',
         stop,
         'The file name holds no date. From the time stored in the video (2026-09-24 16:00:24) minus the clip '
-            'length. Phone cameras store when filming stopped; an edited video (for example a trimmed one) '
-            'stores when it was edited.',
+            'length.',
+        'The start is the time stored in the video minus the clip length, because phone cameras store when '
+            'filming stopped. An edited video (for example a trimmed one) stores when it was edited instead.',
         false,
       ),
       (
         'clip.mp4',
         null,
-        'The file name holds no date; the video stores no time either, so this is when the file was copied '
-            'into the app. Please set the time it was filmed.',
+        'The file name holds no date; the video stores no time either.',
+        'Neither the file name nor the video holds a time, so the time the file was copied into the app is '
+            'shown. Check the start time.',
         true,
       ),
     ]) {
       await tester.pumpWidget(importScreen(tmp, name, storedMs: storedMs));
-      await _pumpUntil(tester, find.text('Change…'));
-      final shown = tester.widget<Text>(find.text(note));
-      expect(shown.style?.color, unsure ? Colors.amber : Colors.white54, reason: name);
+      await _pumpUntil(tester, find.text('Import 1 clip'));
+      await tester.scrollUntilVisible(find.text(note), 200, scrollable: find.byType(Scrollable).first);
+      expect(tester.widget<Text>(find.text(note)).style?.color, Colors.white54, reason: name);
+      if (why != null) {
+        expect(tester.widget<Text>(find.text(why)).style?.color, unsure ? Colors.amber : Colors.white70, reason: name);
+      }
       expect(find.text('Back to the time read from the file'), findsNothing, reason: name);
     }
+  });
+
+  testWidgets('import screen counts the clips it reads (round 403)', (tester) async {
+    final tmp = _tempDir('video_import_count');
+    final files = [
+      for (final n in ['VID_20260924_155950.mp4', 'VID_20260924_155951.mp4', 'VID_20260924_155952.mp4'])
+        PickedVideo((File('${tmp.path}/$n')..writeAsStringSync('video')).path, n, 1000),
+    ];
+    // The second file waits until the test lets it go.
+    final hold = Completer<void>();
+    Future<VideoInfo> info(String path) async {
+      if (path.endsWith('1.mp4')) await hold.future;
+      return const VideoInfo(durationMs: 30000, width: 1920, height: 1080, mime: 'video/avc');
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoImportScreen(files: files, infoFn: info, sessionsDir: Directory('${tmp.path}/sessions')),
+      ),
+    );
+    await _pumpUntil(tester, find.text('Reading clip 2 of 3…'));
+    expect(tester.widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator)).value, closeTo(1 / 3, 1e-9));
+    hold.complete();
+    await _pumpUntil(tester, find.text('Import 3 clips'));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('import screen suggests a free session name and says when a typed one is taken (round 403)', (
+    tester,
+  ) async {
+    final tmp = _tempDir('video_import_free_name');
+    final today = defaultImportName(DateTime.now());
+    Directory('${tmp.path}/sessions/$today').createSync(recursive: true);
+    await tester.pumpWidget(importScreen(tmp, 'VID_20260924_155954.mp4'));
+    await _pumpUntil(tester, find.text('Import 1 clip'));
+    final field = find.byType(TextField);
+    expect(tester.widget<TextField>(field).controller!.text, '${today}_2');
+    expect(find.text('Letters, digits, spaces, - and _ (anything else becomes _).'), findsOneWidget);
+
+    await tester.enterText(field, today);
+    await tester.pump();
+    expect(find.text('A session called "$today" exists, so this one is saved as "${today}_2".'), findsOneWidget);
+    await tester.tap(find.text('Import 1 clip'));
+    await _pumpUntil(tester, find.text('Find animals in these videos'));
+    expect(find.textContaining('imported as session "${today}_2"'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('import screen: during the copy, the new folder does not count as taken (round 403, phone)', (
+    tester,
+  ) async {
+    final tmp = _tempDir('video_import_name_during_copy');
+    final today = defaultImportName(DateTime.now());
+    Directory('${tmp.path}/sessions/$today').createSync(recursive: true);
+    final files = [
+      for (var i = 0; i < 30; i++)
+        PickedVideo((File('${tmp.path}/clip_$i.mp4')..writeAsStringSync('video')).path, 'clip_$i.mp4', 1000),
+    ];
+    Future<VideoInfo> info(String path) async =>
+        const VideoInfo(durationMs: 30000, width: 1920, height: 1080, mime: 'video/avc');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: VideoImportScreen(files: files, infoFn: info, sessionsDir: Directory('${tmp.path}/sessions')),
+      ),
+    );
+    await _pumpUntil(tester, find.text('Import 30 clips'));
+    await tester.enterText(find.byType(TextField), today);
+    await tester.pump();
+    await tester.tap(find.text('Import 30 clips'));
+    var copyingSeen = false;
+    for (var i = 0; i < 500 && find.text('Find animals in these videos').evaluate().isEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(microseconds: 200)));
+      // Also the fake clock: the session log waits on a zero-length timer.
+      await tester.pump(const Duration(milliseconds: 1));
+      if (find.textContaining('Copying clip').evaluate().isNotEmpty) {
+        copyingSeen = true;
+        expect(find.textContaining('${today}_3'), findsNothing, reason: 'frame $i');
+      }
+    }
+    expect(copyingSeen, isTrue, reason: 'no frame during the copy was seen');
+    await _pumpUntil(tester, find.text('Find animals in these videos'));
+    expect(find.textContaining('imported as session "${today}_2"'), findsOneWidget);
   });
 
   Future<void> settle(WidgetTester tester) async {
@@ -512,9 +604,11 @@ void main() {
     );
     await _pumpUntil(tester, find.text('Set all clips…'));
     expect(tester.takeException(), isNull);
-    // A changed name is said, with the reason.
-    expect(find.textContaining('Saved as "b_part_2.mp4": spaces and signs become _'), findsOneWidget);
+    // A changed name is said; the reason once above the list (round 403).
+    expect(find.text('Saved as "b_part_2.mp4".'), findsOneWidget);
+    expect(find.text('Saved as "a_part_1.mp4".'), findsOneWidget);
     expect(find.textContaining('Saved as "VID_'), findsNothing);
+    expect(find.textContaining('2 of 3 clips: saved under a new name. Spaces and signs become _'), findsOneWidget);
     // Every row shows its day.
     expect(find.text('2026-09-24 15:59:54 · 30 s'), findsOneWidget);
     expect(find.text('2026-09-20 09:59:00 · 1 min 00 s'), findsOneWidget); // stored 10:00 minus 60 s

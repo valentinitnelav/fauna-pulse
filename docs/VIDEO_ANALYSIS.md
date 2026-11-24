@@ -78,13 +78,14 @@ If a video cannot be read or found, see [When a video does not work](#when-a-vid
    reads **Import other videos…** once a session has videos).
 2. Android's file chooser opens, with recent videos first. Its ☰ menu opens other folders (for
    example Download). To pick several videos, touch and hold the first one, then tap the others.
-3. The **Import videos** screen opens. It suggests a session name with today's date; change it
-   under **Session name**.
+3. The **Import videos** screen opens (with many clips it first counts them as it reads them). It
+   suggests a session name with today's date, with `_2` when a session of that name exists;
+   change it under **Session name**.
 4. Check the start of each clip under **When filming started**: track IDs per hour and the
    dashboard use it. **Change…** next to a clip sets its day, hour and minute. With several
    clips, **Set all clips…** sets them all at once (see below).
-5. Tap **Import 8 clips** (the number of clips you picked). When the copy is done, tap **Find
-   animals in these videos** to go on with step 2, or **Done**.
+5. Tap **Import 8 clips** (the number of clips you picked) at the bottom of the screen. When
+   the copy is done, tap **Find animals in these videos** to go on with step 2, or **Done**.
 
 One session holds the clips of one camera position: the same area is analyzed in every clip
 (step 2). Import clips from another spot, or filmed after the camera moved, as a new session.
@@ -100,7 +101,7 @@ camera's own start time. They go straight to step 2: their session summary opens
 <details>
 <summary>Free storage during the import, and failed copies</summary>
 
-- A note above the import button says that the videos take storage twice. The session can copy
+- A note above the clip list says that the videos take storage twice. The session can copy
   them back to the Gallery later (open the session, **Video** tab, **Copy videos to Gallery**).
 - The **Import videos** screen checks the free storage when it opens, when you come back to the
   app and again before the copy.
@@ -121,7 +122,8 @@ camera's own start time. They go straight to step 2: their session summary opens
 <summary>The start time on the Import videos screen</summary>
 
 - The line under each clip's start says what the file name and the time stored in the video
-  gave. Phone cameras store when filming stopped. A video editor stores when it saved the file,
+  gave. Why a start may be off is said once above the list, with the number of clips it
+  concerns (for example "60 of 120 clips: …"). Phone cameras store when filming stopped. A video editor stores when it saved the file,
   so an edited (for example trimmed) video shows the edit day unless its name holds the date.
 - File names with a date and time are read, also with a two-digit year
   (`…_260612120338.mp4` = 2026-06-12 12:03:38). A name with the date and time of filming is
