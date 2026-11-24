@@ -635,12 +635,14 @@ void main() {
     expect(find.textContaining('Track IDs in this clip'), findsNothing);
 
     // The second clip was not analysed.
-    await tester.scrollUntilVisible(find.text(a), -200, scrollable: scrollable);
+    // Round 405: each row starts with the clip's start (from its name here).
+    final rowA = find.text('15:59:54 · $a');
+    await tester.scrollUntilVisible(rowA, -200, scrollable: scrollable);
     await tester.drag(scrollable, const Offset(0, 300)); // to the top, clear of the tab bar
     await tester.pump();
-    await tester.tap(find.text(a));
+    await tester.tap(rowA);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('$b · not analyzed').last);
+    await tester.tap(find.text('16:05:12 · not analyzed · $b').last);
     await _pumpUntil(tester, find.textContaining('This clip was not analyzed yet'));
     expect(player.calls.where((c) => c.startsWith('create')), ['create $a', 'create $b']);
     // Round 307: the grey time bar with the marker only, and no share under it.
@@ -648,6 +650,124 @@ void main() {
     expect(find.textContaining('% of'), findsNothing);
     expect(tester.takeException(), isNull);
 
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('many clips: start in each row, only clips with track IDs, Next track ID goes on (r405)', (tester) async {
+    simulateBottomSystemBar(tester);
+    const a = 'VID_20260924_155954.mp4', b = 'VID_20260924_160512.mp4', c = 'VID_20260924_161030.mp4';
+    final dir = await _importedSession(tester, [a, b, c]);
+    // A bee from 1 to 3 s in a and c, none in b (as _writeDetections, for three clips).
+    File('${dir.path}/${VideoDetector.outputFileName}').writeAsStringSync(
+      '${[
+        _rec('video_run_start', {
+          'settings': {'model': 'm.tflite', 'confidence': 0.25, 'iou': 0.45, 'analysis_fps': 10, 'max_side_px': 1280},
+          'model_name': 'Bee model',
+        }),
+        for (final clip in [a, b, c]) ...[
+          _rec('video_clip_start', {'clip': clip, 'start_epoch_ms': 1000000, 'width': 1920, 'height': 1080}),
+          for (var t = 0; t <= 4000; t += 100)
+            _rec('raw_detections', {
+              'frame_ms': 1000000 + t,
+              'clip': clip,
+              'pts_us': t * 1000,
+              'frame': t * 30 ~/ 1000,
+              'boxes': [
+                if (clip != b && t >= 1000 && t <= 3000) [0.4, 0.4, 0.45, 0.48, 0.9, 0],
+              ],
+            }),
+          _rec('video_clip_done', {
+            'clip': clip,
+            'frame_width': 1920,
+            'frame_height': 1080,
+            'roi_px': [0, 0, 1920, 1080],
+            'class_names': ['bee'],
+          }),
+        ],
+      ].join('\n')}\n',
+    );
+    await tester.runAsync(() => VideoTracker.run(dir, const SessionConfig()));
+    final visit = VideoBoxTimeline.readSync(dir.path).clips[a]!.visits.single;
+    final entry = visit.startMs - 1000; // a track ID is entered 1 s before it starts
+
+    await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'))));
+    await _pumpUntil(tester, find.byTooltip('Play'));
+    // The clip's start first (camera names hide it), the name last.
+    expect(find.text('15:59:54 · 1 track ID · $a'), findsOneWidget);
+    expect(find.text('All clips (3)'), findsOneWidget);
+    expect(find.text('With track IDs (2)'), findsOneWidget);
+    // Scrolled into view first: at 360 px the controls sit below the first screen.
+    Future<void> tap(Finder f) async {
+      await tester.ensureVisible(f);
+      await tester.pump();
+      await tester.tap(f);
+    }
+
+    Iterable<int> listed() =>
+        tester.widget<DropdownButton<int>>(find.byType(DropdownButton<int>)).items!.map((i) => i.value!);
+    expect(listed(), [0, 1, 2]);
+
+    // Past the only track ID of a, Next track ID opens c at its track ID; Previous goes back to a.
+    await tap(find.byTooltip('Forward 5 s'));
+    await tester.pump();
+    await tap(find.byTooltip('Next track ID'));
+    await _pumpUntil(tester, find.text('16:10:30 · 1 track ID · $c'));
+    expect(player.calls.where((x) => x.startsWith('create')), ['create $a', 'create $c']);
+    expect(player.calls.last, 'seek $entry');
+    await tap(find.byTooltip('Previous track ID'));
+    await _pumpUntil(tester, find.text('15:59:54 · 1 track ID · $a'));
+    expect(player.calls.last, 'seek $entry');
+    // At the first clip, nothing comes before it.
+    await tap(find.byTooltip('Previous track ID'));
+    await tester.pump();
+    expect(player.calls.where((x) => x.startsWith('create')).last, 'create $a');
+    expect(tester.takeException(), isNull);
+
+    // Only the clips with track IDs.
+    await tap(find.text('With track IDs (2)'));
+    await tester.pump();
+    expect(listed(), [0, 2]);
+    // The clip without track IDs: Next track ID is there and opens c.
+    await tap(find.text('All clips (3)'));
+    await tester.pump();
+    await tap(find.text('15:59:54 · 1 track ID · $a').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('16:05:12 · 0 track IDs · $b').last);
+    await tester.pump(const Duration(milliseconds: 500)); // the menu closes
+    await _pumpUntil(tester, find.byTooltip('Play'));
+    expect(player.calls.where((x) => x.startsWith('create')).last, 'create $b');
+    expect(tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.skip_next)).onPressed, isNotNull);
+    await tap(find.byTooltip('Next track ID'));
+    await _pumpUntil(tester, find.text('16:10:30 · 1 track ID · $c'));
+    // Choosing "With track IDs" on b opens the first clip with track IDs.
+    await tap(find.byTooltip('Previous track ID'));
+    await _pumpUntil(tester, find.text('15:59:54 · 1 track ID · $a'));
+    await tap(find.text('15:59:54 · 1 track ID · $a').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('16:05:12 · 0 track IDs · $b').last);
+    await tester.pump(const Duration(milliseconds: 500)); // the menu closes
+    await _pumpUntil(tester, find.byTooltip('Play'));
+    expect(player.calls.where((x) => x.startsWith('create')).last, 'create $b');
+    await tap(find.text('With track IDs (2)'));
+    await _pumpUntil(tester, find.text('15:59:54 · 1 track ID · $a'));
+    expect(listed(), [0, 2]);
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('clips on two days: each row shows the day too (round 405)', (tester) async {
+    simulateBottomSystemBar(tester);
+    const a = 'VID_20260924_235954.mp4', b = 'VID_20260925_000512.mp4';
+    final dir = await _importedSession(tester, [a, b]);
+    await tester.pumpWidget(MaterialApp(home: SessionSummaryScreen(logFile: File('${dir.path}/session.jsonl'))));
+    await _pumpUntil(tester, find.byTooltip('Play'));
+    expect(find.text('2026-09-24 23:59:54 · not analyzed · $a'), findsOneWidget);
+    // Nothing to narrow: no clip has track IDs.
+    expect(find.textContaining('With track IDs'), findsNothing);
+    expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
   });

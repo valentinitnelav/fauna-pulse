@@ -26,6 +26,12 @@
 // animals in videos" under the track ID results ([VideoReviewPlayer.embedded],
 // no [VideoReviewPlayer.onOpenAnalysis]), so a run's results can be watched
 // before changing the settings and running again.
+//
+// Round 405 (scale test with 500 clips, owner's choice): each row of the clip
+// list starts with the clip's start time (camera file names hide it), "All
+// clips | With track IDs" narrows the list, and Next / Previous track ID go on
+// to the nearest clip that has one. Track IDs stay per clip: the jump only
+// saves picking that clip by hand.
 
 import 'dart:async';
 import 'dart:io';
@@ -130,6 +136,12 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
 
   /// Clips deleted to free storage, with when (round 236).
   Map<String, DateTime> _deleted = const {};
+
+  /// Clip start times (epoch ms) from the session log, for the clip list (round 405).
+  Map<String, int> _starts = const {};
+
+  /// The clip list shows only the clips with track IDs (round 405).
+  bool _onlyTracked = false;
 
   /// Clips cut off by a killed app: unreadable, left out of the list (round 243).
   int _cutOff = 0;
@@ -251,6 +263,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
     final files = {for (final f in all.where(VideoDetector.isReadableVideo)) f.uri.pathSegments.last};
     final deleted = await ClipCleanup.deletedClips(widget.sessionDir);
     final newTrackConf = (await VideoTracker.readSummary(widget.sessionDir))?.newTrackConfidence;
+    final starts = await VideoDetector.clipStartsFromLog(widget.sessionDir);
     final keptMs = <String, List<int>>{};
     final framesDir = '${widget.sessionDir.path}/${VideoTracker.framesDirName}';
     for (final k in await VideoTracker.readKeptFrames(widget.sessionDir)) {
@@ -267,6 +280,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       _files = files;
       _cutOff = all.length - files.length;
       _deleted = deleted;
+      _starts = starts;
       _clips = clips;
       _keptMs = keptMs;
       _newTrackConf = newTrackConf;
@@ -414,10 +428,10 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
   /// Visits are entered 1 s before they start, to see the insect arrive.
   int _visitEntry(TimelineVisit v) => max(0, v.startMs - 1000);
 
-  void _jumpVisit(ClipBoxes c, {required bool next}) {
+  Future<void> _jumpVisit(ClipBoxes? c, {required bool next}) async {
     final pos = _posMs.value;
     int? target;
-    for (final v in c.visits) {
+    for (final v in c?.visits ?? const <TimelineVisit>[]) {
       final t = _visitEntry(v);
       if (next && t > pos + 100) {
         target = t;
@@ -426,7 +440,32 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
       // Half a second of grace: pressing twice goes one visit further back.
       if (!next && t < pos - 500) target = t;
     }
-    if (target != null) _seekTo(target);
+    if (target != null) return _seekTo(target);
+    // Round 405: none left in this clip: the nearest clip with track IDs, at
+    // its first (going back: its last) track ID, playing on if this one played.
+    final j = _clipWithTracks(next: next);
+    if (j < 0) return;
+    final visits = _timeline.clips[_clips[j]]!.visits;
+    final playing = _controller?.value.isPlaying ?? false;
+    await _openClip(j);
+    if (!mounted || _clip != j || _controller == null) return;
+    _seekTo(_visitEntry(next ? visits.first : visits.last));
+    if (playing) await _controller?.play();
+  }
+
+  /// Whether [name] has track IDs.
+  bool _hasTracks(String name) {
+    final b = _timeline.clips[name];
+    return b != null && b.tracked && b.visits.isNotEmpty;
+  }
+
+  /// The nearest clip after (or before) the open one that has track IDs and
+  /// can be played, or -1.
+  int _clipWithTracks({required bool next}) {
+    for (var i = _clip + (next ? 1 : -1); i >= 0 && i < _clips.length; i += next ? 1 : -1) {
+      if (_hasTracks(_clips[i]) && _files.contains(_clips[i])) return i;
+    }
+    return -1;
   }
 
   /// Whether the boxes wait for the player's picture after a jump (round 252).
@@ -703,35 +742,80 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           children: children,
         );
 
-  Widget _clipPicker() => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: DropdownButton<int>(
-      isExpanded: true,
-      value: _clip,
-      items: [
-        for (var i = 0; i < _clips.length; i++)
-          DropdownMenuItem(
-            value: i,
-            child: Text('${_clips[i]}${_clipNote(_clips[i])}', overflow: TextOverflow.ellipsis),
+  /// Round 405: "All clips | With track IDs" above the list when it changes
+  /// the list; each row is "start · track IDs · file name", the name last so
+  /// a long one is cut, not the time or the count.
+  Widget _clipPicker() {
+    final tracked = [
+      for (var i = 0; i < _clips.length; i++)
+        if (_hasTracks(_clips[i])) i,
+    ];
+    final canFilter = tracked.isNotEmpty && tracked.length < _clips.length;
+    final only = _onlyTracked && canFilter;
+    // The open clip stays listed, so the list can show it.
+    final shown = only ? ({...tracked, _clip}.toList()..sort()) : [for (var i = 0; i < _clips.length; i++) i];
+    // The day too when the clips span several days.
+    final days = {for (final ms in _starts.values) DateTime.fromMillisecondsSinceEpoch(ms).toString().substring(0, 10)};
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (canFilter)
+            SegmentedButton<bool>(
+              segments: [
+                ButtonSegment(value: false, label: Text('All clips (${_clips.length})')),
+                ButtonSegment(value: true, label: Text('With track IDs (${tracked.length})')),
+              ],
+              selected: {only},
+              showSelectedIcon: false,
+              onSelectionChanged: (s) {
+                setState(() => _onlyTracked = s.first);
+                if (!s.first || _hasTracks(_clips[_clip])) return;
+                final first = tracked.where((i) => _files.contains(_clips[i]));
+                if (first.isNotEmpty) _openClip(first.first);
+              },
+            ),
+          DropdownButton<int>(
+            isExpanded: true,
+            value: _clip,
+            items: [
+              for (final i in shown)
+                DropdownMenuItem(
+                  value: i,
+                  child: Text(_clipLabel(_clips[i], withDay: days.length > 1), overflow: TextOverflow.ellipsis),
+                ),
+            ],
+            onChanged: (i) {
+              if (i != null && i != _clip) _openClip(i);
+            },
           ),
-      ],
-      onChanged: (i) {
-        if (i != null && i != _clip) _openClip(i);
-      },
-    ),
-  );
+        ],
+      ),
+    );
+  }
 
-  String _clipNote(String name) {
+  String _clipLabel(String name, {required bool withDay}) {
+    final start = _starts[name];
+    final t = start == null ? null : DateTime.fromMillisecondsSinceEpoch(start);
+    final when = t == null
+        ? null
+        : '${withDay ? '${t.toString().substring(0, 10)} ' : ''}${_two(t.hour)}:${_two(t.minute)}:${_two(t.second)}';
+    return [?when, ?_clipNote(name), name].join(' · ');
+  }
+
+  String? _clipNote(String name) {
     final b = _timeline.clips[name];
     if (!_files.contains(name)) {
       // Its visits stay (round 236).
       final v = b != null && b.tracked ? '${b.visits.length} track ID${b.visits.length == 1 ? '' : 's'}, ' : '';
-      return ' · ${v}video deleted';
+      return '${v}video deleted';
     }
-    if (b == null) return ' · not analyzed';
-    if (!b.done) return ' · analyzed in part';
-    if (b.tracked) return ' · ${b.visits.length} track ID${b.visits.length == 1 ? '' : 's'}';
-    return '';
+    if (b == null) return 'not analyzed';
+    if (!b.done) return 'analyzed in part';
+    if (b.tracked) return '${b.visits.length} track ID${b.visits.length == 1 ? '' : 's'}';
+    return null;
   }
 
   static String _two(int v) => v.toString().padLeft(2, '0');
@@ -864,6 +948,9 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
 
   List<Widget> _controls(VideoPlayerController c, ClipBoxes? boxes, {required bool visitsShown}) {
     final hasVisits = boxes != null && boxes.tracked && boxes.visits.isNotEmpty;
+    // Round 405: also when another clip has track IDs in that direction.
+    final canBack = hasVisits || _clipWithTracks(next: false) >= 0;
+    final canOn = hasVisits || _clipWithTracks(next: true) >= 0;
     final coverage = _coverage(c, boxes, visitsShown: visitsShown);
     return [
       const SizedBox(height: 4),
@@ -900,7 +987,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           children: [
             IconButton(
               tooltip: 'Previous track ID',
-              onPressed: hasVisits ? () => _jumpVisit(boxes, next: false) : null,
+              onPressed: canBack ? () => _jumpVisit(boxes, next: false) : null,
               icon: const Icon(Icons.skip_previous),
             ),
             IconButton(
@@ -920,7 +1007,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
             ),
             IconButton(
               tooltip: 'Next track ID',
-              onPressed: hasVisits ? () => _jumpVisit(boxes, next: true) : null,
+              onPressed: canOn ? () => _jumpVisit(boxes, next: true) : null,
               icon: const Icon(Icons.skip_next),
             ),
             IconButton(

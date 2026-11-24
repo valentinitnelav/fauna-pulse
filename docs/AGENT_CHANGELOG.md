@@ -10590,3 +10590,6 @@ Asked (owner, after the scale test of round 402): fix findings 1, 2, 5 and 6 on 
 ## Round 404 (2026-11-24): time left with many short clips
 Asked (owner, finding 4 of the round 402 scale test): "Find animals in videos" said 30 % too little time left with many short clips. Open: the clip list (round 405).
 
+## Round 405 (2026-11-24): clip list for many clips in the Video tab
+Asked (owner, finding 3 of the round 402 scale test): make the clips with track IDs easy to find among hundreds (start time in each row, a filter, Next track ID going on to the next clip). Open: the bulk-import design (hand-off of 2026-11-23).
+

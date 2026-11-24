@@ -366,6 +366,11 @@ Copy the clips to a computer first if you may want to analyse them again.
   slider) is cyan where the clip has at least one track ID and grey where it has none, with
   small white marks at the kept frames. The line under it gives the share of the clip with track
   IDs, so a fast drag finds the insects quickly.
+- **Many clips.** Each row of the clip list starts with the clip's start time (with the day
+  when the clips span several days), then its number of track IDs, then the file name. **All
+  clips | With track IDs** above the list narrows it to the clips with track IDs. The ⏮ and ⏭
+  buttons (**Previous track ID**, **Next track ID**) go on to the nearest clip that has one;
+  each clip keeps its own track IDs.
 - **Free storage.** A clip where a track ID only ends, with no box of it in the clip, counts as
   a clip without any track ID.
 - **Watch the results** is hidden while the detector runs, the track IDs are found, frames are

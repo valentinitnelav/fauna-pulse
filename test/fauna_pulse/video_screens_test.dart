@@ -926,8 +926,9 @@ void main() {
     expect(find.text('Videos: 1 clip, 3 KB (1 deleted before).'), findsOneWidget);
     // Round 309: the player under it plays clip a and lists the deleted one.
     await _playerReady(tester);
-    expect(find.text('a.mp4 · 1 track ID', skipOffstage: false), findsOneWidget);
-    expect(find.textContaining('b.mp4 · ', skipOffstage: false), findsOneWidget);
+    // Round 405: start, note, then the name.
+    expect(find.textContaining('1 track ID · a.mp4', skipOffstage: false), findsOneWidget);
+    expect(find.textContaining('video deleted · b.mp4', skipOffstage: false), findsOneWidget);
 
     // Then all: the session stays, the visits too.
     final all = find.textContaining('Delete the only clip, keep the saved frames');
