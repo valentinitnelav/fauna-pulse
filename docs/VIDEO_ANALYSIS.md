@@ -909,7 +909,7 @@ this guide (September 2026). So your own and collaborators' videos, counted as i
 | Data | What it holds | Use here |
 |---|---|---|
 | [HyDaT](https://github.com/malikaratnayake/HyDaT_Tracker) | 78 min of honeybee video, tracks made by an algorithm | good footage; count the visits yourself |
-| BuzzSet, BuzzSpot | pollinator images with boxes | detection only (no video) |
+| BuzzSet, BuzzSpot | images of pollinating insects with boxes | detection only (no video) |
 | [Zenodo 15096610](https://doi.org/10.5281/zenodo.15096610) (by a FaunaPulse developer) | time-lapse images | detection and identification, not tracking |
 | [SA-FARI](https://huggingface.co/datasets/facebook/SA-FARI) ([about](https://www.conservationxlabs.com/sa-fari)) | 11,609 camera-trap videos of 99 species | mammals and birds, see below |
 | [Lindenthal camera traps](https://lila.science/datasets/lindenthal-camera-traps/) | camera-trap videos in RealSense files | mammals, second choice |

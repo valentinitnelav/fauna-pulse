@@ -100,7 +100,7 @@ the FaunaLapse app and the Camtrap DP standard for camera-trap data.
   screen decide. Move the phone closer until the region of interest covers the flower *and* the
   label shows your *Saved photo side* with no ⚠ warning. Closer means more pixels on the
   insect, but a smaller area watched. In our own field work 15 to 20 cm worked well (the same
-  as the setup tip for *Pollinators on flowers* on Home). This may seem close, but further away
+  as the setup tip for *Insects on flowers* on Home). This may seem close, but further away
   the insects look too small and the detector may miss them.
 - **Keep the flower still.** Wind moves flowers. We fixed the plant or the target flower to a thin wooden plant stick, the kind that
   garden centres and DIY stores sell cheaply in bundles.

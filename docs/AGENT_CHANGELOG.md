@@ -10596,3 +10596,6 @@ Asked (owner, finding 3 of the round 402 scale test): make the clips with track 
 ## Round 406 (2026-11-24): one square video window; the player's explanations behind ⓘ
 Asked (owner's feedback): the video window changed size with each clip and view, the screen held too much text, and the track ID buttons needed explaining. Open: not looked at on a phone yet.
 
+## Round 407 (2026-11-24): "Insects on flowers"; pollinating insects, not pollinators
+Asked (owner): "pollinators" read as if all pollinators were insects (birds and bats pollinate too); the Home answer became "Insects on flowers" and texts that meant insects say so. Open: a wider check of "insect" in other screens' texts.
+

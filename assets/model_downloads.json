@@ -474,7 +474,7 @@
     {
       "id": "pollinators",
       "icon": "pollinators",
-      "title": "Pollinators on flowers",
+      "title": "Insects on flowers",
       "setup": "Fix the phone on a tripod, 15 to 20 cm above a flower or a group of flowers, so insects can fly in and out. On the camera screen, move the yellow square over the flowers: FaunaPulse looks for animals only inside it. If the insects look very small on the screen, bring the phone closer.",
       "find": [
         "flatbug-n",

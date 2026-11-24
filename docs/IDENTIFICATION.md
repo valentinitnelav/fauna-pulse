@@ -1,7 +1,7 @@
 # Identify organisms
 
 **Validation in progress:** the way the photos of a track ID are combined has been checked on
-expert-named pollinator photos. The confidence threshold and the "no organism" check are not tuned
+expert-named photos of pollinating insects. The confidence threshold and the "no organism" check are not tuned
 yet, so a name can go deeper than the photos allow (see
 [Validation status](#how-the-answer-is-computed)).
 
@@ -53,7 +53,7 @@ model. The name list holds the names the model may choose from.
 Other suggestions, and the other models already on the phone, are under **Choose other models**.
 If you choose **Not now** under **To name them**, the animals are found and counted, not named.
 
-**Your country.** For pollinators and insects on a flat surface, the page suggests the name list
+**Your country.** For insects on flowers or on a flat surface, the page suggests the name list
 that holds the most species of your country (one list per continent, see below). It takes the
 country from where your last session was recorded, else from the mobile network the phone is on,
 else from its SIM card; it asks for no permission. **Your country (for the name list)** shows it
@@ -63,8 +63,8 @@ names it, and it is under **Choose other models**. When no country is known, it 
 
 | Your answer | Identification model and name list |
 |---|---|
-| **Pollinators on flowers** | BioCLIP 2 with *Flies, bees and wasps, beetles, butterflies and moths* of your continent (or the insectDCT classifier) |
-| **Insects on a flat surface** | the same as for pollinators |
+| **Insects on flowers** | BioCLIP 2 with *Flies, bees and wasps, beetles, butterflies and moths* of your continent (or the insectDCT classifier) |
+| **Insects on a flat surface** | the same as for insects on flowers |
 | **Mammals and birds** | BioCLIP 2 with *Mammals and birds of the world* |
 
 ### The models
@@ -85,7 +85,7 @@ processor, CPU the main processor. A whole session of 9,193 crops with BioCLIP 2
 
 BioCLIP 2.5 is an overnight job on the charger (about 1.5 hours per 1000 crops).
 
-It is not yet tested which model names this project's pollinators best (BioCLIP 2, BioCLIP 2.5
+It is not yet tested which model names this project's pollinating insects best (BioCLIP 2, BioCLIP 2.5
 or insectDCT).
 
 ### The name lists
@@ -109,7 +109,7 @@ Information Facility, gbif.org) has records of in which country. With such a lis
 choose among the names of one country or of several
 ([Names to choose from](#names-to-choose-from)). Every name list can be narrowed to some of its
 orders and families there.
-The BioCLIP 2 and BioCLIP 2.5 lists of the four pollinator orders carry them: one list per continent (Europe,
+The BioCLIP 2 and BioCLIP 2.5 lists of the four main orders of pollinating insects carry them: one list per continent (Europe,
 North America with Central America and the Caribbean, South America, Africa, Asia, Oceania;
 the continents as GBIF draws them), each with the species that have at least 3 GBIF records
 there. For BioCLIP 2, Europe is version 4 (`bioclip-2_pollinator-orders-europe_v4.fpack`, made
@@ -576,7 +576,7 @@ four thresholds are settings.
 The percentages are *model confidence*, not measured accuracy. A calibration can be fitted
 later on labelled crops and stored in the name list. Until then, read 90 % at family rank as
 "very likely", and treat species-level answers as leads. The rule and its defaults are not yet
-tested on pollinator data ([Validation status](#how-the-answer-is-computed)).
+tested on data of pollinating insects ([Validation status](#how-the-answer-is-computed)).
 
 <details>
 <summary>The results tables in detail</summary>
@@ -656,12 +656,12 @@ list: [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md), *Identification*.
 | **Use the GPU when it can run the model** | on | Much faster when the phone's GPU can run the model. The app checks each phone and uses the CPU otherwise, with the reason on the screen. |
 | **CPU threads (0 = automatic)** | 0 = a one-time self-test | The first time a model runs on this phone's CPU, the app times 2, 4 and all cores on a test picture and keeps the fastest (about a minute, once per model and app version). No single number suited the test phones: two were fastest with all 8 cores, one with 4. Try values with **Test speed**. |
 | **Cores for combining results (0 = automatic)** | 0 = all cores up to 8 on a phone with at least 5 GB of memory, 4 below | The step after the model run compares every crop with all names of the list and pools the crops per track ID. More cores make it faster (8 against 4: 1.6 times on a phone with 8 equal slow cores, 1.2 times with 2 fast and 6 slow cores) and do not warm the phone more, but each needs about 60 MB of memory while the step runs; on a 4 GB test phone 8 made Android close background apps. |
-| **Square crops** | on | The crop is the detector box made square on its longer side, so the insect is not distorted. Off: the box (plus the margin) is stretched to a square, so a long, thin insect looks squeezed. Which works better on pollinator photos is not yet tested. |
+| **Square crops** | on | The crop is the detector box made square on its longer side, so the insect is not distorted. Off: the box (plus the margin) is stretched to a square, so a long, thin insect looks squeezed. Which works better on photos of pollinating insects is not yet tested. |
 | **Crop margin** | 0 | The box itself, so the model sees as little flower or background as possible. |
 | **Smallest box to identify** | 48 px | A smaller box is enlarged more than 4 times to the model's 224 px and is mostly blur. |
 | **Crops per track ID (0 = all)** | 10 | Keeps the ten largest boxes of a track ID. It rarely removes anything and only limits the run time of long bursts. |
-| **Ignore crops far less sure than the best (factor)** | 10 | A crop the model is far less sure about than the best crop adds little. On expert-named pollinator photos this rule and a plain average of all crops named the insects equally well. |
-| **Confidence needed to call a rank identified** | 0.6 | 0.7 to 0.8 are common in ecological studies. Not tuned yet: on expert-named pollinator photos, one threshold for all insect groups often named a deeper rank than the experts did (see Validation status below). |
+| **Ignore crops far less sure than the best (factor)** | 10 | A crop the model is far less sure about than the best crop adds little. On expert-named photos of pollinating insects this rule and a plain average of all crops named the insects equally well. |
+| **Confidence needed to call a rank identified** | 0.6 | 0.7 to 0.8 are common in ecological studies. Not tuned yet: on expert-named photos of pollinating insects, one threshold for all insect groups often named a deeper rank than the experts did (see Validation status below). |
 | **"No organism" threshold** | 0.5 | Above this share for the "none of these" entries, a track ID is "no organism". |
 | **Pause above battery temperature** | 43 °C | The same limit as **Pause the analysis above** on **Detection, track ID and identification settings** (opened from **Find animals in videos**); the run goes on 3 °C lower. |
 | **Merge consecutive track IDs** | off | Joins a track ID to the previous one when the tracker lost the animal for a moment (the three checks are in a folded block below). |
@@ -690,7 +690,7 @@ re-run computes again* above.
 - The margin is a share of the box's longer side in both shapes (round 262), because legs,
   antennae and wings stick out by an amount tied to the insect's size, not to the box's shorter
   side.
-- Neither shape nor margin is yet compared on pollinator photos. To compare them, re-run a
+- Neither shape nor margin is yet compared on photos of pollinating insects. To compare them, re-run a
   session with *Recompute all crops* and another setting.
 - **Smallest box to identify 48 px** (the reason is in the Settings table): on the default
   1024 px photos that is an insect about 5 % of the photo side.
@@ -1140,7 +1140,7 @@ An 8-bit (int8) file was also tried: half the size and 1.6 GB of memory, but slo
 phone's CPU (9.2 s per crop), and it changed the top family on 2 of 34 crops (one where the
 original was sure) and the top species on 4 of 34. It is not recommended.
 
-Whether BioCLIP 2.5 identifies this project's pollinators better than BioCLIP 2 has not been
+Whether BioCLIP 2.5 identifies this project's pollinating insects better than BioCLIP 2 has not been
 tested yet (the one test session here is an edited compilation video, not a field recording, fit
 for timing only).
 
@@ -1180,7 +1180,7 @@ averaged over classes at level 3: 0.76, 0.73, 0.69). ConvNeXt-Base runs only on 
 runs. The other two files and their class lists are made the same way
 (`classifier_export/README.md` of fauna-pulse-models) and should work the same way (ResNet50 on
 the GPU, ConvNeXt-Base on the CPU; not tried in the app). Whether insectDCT or BioCLIP names this
-project's pollinators better has not been tested yet.
+project's pollinating insects better has not been tested yet.
 
 </details>
 
@@ -1232,7 +1232,7 @@ cores.
   rule, ladder and agreement columns. In the terms of Kittler et al. (1998, IEEE TPAMI
   20:226-239), averaging before the softmax is a tempered product rule, and averaging the
   per-photo probabilities is the sum rule, which that paper found more robust to the errors of
-  single classifiers. The check on pollinator photos (Validation status) found no advantage for
+  single classifiers. The check on photos of pollinating insects (Validation status) found no advantage for
   the sum rule.
 - **The result differs from insect-detect-post:** there, `pred_prob_weighted` is the mean
   probability of the images that voted for the winning candidate times the share of images that

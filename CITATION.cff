@@ -14,9 +14,9 @@ abstract: >-
   tracked animals of a whole session in bulk, combining several saved photos of
   each animal into one answer with a confidence per taxonomic rank. It uses
   BioCLIP 2 or 2.5 (vision foundation models that choose from a list of
-  candidate taxa: ready-made name lists, for example for the main pollinator
-  orders of Europe or the mammals and birds of the world, or a list prepared by
-  the user) or a fixed-class insect classifier. Detection, tracking and
+  candidate taxa: ready-made name lists, for example for the main orders of
+  pollinating insects of Europe or the mammals and birds of the world, or a
+  list prepared by the user) or a fixed-class insect classifier. Detection, tracking and
   identification all run on the phone: once the models are on it, no internet
   connection or cloud service is needed.
   Source code and documentation at https://github.com/valentinitnelav/fauna-pulse

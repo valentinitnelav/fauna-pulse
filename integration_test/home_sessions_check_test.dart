@@ -113,7 +113,7 @@ void main() {
 
     // Each answer's page, then back (nothing downloaded).
     for (final (tile, name) in [
-      ('Pollinators on flowers', 'watch_pollinators'),
+      ('Insects on flowers', 'watch_pollinators'),
       ('Insects on a flat surface', 'watch_flat_surface'),
       ('Mammals and birds', 'watch_mammals_birds'),
     ]) {

@@ -391,7 +391,7 @@ Replay command:
 One record per periodic **reference photo** (Setup tab → **Reference photos**; on by default,
 every 30 s). These photos land in `gt_frames/` (not `roi_frames/`) and are taken on a fixed clock
 regardless of detections: an unbiased sample of what the camera saw. Use them to spot
-pollinators the live pipeline missed, or to hand-count the true track IDs when evaluating a
+animals the live pipeline missed, or to hand-count the true track IDs when evaluating a
 tracker.
 
 | Field | Meaning |
@@ -1157,7 +1157,7 @@ round 135.
 The **Find animals in photos** screen (the session's ⋮ menu on the **Sessions** screen, or the
 button of the same name on Home) can run a detector over a session's saved `roi_frames/` photos
 after the fact. This is mainly to sort AI-free motion and time-lapse sessions (which photos
-contain a pollinator; optionally delete the rest).
+contain an animal; optionally delete the rest).
 
 Results are added to `<session>/post_detections.jsonl`, under the same append-only JSONL rules
 as `session.jsonl` (§1–§2). Every record carries `time_ms`/`time_iso` (when it was written). Here `time_iso` is the

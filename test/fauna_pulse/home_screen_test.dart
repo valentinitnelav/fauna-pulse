@@ -43,7 +43,7 @@ final _sessions = [
 final _downloads = ModelDownloads.parse(File('assets/model_downloads.json').readAsStringSync());
 final _countryTable = NameListCountries.parse(File(kNameListCountriesAsset).readAsStringSync());
 
-const _tiles = ['Pollinators on flowers', 'Insects on a flat surface', 'Mammals and birds', 'Other models'];
+const _tiles = ['Insects on flowers', 'Insects on a flat surface', 'Mammals and birds', 'Other models'];
 
 const ModelChoice _noChoice = (detector: null, idModel: null, nameList: null);
 
@@ -337,7 +337,7 @@ void main() {
       models: const ModelsOnPhone(detectors: 1),
       choice: (detector: 'my_bees_640_fp16.tflite', idModel: null, nameList: null),
     );
-    for (final (tile, box) in [('Pollinators on flowers', 'Your choice'), ('Mammals and birds', 'Suggested AI models')]) {
+    for (final (tile, box) in [('Insects on flowers', 'Your choice'), ('Mammals and birds', 'Suggested AI models')]) {
       await tester.tap(find.text(tile));
       await tester.pumpAndSettle();
       expect(find.text(box), findsOneWidget, reason: tile);
@@ -357,7 +357,7 @@ void main() {
         nameList: 'insectdct-cls-v7-eff2s_224_fp16.fpack',
       ),
     );
-    expect(find.text('Set up for: Pollinators on flowers'), findsOneWidget);
+    expect(find.text('Set up for: Insects on flowers'), findsOneWidget);
     expect(find.text('Find: insectdct-v8s_640_fp16.tflite'), findsOneWidget);
     expect(find.text('Name: insectdct-cls-v7-eff2s_224_fp16.tflite'), findsOneWidget, reason: 'its class list goes unsaid');
     expect(find.textContaining('Tap one'), findsNothing);

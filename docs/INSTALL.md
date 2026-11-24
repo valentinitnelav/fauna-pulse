@@ -212,7 +212,7 @@ download models from the FaunaPulse collection on [Hugging Face][hf_fp_models].
 
 **The quickest way** is step 1 on Home, **AI models**: answer **What do you want to watch?**
 
-1. Tap an answer: **Pollinators on flowers**, **Insects on a flat surface** or **Mammals and
+1. Tap an answer: **Insects on flowers**, **Insects on a flat surface** or **Mammals and
    birds**.
 2. Each answer suggests a detection model and an identification model with its name list,
    chosen for you and shown by their file names. Other models are under **Choose other

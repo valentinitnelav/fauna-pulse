@@ -292,7 +292,7 @@ numbers are clamped to their box.
   neighbours). `LabelPack` keeps them in typed fields, not in `header`; a damaged block is left
   out, never an error. Scoring workers get `LabelPack.forWorker()` (an isolate message copies
   what it carries, once per worker). A published name list is never changed: a fix is a new
-  version. The BioCLIP 2 and 2.5 pollinator lists (one per continent) carry both blocks. No world list:
+  version. The BioCLIP 2 and 2.5 lists of pollinating insects (one per continent) carry both blocks. No world list:
   its 193,000 names do not fit a phone's memory with this scoring.
 - **A choice of names narrows only what is shown** (each crop's candidates, the ladder, the
   identified rank, the best view): countries (one, with its neighbours, or chosen by hand; a

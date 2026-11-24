@@ -1511,7 +1511,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
               'the middle of the video is proposed; a video that is already square, such as the clips the app '
               'records, is used whole. "Change…" plays the video fast, so you see whether the camera or the '
               'flowers move and the square still covers them. If the flowers fill only part of the picture, a '
-              'smaller square around them helps: insects outside it are ignored, and small insects are found '
+              'smaller square around them helps: animals outside it are ignored, and small animals are found '
               'more easily. "Whole picture" also includes the edges. The same area is used in every clip '
               'of the session.',
         ),
@@ -1746,7 +1746,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
           label: 'Track IDs',
           labelStyle: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           helperText:
-              'Follows each insect from frame to frame, as the live camera does, so one insect seen in '
+              'Follows each animal from frame to frame, as the live camera does, so one animal seen in '
               'many frames counts as one track ID. Takes seconds and can be repeated with other settings '
               'without analyzing the videos again.',
         ),
@@ -1810,11 +1810,11 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
               'Plays the analyzed videos with the detector\'s boxes and track IDs, so you can decide whether '
               'to change the settings and run again; after a new run it opens at the same clip and moment, '
               'to compare. Tap the video to pause or play; sound is off unless you switch it on. Boxes show '
-              'only on analyzed frames, so at high speed they can lag behind a fast insect. The player is '
+              'only on analyzed frames, so at high speed they can lag behind a fast animal. The player is '
               'hidden while the screen is busy, so the phone works on one video at a time.',
         ),
         const Text(
-          'The videos with the boxes and track IDs found. If insects are missed or counted twice, change the '
+          'The videos with the boxes and track IDs found. If animals are missed or counted twice, change the '
           'settings above and run again.',
           style: helperTextStyle,
         ),

@@ -81,10 +81,10 @@ class IdentifySettingsFields extends StatelessWidget {
           onChanged: (v) => onEdit(() => prefs.squareCrops = v),
           helperText:
               'The model always looks at a square picture. On: the box is widened to a square, so the '
-              'insect keeps its shape and some flower shows around it. Off: only the box (plus the margin) '
-              'is cut out and stretched to a square, so a long, thin insect looks squeezed. On by default '
-              'because it keeps the insect\'s shape; which works better on pollinator photos is not yet '
-              'tested. After a change, the next run asks whether to cut the stored crops again.',
+              'animal keeps its shape and some background shows around it. Off: only the box (plus the margin) '
+              'is cut out and stretched to a square, so a long, thin animal looks squeezed. On by default '
+              'because it keeps the animal\'s shape; which works better on photos of pollinating insects is '
+              'not tested yet. After a change, the next run asks whether to cut the stored crops again.',
         ),
         NumericSettingField(
           label: 'Crop margin',
@@ -149,7 +149,7 @@ class IdentifySettingsFields extends StatelessWidget {
           helperText:
               'A crop whose Species conf. is below the surest crop\'s divided by this factor is left out '
               'of the combined answer (it still appears in the crops table, marked "left out"). '
-              '1 = every crop counts. On expert-named pollinator photos this rule and a plain '
+              '1 = every crop counts. On expert-named photos of pollinating insects this rule and a plain '
               'average of all crops named the insects equally well, so the value matters little.',
         ),
         NumericSettingField(

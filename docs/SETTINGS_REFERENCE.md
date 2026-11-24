@@ -779,7 +779,7 @@ origin). Executed deletions record the value in the `post_cleanup` record.
 - fine background specks that each tile sees at near-native scale: trim them with "Ignore tiny
   tile boxes" and/or a higher confidence threshold.
 
-Either way, treat the boxes as triage evidence ("this photo contains a pollinator"), not as tight
+Either way, treat the boxes as triage evidence ("this photo contains an animal"), not as tight
 annotations. That matches the feature's stated goal: recall for keep or delete triage.
 
 <details>
@@ -1091,8 +1091,8 @@ are counted (not with 0 crops), and it opens the results when the run ends.
 | **Crop margin** | 0 | Extra border added on every side of the detector box, as a share of the box's longer side (0.05 = 5 % of it). 0 = the box itself (made square when *Square crops* is on). Raise it if legs or antennae look cut off. |
 | **Smallest box to identify** | 48 px | Boxes whose longer side is smaller (in photo pixels) are skipped as too small. |
 | **Crops per track ID (0 = all)** | 10 | Keeps the largest boxes of a track ID when a track ID has more photos than this. |
-| **Ignore crops far less sure than the best (factor)** | 10 | A crop whose top-1 probability is below the surest crop's divided by this factor is left out of the pooled answer (still listed, marked "left out"); 1 = every crop counts. A FaunaPulse choice: on expert-named pollinator photos this rule and a plain average of all crops named the insects equally well, so the value matters little. |
-| **Confidence needed to call a rank identified** | 0.60 | The deepest rank whose Conf. reaches this value becomes the identification; deeper ranks are still listed as suggestions. 0.7 to 0.8 are common thresholds in the camera-trap literature, none tested for pollinators. |
+| **Ignore crops far less sure than the best (factor)** | 10 | A crop whose top-1 probability is below the surest crop's divided by this factor is left out of the pooled answer (still listed, marked "left out"); 1 = every crop counts. A FaunaPulse choice: on expert-named photos of pollinating insects this rule and a plain average of all crops named the insects equally well, so the value matters little. |
+| **Confidence needed to call a rank identified** | 0.60 | The deepest rank whose Conf. reaches this value becomes the identification; deeper ranks are still listed as suggestions. 0.7 to 0.8 are common thresholds in the camera-trap literature, none tested for pollinating insects. |
 | **"No organism" threshold** | 0.50 | Summed probability of the "none of these" entries above which a track ID is reported as no organism. |
 | **Pause above battery temperature** | 43 °C | The run pauses at this battery temperature and resumes 3 °C lower. |
 | **Merge consecutive track IDs** | off | Joins a track ID to the previous one when the gap, a compatible identification, the appearance similarity and the box-size guard all pass; the union is identified again. |

@@ -544,10 +544,10 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 ? 'Plays the ROI videos recorded during this session with the boxes live detection '
                       'found at that moment, so you can see what it caught and what it missed. Tap '
                       'the video to pause or play. Boxes show only on the frames live detection logged '
-                      'with an insect. Sound is off unless you switch it on.'
+                      'with an animal. Sound is off unless you switch it on.'
                 : 'Plays the videos of this session with the boxes the detector found. Tap the video to '
                       'pause or play. Boxes are shown only on the frames the detector analyzed, so at '
-                      'higher speeds they can trail a fast insect a little. Sound is off unless you '
+                      'higher speeds they can trail a fast animal a little. Sound is off unless you '
                       'switch it on.',
           ),
         ],
@@ -625,7 +625,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               label: 'Details',
               helperText:
                 'Whole frame: the square is the area the detector analyzed; the darker part '
-                'was left out. What the detector saw: zoomed onto that square. If insects sit outside the square or '
+                'was left out. What the detector saw: zoomed onto that square. If animals sit outside the square or '
                 'on its edge, change it '
                 '${here ? 'under "Area to analyze" above and analyze again' : 'and analyze again (button below)'}.',
             ),
@@ -649,7 +649,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 'track ID starts only from a box the detector is at least '
                 '${(_newTrackConf ?? 0.5).toStringAsFixed(2)} sure of (the tracker\'s "New-track '
                 'confidence"); weaker boxes can only continue one. All boxes: what the detector detected at '
-                'the confidence threshold, before any tracking. An insect with boxes here but no '
+                'the confidence threshold, before any tracking. An animal with boxes here but no '
                 'track ID was probably never that sure: lower "New-track confidence" ('
                 '${here ? '"Detection, track ID and identification settings" above' : 'Find animals in videos → '
                           '"Detection, track ID and identification settings"'}, Track IDs card) and find the track IDs '
@@ -666,7 +666,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
               helperText:
                   '"Find animals in videos" analyzes these clips again, frame by frame, and "Find track IDs" '
                   'there links the boxes into track IDs. Then "Detection afterwards" above shows those boxes on '
-                  'the same frames, for example to see whether live detection missed insects while the '
+                  'the same frames, for example to see whether live detection missed animals while the '
                   'phone was hot or the motion gate slept. The session\'s own track IDs stay live detection\'s.',
             ),
             const SizedBox(height: 4),
@@ -689,9 +689,9 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 label: 'Not analyzed yet',
                 labelStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                 helperText:
-                    '"Find animals in videos" finds the insects in these videos. It is the slow step and can '
+                    '"Find animals in videos" finds the animals in these videos. It is the slow step and can '
                     'be stopped and continued; keep the phone charging. "Find track IDs" there then '
-                    'follows each insect from frame to frame, and the boxes and track IDs show on the '
+                    'follows each animal from frame to frame, and the boxes and track IDs show on the '
                     'video here.',
               )
             else if (_files.isEmpty)
@@ -830,12 +830,12 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           : 'This clip was deleted on ${at.year}-${_two(at.month)}-${_two(at.day)} ${_two(at.hour)}:${_two(at.minute)} to '
                 'free storage. Its boxes, track IDs and kept frames stay; only the video cannot be played.';
     } else if (_timeline.live) {
-      if (boxes == null || boxes.visits.isEmpty) note = 'Live detection found no insect during this clip.';
+      if (boxes == null || boxes.visits.isEmpty) note = 'Live detection found no animal during this clip.';
     } else if (boxes == null) {
       note = here
           ? 'This clip was not analyzed yet, so there are no boxes. The main button above analyzes it.'
           : 'This clip was not analyzed yet, so there are no boxes. "Find animals in videos" '
-                '(button below) finds the insects in it.';
+                '(button below) finds the animals in it.';
     } else if (!boxes.done) {
       final last = boxes.lastAnalysedMs;
       note = 'The analysis of this clip stopped${last == null ? '' : ' at ${_time(last)}'}; '
@@ -852,14 +852,14 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
           ? _timeline.hasVisits
                 ? '"Find track IDs" ran before this clip was analyzed. Finding the track IDs again (button '
                       'above) adds this clip\'s track IDs. Until then all boxes are shown.'
-                : 'No track IDs yet: "Find track IDs" (button above) links the boxes of each insect into '
+                : 'No track IDs yet: "Find track IDs" (button above) links the boxes of each animal into '
                       'track IDs. Until then all boxes are shown.'
           : _timeline.hasVisits
           ? '"Find track IDs" ran before this clip was analyzed. The button below opens "Find animals in '
                 'videos", where "Find track IDs" adds this clip\'s track IDs. Until then all boxes '
                 'are shown.'
           : 'No track IDs yet: "Find track IDs" on "Find animals in videos" (button below) links the boxes '
-                'of each insect into track IDs. Until then all boxes are shown.';
+                'of each animal into track IDs. Until then all boxes are shown.';
     }
     if (note == null) return const [];
     return [
@@ -1111,7 +1111,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 const TextSpan(text: '■ ', style: TextStyle(color: VideoReviewPlayer.visitColor)),
                 TextSpan(
                   text: 'a track ID: its number (the same as ${_timeline.live ? 'on the photos and in the Graphs' : 'in track_ids.csv'}), '
-                      "the insect class and the detector's confidence. A faded box: the detector missed the insect "
+                      "the class and the detector's confidence. A faded box: the detector missed the animal "
                       'on this frame and the tracker kept its place.',
                 ),
               ]
@@ -1119,7 +1119,7 @@ class VideoReviewPlayerState extends State<VideoReviewPlayer>
                 TextSpan(text: '■ ', style: TextStyle(color: VideoReviewPlayer.rawColor)),
                 TextSpan(
                   text: 'every box the detector found, with its class and confidence, also the ones no track ID '
-                      'was made from (for example an insect seen too briefly, or never sure enough to '
+                      'was made from (for example an animal seen too briefly, or never sure enough to '
                       'start one).',
                 ),
               ],

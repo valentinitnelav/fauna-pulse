@@ -27,7 +27,7 @@
 // page goes on below (widgets/scroll_hint.dart).
 //
 // Round 279 (owner, after a test user's first try on the owner's phone):
-//   • step 1 says what was set up ("Set up for: Pollinators on flowers" and
+//   • step 1 says what was set up ("Set up for: Insects on flowers" and
 //     the chosen file names, read back from the saved choices), and before a
 //     choice that FaunaPulse suggests the models to download; no step gets a
 //     tick any more (users can always add models);
@@ -713,7 +713,7 @@ class _HomeScreenState extends State<HomeScreen> with SessionActions, Restoratio
                   padding: const EdgeInsets.fromLTRB(16, 20, 16, 48),
                   children: [
                     // The app's own icon (round 285, owner): the bee with a
-                    // flower read as the "Pollinators on flowers" answer.
+                    // flower read as the "Insects on flowers" answer.
                     const Center(child: AppIcon(size: 56)),
                     const SizedBox(height: 6),
                     const Text(

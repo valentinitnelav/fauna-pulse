@@ -74,12 +74,12 @@
 
 **A mini AI workstation in your pocket for free:** if you already have photos or videos of animals, import them, and the phone can find, track and identify the animals in them. This can be handy if you cannot afford a GPU workstation or cloud services.
 
-**Not only pollinators:** think of FaunaPulse as the chassis of a car where you can drop in your own engine. The app is the platform and the AI models are the engine. The models are separate files that you choose, so the same app can watch pollinators on flowers, insects on a flat surface, birds or mammals. Ready-made models can be downloaded in the app (see [AI Models](#ai-models)), and you can also **add your own detection and classification models**.
+**Not only pollinators:** think of FaunaPulse as the chassis of a car where you can drop in your own engine. The app is the platform and the AI models are the engine. The models are separate files that you choose, so the same app can watch insects on flowers or on a flat surface, birds or mammals. Ready-made models can be downloaded in the app (see [AI Models](#ai-models)), and you can also **add your own detection and classification models**.
 
 > [!IMPORTANT]
 > **Detection, tracking, and classification quality will vary based on the [custom AI models used][hf_fp_models]. With our [documentation and Python tools][fp_models], you can also export models tailored to your specific imagery and use case.**
 
-The primary scientific use case of FaunaPulse is estimating **visitation rates** in ecological studies (who visits whom, how often and for how long), for example of pollinators on a flower or inflorescence. This is a proxy for pollination, which can be vital for the reproduction of many plants, including for crop yield and quality.
+The primary scientific use case of FaunaPulse is estimating **visitation rates** in ecological studies (who visits whom, how often and for how long), for example of pollinating insects on a flower or inflorescence. This is a proxy for pollination, which can be vital for the reproduction of many plants, including for crop yield and quality.
 
 For older Android smartphones that cannot run AI models, the sister app [**FaunaLapse**][fauna_lapse] is a light application that turns them into time-lapse cameras. FaunaPulse can also capture without AI: motion-triggered photos, time-lapse photos (also at night) and scheduled videos.
 
@@ -288,7 +288,7 @@ Their original GitHub repositories are listed below:
 
 Classifiers (identification models) are offered the same way.
 
-A custom pollinator detector is planned for training and release based on collected smartphone images. A sample of this dataset is published on Zenodo - *Dataset of arthropod flower visits captured via smartphone time-lapse photography*, [Ştefan et al. 2025][zenodo_phones].
+A custom detector for pollinating insects is planned for training and release based on collected smartphone images. A sample of this dataset is published on Zenodo - *Dataset of arthropod flower visits captured via smartphone time-lapse photography*, [Ştefan et al. 2025][zenodo_phones].
 
 Custom AI detectors can be added on the same screen:
 
@@ -310,7 +310,7 @@ See also the [Installation & Testing Guide](docs/INSTALL.md) for how models reac
 
 Classifiers run in bulk on the phone, without an internet connection. Start them with **Identify organisms** on the **Session summary** screen, or in a session's ⋮ menu on the **Sessions** screen (see [IDENTIFICATION.md](docs/IDENTIFICATION.md)).
 
-BioCLIP chooses each animal's name from a name list. Such lists are prepared per region (e.g. Europe) and taxonomic categories (e.g. common orders of pollinators) for the animals you watch. Narrowing the scope of the large name lists can help with more realistic identification results. For example, there is no need to allow a model to think that zebras can be found within the wildlife of Europe or act as pollinators. At least not in this universe...
+BioCLIP chooses each animal's name from a name list. Such lists are prepared per region (e.g. Europe) and taxonomic categories (e.g. the main orders of pollinating insects) for the animals you watch. Narrowing the scope of the large name lists can help with more realistic identification results. For example, there is no need to allow a model to think that zebras can be found within the wildlife of Europe or act as pollinators. At least not in this universe...
 
 ### AI Models' licenses
 
@@ -351,7 +351,7 @@ The idea for FaunaPulse grew from my past research at the Helmholtz Centre for E
 During my [PhD][phd_stef] research, my field-team and I used affordable smartphones in time-lapse mode to record flower-visiting insects.
 While this was ok, it quickly highlighted some core challenges that motivated the creation of FaunaPulse:
 
-- **Eliminating data overload at the source**: Pollinator visits are brief and infrequent, meaning time-lapse capture generated millions of empty images that overloaded storage and processing time. Post-processing tools like [MegaDetector][mgdet] filter out empty trail camera photos of popular wildlife after collection, and FaunaPulse places that kind of AI processing directly on the phone. So, running detection on-device ensures one captures and stores images when fauna are actually present.
+- **Eliminating data overload at the source**: Visits of pollinating insects are brief and infrequent, meaning time-lapse capture generated millions of empty images that overloaded storage and processing time. Post-processing tools like [MegaDetector][mgdet] filter out empty trail camera photos of popular wildlife after collection, and FaunaPulse places that kind of AI processing directly on the phone. So, running detection on-device ensures one captures and stores images when fauna are actually present.
 - **Overcoming traditional sensor limitations**: Standard motion sensors trigger continuously on wind, moving vegetation, or changing sunlight. Heat-based sensors ([Passive infrared sensors][PIR]) are impractical on small insects whose body temperature matches their surroundings. So, on-device computer vision seems like the only reliable way to trigger recordings for flower visiting insects.
 - **Focusing AI on ecological context (Region of Interest - ROI)**: As first suggested in [Ștefan et al. 2025][stefan-2025-a], focusing the camera on a target area (for example, a single flower) reduces background clutter and matches the square input format standard in object-detection models.
 - **Democratizing wildlife monitoring through accessible and affordable hardware**: Commercial camera traps, microcomputers or other gadgets are not available on all markets at all times, some are expensive and some can also be complex to work with. Modern smartphones are powerful, globally accessible microcomputers and almost everyone understands nowadays how to use one. By releasing FaunaPulse as free and open-source software, I want to enable citizen scientists, students, and under-funded research groups to turn everyday phones into tailored camera traps for documenting local biodiversity. The focus is on affordable Android smartphones (also used ones). Growing up in poverty, my main motivation is to empower those with less money.
