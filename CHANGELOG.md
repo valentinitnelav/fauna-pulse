@@ -6,6 +6,37 @@ and `0.8.0-alpha.1`, then beta from `0.9.0-beta.1`) and the GitHub release is ma
 pre-release.
 -->
 
+## 0.13.0-beta.1 (2026-11-25)
+
+Feedback by email from inside the app, larger MegaDetector files, and many video clips in one
+session.
+
+- **Send feedback.** Menu → *Send feedback* replaces *Report a problem*: write anything, in any
+  language, and add screenshots if you like. *Send by email* opens your email app with the
+  address and one zip of technical details (no position). *Share another way* stays.
+- **MegaDetector V6 for mammals and birds:** the compact (c) and the larger (e) model, each at
+  320 or 640 px. *Mammals and birds* suggests compact 320 px first. The older 256 px file is no
+  longer offered; a phone that has it keeps it. The mammals and birds name list is version 4
+  (15,326 names, with country lists).
+- **Download & import models:** one ⋮ menu per file, the files of one model under one heading,
+  and notes that compare files without speed numbers.
+- **Many video clips in one session.** A session is one camera position, so all its clips share
+  one area. Imported clips keep their file names, and each clip keeps its own start time.
+  *Import videos* has a fixed Import bar and says once what is the same for many clips. The time
+  left counts the time to open each clip. The clip list shows each clip's start and can show
+  only the clips with track IDs; ⏮ and ⏭ go on to the next clip with a track ID. Imported
+  sessions are listed by their import time.
+- **Video player:** one square window for every clip and both views; the explanations sit
+  behind ⓘ; ⏮ and ⏭ are grey when no track ID is left in that direction.
+- **Words:** the Home answer is now *Insects on flowers* (pollinators are not only insects),
+  texts that hold for any animal say "animal", and *Small-insect tiling* is now *Tiling for
+  small animals*.
+- **Country box:** a tap outside it ends the typing, the list opens above the keyboard, and it
+  works the same on every screen.
+- Damaged saved settings, or settings saved by another version, no longer keep a screen from
+  opening.
+- **Privacy policy:** a section on feedback sent by email.
+
 ## 0.12.0-beta.1 (2026-11-17)
 
 Name lists for every continent, and identification that chooses among the species of your

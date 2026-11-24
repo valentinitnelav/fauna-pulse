@@ -1,0 +1,7 @@
+Version 0.13.0-beta.1
+- Send feedback by email from the menu, in any language, with screenshots.
+- MegaDetector V6 compact and larger, at 320 or 640 px, for mammals and birds.
+- Many video clips in one session: easier import, a clip list with start times, jump to the next clip with track IDs.
+- Video player: one window size, explanations behind the ⓘ.
+- "Insects on flowers" and clearer words for any animal.
+Full details: see CHANGELOG.md on the project's GitHub page.

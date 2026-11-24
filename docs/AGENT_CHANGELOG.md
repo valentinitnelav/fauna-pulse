@@ -10602,3 +10602,6 @@ Asked (owner): "pollinators" read as if all pollinators were insects (birds and 
 ## Round 408 (2026-11-24): "animal" where any animal is meant
 Asked (owner): the screens' explanations said "insect" also where they hold for any animal; the setting "Small-insect tiling" became "Tiling for small animals". Open: the user docs still describe most settings with insects (the main use).
 
+## Round 409 (2026-11-25): version 0.13.0-beta.1 prepared
+Asked (owner): release 0.13.0-beta.1 after the video player feedback. Open: the owner's push, merge, tag and Play steps; the Data safety answer for feedback by email (owner decides).
+

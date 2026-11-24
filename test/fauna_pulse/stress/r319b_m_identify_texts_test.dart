@@ -126,8 +126,10 @@ void main() {
     return dir;
   }
 
+  // Up to about 15 s of real time: the runs here end in well under a second alone, but in the
+  // whole suite on a busy laptop (load 4 and more) 3 s were too short and the waits failed.
   Future<void> pumpUntil(WidgetTester tester, bool Function() done, String what) async {
-    for (var i = 0; i < 300 && !done(); i++) {
+    for (var i = 0; i < 1500 && !done(); i++) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
       await tester.pump(const Duration(milliseconds: 20));
     }
