@@ -147,6 +147,13 @@ class VideoProgress {
   /// Frames analysed in this run, and the average wall time per frame (ms).
   final int framesAnalysed;
   final double msPerFrame;
+
+  /// Average time per clip outside detection and heat pauses (opening and
+  /// closing it), ms; 0 until a clip is done. Round 404: about 0.6 s per clip
+  /// on the Xiaomi 11T Pro, so the time left for 500 short clips was 30 %
+  /// too low without it. The first clip of a run is left out once others are
+  /// done: it also loads the model.
+  final double msPerClip;
   final double? tempC;
 
   /// Non-empty while paused (plain-language reason).
@@ -164,6 +171,7 @@ class VideoProgress {
     required this.clipLengthS,
     required this.framesAnalysed,
     required this.msPerFrame,
+    this.msPerClip = 0,
     this.tempC,
     this.note = '',
     this.phone,
@@ -459,6 +467,12 @@ class VideoDetector {
     // left; heat pauses and other waits are left out (the whole run time was
     // used, so both kept growing during a pause).
     var detectMs = 0;
+    // Round 404: each finished clip's time outside detection and pauses.
+    final clipOverheadMs = <int>[];
+    double msPerClip() {
+      final ms = clipOverheadMs.length > 1 ? clipOverheadMs.skip(1) : clipOverheadMs;
+      return ms.isEmpty ? 0 : ms.reduce((a, b) => a + b) / ms.length;
+    }
 
     // Phone samples: the first at the first reading, then every [every].
     // The speed figures cover the time since the previous sample.
@@ -515,6 +529,8 @@ class VideoDetector {
       final clip = file.path.split('/').last;
       sampleClip = clip;
       final clipClock = Stopwatch()..start();
+      final clipStarted = now();
+      var clipDetectMs = 0, clipPausedMs = 0;
       var clipFrames = 0, decoded = 0;
       var decodeMs = 0.0, convertMs = 0.0, inferMs = 0.0;
       var lastPts = resume.lastPtsUs[clip];
@@ -555,7 +571,10 @@ class VideoDetector {
               limitC: thermalLimitC,
               poll: every < pausePoll ? every : pausePoll,
               isCancelled: isCancelled,
-              onPaused: (t, note) => onProgress?.call(_progress(ci, pending.length, clip, lastPts, firstPts, info, framesAnalysed, detectMs, t, phone, note)),
+              onPaused: (t, note) => onProgress?.call(
+                _progress(ci, pending.length, clip, lastPts, firstPts, info, framesAnalysed, detectMs, msPerClip(), t,
+                    phone, note),
+              ),
               onReading: (r, waiting) {
                 phone = r; // onReading comes before onPaused, so the pause progress has it too
                 if (waiting && pauseStart == null) {
@@ -578,6 +597,8 @@ class VideoDetector {
               final t = now();
               if (pauseStart != null) {
                 periodPausedMs += pausedSince(pauseStart!, t);
+                final from = pauseStart!.isAfter(clipStarted) ? pauseStart! : clipStarted;
+                clipPausedMs += t.difference(from).inMilliseconds;
                 writeRecord('video_thermal_resume', {
                   'clip': clip,
                   'temp_c': tempC,
@@ -616,8 +637,14 @@ class VideoDetector {
             periodInferMs += chunk.inferMs;
             done = chunk.done;
             final took = now().difference(chunkStart).inMilliseconds;
-            if (took > 0) detectMs += took; // never below 0 when the phone's clock is set back
-            onProgress?.call(_progress(ci, pending.length, clip, lastPts, firstPts, info, framesAnalysed, detectMs, tempC, phone, ''));
+            if (took > 0) {
+              detectMs += took; // never below 0 when the phone's clock is set back
+              clipDetectMs += took;
+            }
+            onProgress?.call(
+              _progress(ci, pending.length, clip, lastPts, firstPts, info, framesAnalysed, detectMs, msPerClip(), tempC,
+                  phone, ''),
+            );
           }
         } finally {
           await backend.close();
@@ -637,6 +664,8 @@ class VideoDetector {
             'elapsed_ms': clipClock.elapsedMilliseconds,
           });
           clipsDone++;
+          final outside = now().difference(clipStarted).inMilliseconds - clipDetectMs - clipPausedMs;
+          clipOverheadMs.add(outside < 0 ? 0 : outside);
         }
       } catch (e) {
         // Round 319: a model that cannot be loaded (a damaged file) fails every
@@ -759,6 +788,7 @@ class VideoDetector {
     VideoInfo info,
     int frames,
     int detectMs,
+    double msPerClip,
     double? tempC,
     ThermalReading? phone,
     String note,
@@ -770,6 +800,7 @@ class VideoDetector {
     clipLengthS: (info.durationMs ?? 0) / 1000,
     framesAnalysed: frames,
     msPerFrame: frames == 0 ? 0 : detectMs / frames,
+    msPerClip: msPerClip,
     tempC: tempC,
     note: note,
     phone: phone,

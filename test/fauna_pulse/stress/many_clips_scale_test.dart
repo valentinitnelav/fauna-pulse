@@ -351,6 +351,41 @@ void main() {
     expect(listMs, lessThan(3000), reason: 'Home and Sessions wait for the list');
   });
 
+  // Round 404: on the Xiaomi 11T Pro, at clip 19 of 500 (9.3-s clips, 1 frame per second) the
+  // screen said "~8 min 13 s left" and the run needed about 12 min more: the time left counted
+  // only detection, not the about 0.6 s each clip costs to open and close.
+  test('time left with many short clips counts the time per clip too', () {
+    const p = VideoProgress(
+      clipIndex: 18,
+      clipCount: 500,
+      clip: 'c.mp4',
+      clipPosS: 9.3,
+      clipLengthS: 9.3,
+      framesAnalysed: 171,
+      msPerFrame: 100,
+      msPerClip: 600,
+    );
+    final lengths = List.filled(500, 9300);
+    final left = videoTimeLeft(p, runLengthsMs: lengths, analysisFps: 1);
+    // 481 clips of 10 frames (at 0, 1, ... 9 s) at 100 ms per frame, plus 481 x 0.6 s.
+    expect(left.inMilliseconds, 481 * 10 * 100 + 481 * 600);
+    // At 5 frames per second a 9.3-s clip gives 47 frames, as measured on the phone.
+    expect(videoTimeLeft(p, runLengthsMs: lengths, analysisFps: 5).inMilliseconds, 481 * 47 * 100 + 481 * 600);
+    // The last clip: nothing comes after it.
+    const last = VideoProgress(
+      clipIndex: 499,
+      clipCount: 500,
+      clip: 'c.mp4',
+      clipPosS: 0,
+      clipLengthS: 9.3,
+      framesAnalysed: 4650,
+      msPerFrame: 100,
+      msPerClip: 600,
+    );
+    final lastLeft = videoTimeLeft(last, runLengthsMs: lengths, analysisFps: 1);
+    expect(lastLeft.inMilliseconds, 10 * 100);
+  });
+
   group('screens', () {
     setUp(() => SharedPreferences.setMockInitialValues({}));
 

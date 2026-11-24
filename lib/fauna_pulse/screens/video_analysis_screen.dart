@@ -333,6 +333,24 @@ String trackIdsInClips(int trackIds, int clipsWithTrackIds, int clips) {
   return '$trackIds ${trackIds == 1 ? 'track ID' : 'track IDs'} in $clipsWithTrackIds of $ofClips';
 }
 
+/// Time left of a run: the frames still to analyse at the run's time per
+/// frame, plus (round 404) the time each clip still to come costs outside
+/// detection (opening and closing it, [VideoProgress.msPerClip]). Without it,
+/// 500 clips of 9 s showed 30 % too little on the Xiaomi 11T Pro.
+/// [runLengthsMs]: the lengths of the run's clips, in run order.
+Duration videoTimeLeft(VideoProgress p, {required List<int> runLengthsMs, required double analysisFps}) {
+  // Phone videos rarely have more than 30 frames per second.
+  final fps = min(analysisFps, 30);
+  // Rounded up per clip: the first frame is at 0, so a 9.3-s clip gives 10
+  // frames at 1 per second (9.3 counted 7 % too few on 120 such clips).
+  var frames = ((p.clipLengthS - p.clipPosS) * fps).ceil();
+  for (final ms in runLengthsMs.skip(p.clipIndex + 1)) {
+    frames += (ms / 1000 * fps).ceil();
+  }
+  final clipsAfter = max(0, p.clipCount - p.clipIndex - 1);
+  return Duration(milliseconds: (max(0, frames) * p.msPerFrame + clipsAfter * p.msPerClip).round());
+}
+
 class VideoAnalysisScreen extends StatefulWidget {
   /// Session folder to preselect (the finished import, or a home row).
   final String? initialSessionPath;
@@ -1126,11 +1144,7 @@ class _VideoAnalysisScreenState extends State<VideoAnalysisScreen> {
     if (_runLengthsMs.length != p.clipCount || _runLengthsMs.skip(p.clipIndex).any((ms) => ms <= 0)) {
       return ', time left not known yet';
     }
-    final totalS = _runLengthsMs.fold(0, (s, v) => s + v) / 1000;
-    final leftS = totalS * (1 - f);
-    // Phone videos rarely have more than 30 frames per second.
-    final frames = leftS * min(_prefs.analysisFps, 30);
-    final left = Duration(milliseconds: (frames * p.msPerFrame).round());
+    final left = videoTimeLeft(p, runLengthsMs: _runLengthsMs, analysisFps: _prefs.analysisFps);
     return left.inMinutes > 0 ? ', ~${_fmtElapsed(left)} left' : ', ~${left.inSeconds} s left';
   }
 

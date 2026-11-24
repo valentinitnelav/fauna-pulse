@@ -10587,3 +10587,6 @@ Asked (hand-off of round 397): find where FaunaPulse breaks or slows with 120 to
 ## Round 403 (2026-11-24): Import videos screen for many clips
 Asked (owner, after the scale test of round 402): fix findings 1, 2, 5 and 6 on the Import videos screen, with a fixed Import button and one note in place of notes repeated per clip. Open: the time left (round 404) and the clip list (round 405).
 
+## Round 404 (2026-11-24): time left with many short clips
+Asked (owner, finding 4 of the round 402 scale test): "Find animals in videos" said 30 % too little time left with many short clips. Open: the clip list (round 405).
+

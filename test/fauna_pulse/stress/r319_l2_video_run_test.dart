@@ -7,6 +7,9 @@
 // - Storage full while the results are written stops the run with a clear
 //   result, and Continue does not glue its first record onto a cut last line
 //   (item 8).
+// - Round 404 (scale test of round 402): the time per clip outside detection
+//   (opening and closing it) is measured for the time left, without heat
+//   pauses and without the first clip, which also loads the model.
 //
 // Storage full is real: the results file is opened on Linux's /dev/full,
 // where every write fails with "No space left on device" (errno 28), through
@@ -38,6 +41,9 @@ class _Backend implements VideoBackend {
 
   /// Called for every chunk, e.g. to move a fake clock on.
   Future<void> Function()? onNext;
+
+  /// Called when a clip is opened, e.g. to move a fake clock on.
+  Future<void> Function(String clip)? onOpen;
   final opens = <String>[];
   List<int> _pts = const [];
   var _i = 0;
@@ -52,6 +58,7 @@ class _Backend implements VideoBackend {
   @override
   Future<void> open(String path, VideoRunConfig config, {required int startPtsUs}) async {
     opens.add(_name(path));
+    await onOpen?.call(_name(path));
     if (openError case final e?) throw e;
     _pts = [for (var i = 0; i < frameCounts[_name(path)]!; i++) i * 100000].where((p) => p >= startPtsUs).toList();
     _i = 0;
@@ -275,6 +282,37 @@ void main() {
         expect(s.ms, closeTo(10, 0.01), reason: 'after ${s.frames} frames${s.paused ? ' (paused)' : ''}');
       }
     });
+  });
+
+  test('round 404: time per clip outside detection, without heat pauses and the first clip', () async {
+    File('${dir.path}/videos/c.mp4').writeAsStringSync('x');
+    // Opening a clip takes 600 ms, the first 2 s more (the model loads); each chunk 30 ms;
+    // the second clip's first chunk waits for a heat pause of 2 x 300 ms.
+    var t = DateTime.utc(2026, 11, 24, 12);
+    final temps = [30.0, 30.0, 30.0, 45.0, 44.0, 36.0];
+    var reads = 0;
+    final b = _Backend({'a.mp4': 9, 'b.mp4': 9, 'c.mp4': 9})
+      ..onOpen = (clip) async {
+        t = t.add(Duration(milliseconds: clip == 'a.mp4' ? 2600 : 600));
+      }
+      ..onNext = () async {
+        t = t.add(const Duration(milliseconds: 30));
+      };
+    final seen = <VideoProgress>[];
+    final result = await VideoDetector(
+      backend: b,
+      thermal: () async => ThermalReading(batteryTempC: reads < temps.length ? temps[reads++] : 30),
+      now: () => t,
+      sleep: (d) async {
+        t = t.add(const Duration(milliseconds: 300));
+      },
+    ).run(dir, config: _config, onProgress: seen.add);
+    expect(result.thermalPauses, 1);
+    expect(result.clipsDone, 3);
+    expect(seen.where((p) => p.clipIndex == 0).every((p) => p.msPerClip == 0), isTrue, reason: 'no clip done yet');
+    expect(seen.where((p) => p.clipIndex == 1).last.msPerClip, 2600, reason: 'only the first clip is done');
+    expect(seen.where((p) => p.clipIndex == 2).last.msPerClip, 600, reason: 'the second clip, without its pause');
+    expect(seen.last.msPerFrame, closeTo(10, 0.01), reason: 'ms per frame stays the detection time only');
   });
 
   group('item 8: storage full while the results are written', () {

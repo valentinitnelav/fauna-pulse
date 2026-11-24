@@ -230,8 +230,9 @@ stopped.
 <summary>Progress line, heat pauses and error messages</summary>
 
 - **Continue** also appears when the run stopped inside its first clip.
-- The progress line's **ms per frame** and time left leave out heat pauses. When a clip's length
-  is not known yet, it says "time left not known yet".
+- The progress line's **ms per frame** and time left leave out heat pauses. The time left also
+  counts the time it takes to open each clip still to come, which adds up with many short
+  clips. When a clip's length is not known yet, it says "time left not known yet".
 - Under the progress line, **Battery temperature** shows the temperature of the battery (its
   own sensor; the processor gets hot faster than this, which the Heat level graph shows) on a
   scale that ends at "pauses at N °C" (the pause temperature). After a heat pause the run goes
