@@ -87,7 +87,13 @@ For older Android smartphones that cannot run the models, the sister app [**Faun
 
 ### How is FaunaPulse different from popular identification apps?
 
-With image recognition **identification apps** ([Seek][seek_app], [ObsIdentify][obsidentify]) you point the phone at one organism and get its name. FaunaPulse does a different job: it is designed with the goal to be used as a **monitoring camera** that stays at one spot and works by itself.
+With image recognition **identification apps** ([Seek][seek_app], [ObsIdentify][obsidentify]) you point the phone at one organism and get its name.
+
+FaunaPulse does a different job:
+
+- It is designed with the goal to be used as a **monitoring camera** that stays at one spot and works by itself.
+- Everything runs on the phone, no internet or cloud services needed. Best connect a power bank as well and use casing to protect from heat and rain.
+- You can also export a session's results (captured images, videos, metadata, including predicted detections) for further analysis on your PC / workstation.
 
 | | Identification apps | FaunaPulse |
 |---|---|---|
