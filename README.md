@@ -15,11 +15,11 @@
 </p>
 
 <p align="center">
-  <strong>Turn your Android phone into an AI wildlife camera, or into a mini AI workstation for your wildlife photos & videos.</strong>
+  <strong>Turn your Android phone into a wildlife camera that works by itself, or into a mini workstation for your wildlife photos & videos.</strong>
 </p>
 
 <p align="center">
-  Detect, track and identify fauna with AI that runs on the phone itself. No internet needed in the field.
+  Detect, track and identify fauna on the phone itself. No internet needed in the field.
 </p>
 
 <p align="center">
@@ -61,7 +61,7 @@
   &nbsp;
   <img
     src="https://github.com/user-attachments/assets/21532391-0c71-4133-9967-7c9cd9d8972d"
-    alt="Illustration: the three AI steps on the phone, detect, track and identify"
+    alt="Illustration: the three steps on the phone, detect, track and identify"
     width="15%"
   />
 </p>
@@ -70,18 +70,18 @@
 
 **FaunaPulse** is a free (and ad-free), open-source Android app for wildlife monitoring. It can **detect and track** the animals that come into its adjustable view, **logs when, how often and for how long** they visit, and saves their photos or videos. Afterwards it **names the tracked animals in bulk** (order, family, genus and species, each with a confidence), for example with [BioCLIP 2 or 2.5][bioclip].
 
-**Everything runs on the phone itself:** no power-hungry AI in the cloud, no server, no account, and no internet connection when you go out in the wild (the phone needs the internet only once, to download the AI models, or you can also copy them to the phone over USB). The AI runs on the phone's own chip, powered by its battery or a power bank. Your data stays yours.
+**Everything runs on the phone itself:** no power-hungry AI in the cloud, no server, no account, and no internet connection when you go out in the wild (the phone needs the internet only once, to download the models, or you can also copy them to the phone over USB). The models run on the phone's own chip, powered by its battery or a power bank. They find and name animals in pictures and do not create text or images (**no generative AI**). Your data stays yours.
 
-**A mini AI workstation in your pocket for free:** if you already have photos or videos of animals, import them, and the phone can find, track and identify the animals in them. This can be handy if you cannot afford a GPU workstation or cloud services.
+**A mini workstation in your pocket:** if you already have photos or videos of animals, import them, and the phone can find, track and identify the animals in them. This can be handy if you cannot afford a GPU workstation or cloud services.
 
-**Not only pollinators:** think of FaunaPulse as the chassis of a car where you can drop in your own engine. The app is the platform and the AI models are the engine. The models are separate files that you choose, so the same app can watch insects on flowers or on a flat surface, birds or mammals. Ready-made models can be downloaded in the app (see [AI Models](#ai-models)), and you can also **add your own detection and classification models**.
+**Not only pollinators:** think of FaunaPulse as the chassis of a car where you can drop in your own engine. The app is the platform and the models are the engine. The models are separate files that you choose, so the same app can watch insects on flowers or on a flat surface, birds or mammals. Ready-made models can be downloaded in the app (see [AI Models](#ai-models)), and you can also **add your own detection and classification models**.
 
 > [!IMPORTANT]
-> **Detection, tracking, and classification quality will vary based on the [custom AI models used][hf_fp_models]. With our [documentation and Python tools][fp_models], you can also export models tailored to your specific imagery and use case.**
+> **Detection, tracking, and classification quality will vary based on the [custom models used][hf_fp_models]. With our [documentation and Python tools][fp_models], you can also export models tailored to your specific imagery and use case.**
 
 The primary scientific use case of FaunaPulse is estimating **visitation rates** in ecological studies (who visits whom, how often and for how long), for example of pollinating insects on a flower or inflorescence. This is a proxy for pollination, which can be vital for the reproduction of many plants, including for crop yield and quality.
 
-For older Android smartphones that cannot run AI models, the sister app [**FaunaLapse**][fauna_lapse] is a light application that turns them into time-lapse cameras. FaunaPulse can also capture without AI: motion-triggered photos, time-lapse photos (also at night) and scheduled videos.
+For older Android smartphones that cannot run the models, the sister app [**FaunaLapse**][fauna_lapse] is a light application that turns them into time-lapse cameras. FaunaPulse can also capture without AI: motion-triggered photos, time-lapse photos (also at night) and scheduled videos.
 
 ### How is FaunaPulse different from Seek, ObsIdentify or Flora Incognita?
 
@@ -114,17 +114,17 @@ Saved images can also be reviewed and cropped by hand, and the crops shared with
 
 ### Demos (YouTube)
 
-#### Live-AI detection & tracking
+#### Live detection & tracking
 
-Demonstrates real-time AI tracking of organisms.
+Demonstrates real-time tracking of organisms.
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=S-FVpT6K3-I"><img src="https://i.ytimg.com/vi/S-FVpT6K3-I/hqdefault.jpg" alt="Insect tracking - Hymenoptera" height="150"></a> 
 </p>
 
-#### Detection & tracking in post-processing
+#### Detection & tracking on your videos
 
-Demonstrates AI tracking of organisms on previously recorded videos (either within the app, or imported from your camera app or other sources).
+Demonstrates tracking of organisms on previously recorded videos (either within the app, or imported from your camera app, camera traps, or other sources).
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=rCNEcfg4Rfc"><img src="https://i.ytimg.com/vi/rCNEcfg4Rfc/hqdefault.jpg" alt="Insect tracking - Megachile" height="150"></a>  
@@ -171,14 +171,14 @@ this file on Zenodo). -->
 
 ## Modes of operation
 
-1. **Real-time detection and tracking** using AI detectors of your choice;
-2. **Motion-triggered** image capture;
-3. **Scheduled time-lapse** image capture (including **nocturnal mode** using the phone's torch / flashlight);
-4. **Scheduled video recordings** (AI detection can run on them later, see mode 5);
-5. **Post-capture AI detection & tracking on videos**, locally on the smartphone, on videos recorded with FaunaPulse or imported from other sources;
-6. **Post-capture AI detection on images** captured with the motion or time-lapse mode, using either a single-detector pass or the moving window / tiling approach - [SAHI (Slicing Aided Hyper Inference)][sahi]. SAHI runs slowly (depending on your smartphone model), but it can help reduce the number of "empty" images (without target organisms) that the motion-triggered and time-lapse modes usually capture.
-Track IDs can be found on these photos too (**Find track IDs** on the **Find animals in photos** screen). This is not advised: it works only when the photos were taken at most 0.5 s apart, because a tracker needs a high frame rate. For photos further apart, use mode 1 (live AI) or 4 (video) if tracking is needed.
-7. **Post-capture AI classification**, for example using a quantised [BioCLIP 2 or 2.5][bioclip] image classifier (or the insectDCT classifier) running directly on your smartphone, without an internet connection to a classification server (though very old smartphones will be limited or not have the needed compute power or RAM). Classification is focused on the detected organisms (an organism is cropped with the bounding boxes predicted by the detector) and not the entire frame.
+1. **Real-time detection and tracking** using detectors of your choice.
+2. **Motion-triggered** image capture.
+3. **Scheduled time-lapse** image capture (including **nocturnal mode** using the phone's torch / flashlight).
+4. **Scheduled video recordings** (detection can run on them later, see mode 5).
+5. **Post-capture detection & tracking on videos**, locally on the smartphone, on videos recorded with FaunaPulse or imported from other sources.
+6. **Post-capture detection on images** captured with the motion or time-lapse mode, using either a single-detector pass or the moving window / tiling approach - [SAHI (Slicing Aided Hyper Inference)][sahi]. SAHI runs slowly (depending on your smartphone model), but it can help reduce the number of "empty" images (without target organisms) that the motion-triggered and time-lapse modes usually capture.
+Track IDs can be found on these photos too (**Find track IDs** on the **Find animals in photos** screen). This is not advised: it works only when the photos were taken at most 0.5 s apart, because a tracker needs a high frame rate. For photos further apart, use mode 1 (live detection) or 4 (video) if tracking is needed.
+7. **Post-capture classification**, for example using a quantised [BioCLIP 2 or 2.5][bioclip] image classifier (or the insectDCT classifier) running directly on your smartphone, without an internet connection to a classification server (though very old smartphones will be limited or not have the needed compute power or RAM). Classification is focused on the detected organisms (an organism is cropped with the bounding boxes predicted by the detector) and not the entire frame.
 
 Modes 1-4 can also be **scheduled** (**Scheduled recording**: up to three daily windows, for example 1st run 9:00-12:00, 2nd run 13:00-17:00, repeated for 1 to 14 days), for example when the smartphone(s) are deployed over multiple days or for recording in time-lapse mode for nocturnal activity. A window cannot cross midnight: for a night, use two windows (one before and one after midnight).
 
@@ -190,8 +190,8 @@ Modes 1-4 can also be **scheduled** (**Scheduled recording**: up to three daily 
 - **Pollination questions / research:** measure and compare flower-visitation rates among plant species, floral patches, (e.g., across habitats, habitat restoration, patch structure, land-management practices and intensity, agriculture, environmental conditions / gradients, research treatments, etc.).
 - **Citizen science:** collect observations on flower visitors, wildlife and other fauna using an ordinary smartphone.
 - **Wildlife activity:** record when, how often and for how long fauna/organisms appear within a selected observation area.
-- **Biodiversity documentation:** capture fauna occurrences or events using AI detection, motion triggering or time-lapse capture across various habitats.
-- **Wildlife surveys with custom AI models:** monitor wildlife categories supported by compatible object-detection and classification models. Train your custom models and deploy them on the FaunaPulse app.
+- **Biodiversity documentation:** capture fauna occurrences or events using automatic detection, motion triggering or time-lapse capture across various habitats.
+- **Wildlife surveys with custom models:** monitor wildlife categories supported by compatible object-detection and classification models. Train your custom models and deploy them on the FaunaPulse app.
 
 </details>
 
@@ -204,11 +204,11 @@ FaunaPulse is a **research preview (beta)**, provided as a free, experimental fi
 
 - Only Android is supported at present. An iOS version is postponed: it needs time and resources that I do not have at the moment (help is welcome, see *Contributing & Maintenance*).
 - FaunaPulse is made for smartphones mounted upright (portrait) on a tripod, clamp or stake. It has not been tested on tablets. A phone mounted sideways still works, but the app does not notice the turn. Details in the [Field Guide](docs/FIELD_GUIDE.md) (*Physical setup*).
-- AI-based monitoring requires compatible quantized `.tflite` models. FaunaPulse was designed so that end-users can add their own models (one for detection and another one for classification). Each publicly available model comes with its own narrow scope and limitations, which FaunaPulse cannot fix. See further details in [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) and in each model card on [Hugging Face][hf_fp_models].
-- Built-in (on-device) taxonomic identification in bulk needs a BioCLIP model file (large files: about 0.6 to 1.3 GB) and a name list (called a "label pack" on Hugging Face; ready-made ones can be downloaded in the app, custom ones can be prepared on a PC). BioCLIP identification cannot run in real time, and its results vary significantly with image quality.
-- Each scientific application should be validated under its intended field conditions and tailored AI models before data collection at scale.
+- Detection and identification require compatible quantized `.tflite` models. FaunaPulse was designed so that end-users can add their own models (one for detection and another one for classification). Each publicly available model comes with its own narrow scope and limitations, which FaunaPulse cannot fix. See further details in [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) and in each model card on [Hugging Face][hf_fp_models].
+- Built-in (on-device) taxonomic identification in bulk needs a BioCLIP model file (large files: about 0.6 to 1.3 GB) and a name list (called a "label pack" on Hugging Face). Ready-made name lists can be downloaded in the app, and custom ones can be prepared on a PC. BioCLIP identification cannot run in real time, and its results vary significantly with image quality.
+- Each scientific application should be validated under its intended field conditions and tailored models before data collection at scale.
 - Visit counts may include missed, duplicated, split (fragmented) or merged tracks. Therefore, review outputs and consider those limitations before drawing strong scientific conclusions. From my observations, abundance will most probably be overestimated. Correcting that bias is work in progress.
-- The quality of results depends on many factors, including the AI model, its generalisability, smartphone specs and handling, image quality, morphological complexity of the monitored organisms and their occurrence backgrounds, field setup, weather conditions, time of the day or of the year, etc.
+- The quality of results depends on many factors, including the model, its generalisability, smartphone specs and handling, image quality, morphological complexity of the monitored organisms and their occurrence backgrounds, field setup, weather conditions, time of the day or of the year, etc.
 - Smartphones are not usually designed to endure scorching sun or rain, so please use waterproof and/or thermal casing, USB (magnetic) coolers or simple shading if you plan to operate in such conditions. There are options on online markets and I prefer to avoid advertising any in particular. Your advice and creative solutions are very welcome, as long as they are safe to use.
 - **Device temperature** can vary substantially between phone models and with ambient temperature. Prolonged continuous on-device inference can cause some devices to become warm, trigger thermal throttling, or drain the battery more quickly (especially over 40°C). Some FaunaPulse operation modes include thermal-management measures, but thermal behavior depends on the phone hardware, operating system, operation conditions and handling and cannot be guaranteed for every smartphone. Some phone models can also overheat faster while charging. **If your device becomes excessively hot (e.g. over 40-45°C) or displays a thermal warning (even when using cooling options / thermal casing), stop using it and allow the device to cool before continuing, or use another phone model with safer thermal throttling features.**
 
@@ -229,9 +229,9 @@ NOTE:
 
 Other options (see [Installation & Testing Guide](docs/INSTALL.md)):
 
-1. **Download the latest APK file from the [GitHub Releases](https://github.com/valentinitnelav/fauna-pulse/releases) page**; WikiHow provides a tutorial with the necessary steps: [How to Download & Install an APK on Android: Full APK Guide](https://www.wikihow.com/Install-APK-Files-on-Android). See also "Track A" in [Installation & Testing Guide](docs/INSTALL.md) for a guide example with screenshots. However, this option does not come with auto-updates - see next option with Obtainium for that.
+1. **Download the latest APK file from the [GitHub Releases](https://github.com/valentinitnelav/fauna-pulse/releases) page**. WikiHow provides a tutorial with the necessary steps: [How to Download & Install an APK on Android: Full APK Guide](https://www.wikihow.com/Install-APK-Files-on-Android). See also "Track A" in [Installation & Testing Guide](docs/INSTALL.md) for a guide example with screenshots. However, this option does not come with auto-updates - see next option with Obtainium for that.
 2. **Install & auto-update via [Obtainium](https://wiki.obtainium.imranr.dev/)**. Obtainium is an app that allows you to install and update FaunaPulse  directly from this GitHub repository. It also provides notifications for new releases. See "Track A2b" in [Installation & Testing Guide](docs/INSTALL.md)  
-3. **Build directly from source with the latest features and bug fixes**. For advanced users comfortable with a terminal. The build steps are written for Linux only for now; on macOS or Windows, your favorite LLM / chat-bot can help you adapt them. Basically, you will build the app based on what is right now on GitHub, branch `main` provides a stable version of the app, tested on a smartphone. The branch `develop` is more active, but occasionally less stable. See "Track B" in [Installation & Testing Guide](docs/INSTALL.md).
+3. **Build directly from source with the latest features and bug fixes**. For advanced users comfortable with a terminal. The build steps are written for Linux only for now. On macOS or Windows, your favorite LLM / chat-bot can help you adapt them. Basically, you will build the app based on what is right now on GitHub, branch `main` provides a stable version of the app, tested on a smartphone. The branch `develop` is more active, but occasionally less stable. See "Track B" in [Installation & Testing Guide](docs/INSTALL.md).
 
 </details>
 
@@ -245,7 +245,7 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 | Document | Main audience | Purpose |
 |---|---|---|
 | [README.md](./README.md) | Everyone | This document |
-| [INSTALL.md](docs/INSTALL.md) | Tester / developer | Install a ready-made APK or build from source; import models. |
+| [INSTALL.md](docs/INSTALL.md) | Tester / developer | Install a ready-made APK or build from source, and import models. |
 | [TUTORIAL_VIDEO_ANALYSIS.md](docs/TUTORIAL_VIDEO_ANALYSIS.md) | New user | Try FaunaPulse in a few minutes: find, track and name the animals in two demo videos. |
 | [CHANGELOG.md](./CHANGELOG.md) | Everyone | What changed between releases. |
 | [PRIVACY_POLICY.md](./PRIVACY_POLICY.md) | Everyone | What the app does (and does not) collect, permission by permission. |
@@ -256,12 +256,12 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 | [HOW_PHOTO_RESOLUTION_WORKS.md](docs/HOW_PHOTO_RESOLUTION_WORKS.md) | Developer | Understand why a small ROI can still yield sharp photographs. |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Developer | Understand the data flow and native-to-Dart contract. |
 | [CONTRIBUTING.md](docs/CONTRIBUTING.md) | Developer | Build, test and follow repository conventions. |
-| [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) | Developer | Which model formats the app runs; the conversion tools are in [fauna-pulse-models][fp_models]. |
+| [MODEL_CONVERSION.md](docs/MODEL_CONVERSION.md) | Developer | Which model formats the app runs. The conversion tools are in [fauna-pulse-models][fp_models]. |
 | [Model cards on Hugging Face][hf_fp_models] | Developer / tester | Where each model the app offers comes from, how it was converted for the phone, its licence and how to cite it. The conversion tools and the cards' sources are in [fauna-pulse-models][fp_models]. |
 | [IDENTIFICATION.md](docs/IDENTIFICATION.md) | Researcher / developer | Identify the recorded animals on the phone ([BioCLIP 2 or 2.5][bioclip], insectDCT classifier): how to run it, read the results, and how the method works. |
 | [PERFORMANCE_BENCHMARKING.md](docs/PERFORMANCE_BENCHMARKING.md) | Developer | How to measure performance (paired-run protocol). |
 | [LEAN_QNN_PACKAGING.md](docs/LEAN_QNN_PACKAGING.md) | Maintainer | The lean (no-QNN) default build and the optional Snapdragon NPU edition (`-P qnn=true`). |
-| [FAUNAPULSE_FORK.md](./packages/ultralytics_yolo/FAUNAPULSE_FORK.md) | Developer / reviewer | What FaunaPulse changed in its copy of the Ultralytics plugin vs upstream; re-audit checklist. |
+| [FAUNAPULSE_FORK.md](./packages/ultralytics_yolo/FAUNAPULSE_FORK.md) | Developer / reviewer | What FaunaPulse changed in its copy of the Ultralytics plugin vs upstream, and a re-audit checklist. |
 | [AGENTS.md](./AGENTS.md) | Code agent | A coding agent will first read this file to build context. |
 | [AGENT_CHANGELOG_OVERVIEW.md](docs/AGENT_CHANGELOG_OVERVIEW.md) | Code agent | Current-state development overview. |
 | [AGENT_CHANGELOG.md](docs/AGENT_CHANGELOG.md) | Code agent | Detailed append-only development journal. |
@@ -270,7 +270,7 @@ Documentation is work in progress and very time-consuming so LLMs were often use
 
 ## AI Models
 
-AI **detectors** and **classifiers** (quantised `tflite` files) are not shipped with the app (e.g., via Google Play) or stored in this GitHub repository. The app downloads them on the phone. The models are published on [Hugging Face][hf_fp_models], one repository per model family, each with a model card (where the model comes from, how it was converted, how to cite it) and the original model's licence.
+The **detectors** and **classifiers** (quantised `tflite` files) are not shipped with the app (e.g., via Google Play) or stored in this GitHub repository. The app downloads them on the phone. The models are published on [Hugging Face][hf_fp_models], one repository per model family, each with a model card (where the model comes from, how it was converted, how to cite it) and the original model's licence.
 
 The tools to convert and quantise the models published on Hugging Face (or any other compatible model you may have) are provided on the GitHub repository [fauna-pulse-models][fp_models].
 
@@ -282,7 +282,7 @@ The tools to convert and quantise the models published on Hugging Face (or any o
 The **Download & import models** screen (home screen: *AI models* in the bottom bar, or the Menu) offers several quantised detectors.
 Their original GitHub repositories are listed below:
 
-- [flat-bug][flatbug] (sizes `n` and `s`) mostly trained on dead specimens, so try it when aiming the camera at a homogenous background; for insects the app suggests it as a demo detector,
+- [flat-bug][flatbug] (sizes `n` and `s`) mostly trained on dead specimens, so try it when aiming the camera at a homogenous background (for insects, the app suggests it as a demo detector),
 - [insectDCT][insectdct] (size `s`) try it for insects on flowers,
 - [MegaDetector v6][mgdetv6] (sizes `c` and `e`) for common animals (3 classes: *animal, person, vehicle*).
 
@@ -290,7 +290,7 @@ Classifiers (identification models) are offered the same way.
 
 A custom detector for pollinating insects is planned for training and release based on collected smartphone images. A sample of this dataset is published on Zenodo - *Dataset of arthropod flower visits captured via smartphone time-lapse photography*, [Ştefan et al. 2025][zenodo_phones].
 
-Custom AI detectors can be added on the same screen:
+Custom detectors can be added on the same screen:
 
 - **Download from a link…**, pasting a link to a model file or name list (`.tflite`, `.fpack`), or
 - **Import model files…**, selecting one or more model files (`.tflite`) or name lists (`.fpack`) stored on the phone (the app checks that each is a detection model, an identification model or a name list and puts it in its place), or
@@ -431,7 +431,7 @@ Example:
 
 > Ștefan, V., Sittinger, M., & Knight, T. (2026). FaunaPulse: a smartphone application for on-device detection, tracking and identification of animals [Software]. Zenodo. https://doi.org/10.5281/zenodo.22309221. Source code: https://github.com/valentinitnelav/fauna-pulse
 
-Every release is archived on Zenodo. The concept DOI [10.5281/zenodo.22309221](https://doi.org/10.5281/zenodo.22309221) always resolves to the newest version; each release also carries its own version DOI, listed on its Zenodo page and in `CITATION.cff`. 
+Every release is archived on Zenodo. The concept DOI [10.5281/zenodo.22309221](https://doi.org/10.5281/zenodo.22309221) always resolves to the newest version. Each release also carries its own version DOI, listed on its Zenodo page and in `CITATION.cff`. 
 
 In the app, **Menu** → **Cite FaunaPulse** on the home screen shows the citation of the version installed on the phone and the DOI link.
 

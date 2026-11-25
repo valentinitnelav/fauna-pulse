@@ -7,12 +7,12 @@ It holds working rules only. Facts about the app (file map, defaults, invariants
 
 ## Project Overview
 
-This project is an Android field application designed to detect flower-visiting pollinators 
+This project is an Android application designed to detect flower-visiting pollinators 
 in real time and log every detection with its timestamp to compute visitation rates. 
 With swappable detection models and AI-free capture modes (motion-triggered, time-lapse), 
 it can monitor the activity of any organism at a fixed spot. 
-The app is Dart (Flutter) code on top of native Android code in Kotlin; the models run on the
-phone with LiteRT.
+The app is Dart (Flutter) code on top of native Android code in Kotlin.
+The models run on the phone with LiteRT.
 The application is built on the Ultralytics YOLO Flutter plugin, using a modified copy (fork) in
 `packages/ultralytics_yolo/`; its `FAUNAPULSE_FORK.md` lists what FaunaPulse changed.
 
@@ -27,9 +27,9 @@ The app sits at the git repository root and paths below are relative to it.
 
 ## Keeping the agent documents current
 
-A **round** is one piece of agent work that changes tracked files; it ends with one commit whose
+A **round** is one piece of agent work that changes tracked files. It ends with one commit whose
 message starts with "Round <n>:". A session that only answers questions, or changes only files
-outside git, has no round, and changes the owner makes by hand need none. The next round number is one more than the last header in
+outside git, has no round, and changes the maintainer makes by hand need none. The next round number is one more than the last header in
 `docs/AGENT_CHANGELOG.md` (`grep '^## Round' docs/AGENT_CHANGELOG.md | tail -1`); when that round
 has no commit yet (`git log --grep '^Round <n>:'`), the work may still belong to it.
 
@@ -40,9 +40,11 @@ has no commit yet (`git log --grep '^Round <n>:'`), the work may still belong to
   now: when a round changes a rule or where something lives, replace or delete the affected text
   in place (no round numbers, old values or measurements). When the reason for a rule is not
   obvious, give it in one short clause. Keep it under 40,000 characters (`wc -m`).
+  When truly needed, increasing this character limit is done by maintainer or by agent
+  after asking the maintainer.
 - `docs/AGENT_CHANGELOG.md` is the list of rounds. It grew very long, so since round 376 an
   entry is only a few lines and the round's commit message holds the details (*Git related*).
-  Never read the file whole. Ask the owner before reading old round entries, and only when past
+  Never read the file whole. Ask the maintainer before reading old round entries, and only when past
   rationale is really needed (search with `grep`, read single entries). Each round appends one
   entry at the end, without reading the file:
   - a header line "## Round xy (yyyy-mm-dd): some short title", for example
@@ -89,12 +91,12 @@ The maintainer's private repositories are listed outside git, in `~/InsectDetect
 When a task reaches another repository:
 
 - Each file goes into the repository whose job it is and follows that repository's `AGENTS.md`.
-- Do not edit another repository from an app session unless the owner asks. When an app change
+- Do not edit another repository from an app session unless the maintainer asks. When an app change
   breaks a rule that another repository repeats, say so, and write a short hand-off note (what
   changed, why, which files) in that repository's `private/` folder (git-ignored; FaunaLapse:
   `~/FaunaLapseApp/`). Contributors mention it in their pull request instead. Larger work there
   continues in a session opened in that repository.
-- When the owner asks for one task in two repositories, check `git status` in both first
+- When the maintainer asks for one task in two repositories, check `git status` in both first
   (another session may be working there), and suggest one commit message per repository.
 - Docs and code comments refer to another repository by its name or GitHub URL, never by a
   local path.
@@ -104,8 +106,9 @@ When a task reaches another repository:
 ## General rules
 
 Keep answers concise, but clear and easy to understand. Write plain English with short
-sentences and no idioms (the owner and many users are not native speakers). Do not use the em
-dash (—) as a punctuation mark; use parentheses (round brackets) instead.
+sentences and no idioms. Do not use the em dash (—) as a punctuation mark:
+use parentheses (round brackets) instead. Avoid semicolons too: write two sentences,
+or join the parts with a comma or "and".
 
 **Code comments** explain why: the reason for a choice, alternatives that failed, side effects,
 and what must stay in sync elsewhere. Names and the code itself say what it does. Define mobile,
@@ -121,7 +124,7 @@ Avoid being verbose with the implemented code.
 Report checks honestly: say what was verified and how (unit tests, analyzer, which phone model).
 Never claim a check that was not run.
 
-**Phones.** Ask the owner before using a connected phone. Before every `flutter run` or
+**Phones.** Ask the maintainer before using a connected phone. Before every `flutter run` or
 `flutter test integration_test/...` on a phone, first install a debug build yourself with
 `adb -s <device-id> install -r` and stop if that is refused: when Flutter's own install is
 refused (a different signing key, or MIUI's "Install via USB?" question left unanswered),
@@ -139,19 +142,19 @@ compilation video"). Phones are named by model, never by serial number (`adb dev
 both); use placeholders such as `<device-id>` in commands.
 
 Do not read `~/InsectDetectApp/sessions/` (test session outputs, many large text files) unless
-the owner asks. Then ask before reading, use keyword searches, and never read a large file whole
+the maintainer asks. Then ask before reading, use keyword searches, and never read a large file whole
 unless asked (thi is to avoid burning trough tokens)
 
 **Git related:**
 
 - Do not perform destructive Git operations without explicit approval.
-- Do not git commit or git push changes unless requested by project owner via prompts.
+- Do not git commit or git push changes unless requested by project maintainer via prompts.
 - Never git push to main branch and never force push. 
 - Work on `develop`: if the repository is on `main` when you start changing files, switch to
   `develop` first (and do not commit).
 - If asked to commit, stage files by name (`git add <path>`), never `git add -A` or `git add .`: model files, logs
   and other local files can sit in the working tree, and binaries never go into git.
-- Change the app version in `pubspec.yaml` only when the owner asks (release rounds).
+- Change the app version in `pubspec.yaml` only when the maintainer asks (release rounds).
 - Commits use the identity in the repository's git config (the GitHub noreply address): never
   pass `--author` or write a private address. Commit messages contain no author or attribution
   lines (no "Co-Authored-By", no tool or person names).
@@ -174,7 +177,7 @@ the licence.
   software. Short snippets from documentation or web answers are fine, and so is code from the
   official docs and sources of this project's own dependencies (Flutter, Android, LiteRT, the
   Ultralytics plugin). Use common sense about where borrowing becomes copying. If a task seems to
-  need substantial code or a whole design from another project, stop and tell the owner first.
+  need substantial code or a whole design from another project, stop and tell the maintainer first.
   Also, instead of readapting code, check if that source code can be a dependency.
 - **Credit an algorithm where it is implemented.** When code follows a published method (for
   example ByteTrack or C-BIoU), the comment at the top of the file or function names the method,
@@ -186,10 +189,10 @@ the licence.
   both and say who contributed what ("idea from X; implementation follows Y"). Use neutral
   wording ("as in Y (Author 2026)"), not possessive ("Author's method"). A statement such as
   "no code copied" must be true.
-- **Copied code keeps its notices.** Code copied or closely adapted (after the owner agreed) must
+- **Copied code keeps its notices.** Code copied or closely adapted (after the maintainer agreed) must
   have a licence compatible with AGPL-3.0: MIT, BSD, Apache-2.0 and GPL-3.0 are; GPL-2.0-only,
   "non-commercial" licences and code with no licence at all (all rights reserved) are not; ask
-  the owner when unsure. Keep the original copyright and licence notice, add a comment with the
+  the maintainer when unsure. Keep the original copyright and licence notice, add a comment with the
   source link (with commit or version) and what was changed, and mention it in the round's
   changelog entry.
 - **Ultralytics plugin and headers.** Never remove or edit the `Ultralytics 🚀 AGPL-3.0` headers

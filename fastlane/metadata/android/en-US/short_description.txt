@@ -1,1 +1,1 @@
-AI wildlife camera: detect, track and identify animals on your phone
+Wildlife camera: detects, tracks and identifies animals offline, on your phone
