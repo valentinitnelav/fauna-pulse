@@ -79,21 +79,26 @@
 > [!IMPORTANT]
 > **Detection, tracking, and classification quality will vary based on the [custom models used][hf_fp_models]. With our [documentation and Python tools][fp_models], you can also export models tailored to your specific imagery and use case.**
 
+> **FaunaPulse is in beta-phase, that means bugs are expected (literally and metaphorically). Help us shape this app by reporting bugs, suggestions and your kind and constructive feedback.**
+
 The primary scientific use case of FaunaPulse is estimating **visitation rates** in ecological studies (who visits whom, how often and for how long), for example of pollinating insects on a flower or inflorescence. This is a proxy for pollination, which can be vital for the reproduction of many plants, including for crop yield and quality.
 
 For older Android smartphones that cannot run the models, the sister app [**FaunaLapse**][fauna_lapse] is a light application that turns them into time-lapse cameras. FaunaPulse can also capture without AI: motion-triggered photos, time-lapse photos (also at night) and scheduled videos.
 
-### How is FaunaPulse different from Seek, ObsIdentify or Flora Incognita?
+### How is FaunaPulse different from popular identification apps?
 
-Those are **identification apps**: you point the phone at one organism and get its name. FaunaPulse does a different job. It is a **monitoring camera** that stays at one spot and works by itself:
+With image recognition **identification apps** ([Seek][seek_app], [ObsIdentify][obsidentify]) you point the phone at one organism and get its name. FaunaPulse does a different job: it is designed with the goal to be used as a **monitoring camera** that stays at one spot and works by itself.
 
 | | Identification apps | FaunaPulse |
 |---|---|---|
 | **Question answered** | What is this organism? | Which animals visit this spot, when, how often and for how long? |
-| **Who takes the picture** | You, by hand, one organism at a time | The phone by itself, for hours or days |
-| **What you get** | A name | Visit data, photos or videos, and a name per tracked animal |
+| **Who takes the picture** | You, by hand, one organism at a time | The phone by itself, for hours or even days |
+| **What you get** | A name | A name per tracked animal, visitation data, automatically captured photos or videos |
 
-The two kinds of app work well together: a photo crop saved by FaunaPulse can be shared with an identification app for a second opinion.
+The two kinds of app work well together, for example:
+
+- use your favorite app for plant identification (e.g. [Flora Incognita][floraincognita], [PlantNet][plantnet]), then use FaunaPulse to estimate what kind of pollinating insects visit the recorded flower, who are the frequent ones and for how long they stay.
+- a photo crop saved by FaunaPulse can be shared with an identification app for a second opinion.
 
 ### Further details
 
@@ -106,7 +111,7 @@ A draggable square **region of interest (ROI)** can be placed over a flower (or 
 
 The **Identify organisms** step runs an image classifier such as [BioCLIP 2 or 2.5][bioclip] (or the insectDCT classifier) over the saved crops of every track ID. The quantised version of the classifiers and their name lists can be downloaded or imported on the **Download & import models** screen (see [IDENTIFICATION.md](docs/IDENTIFICATION.md)). BioCLIP and similar classification tools can still be used on a computer, after the detection results are copied from the smartphone. For that, see [insect-detect-post](https://github.com/maxsitt/insect-detect-post), the classification software developed by my colleague, Maximilian Sittinger, designed to run on a PC (with or without a GPU). The PC tool [fauna-pulse-export][fp_export] adapts FaunaPulse sessions to the data structure that software package ingests, and puts the names from both programs side by side per track ID.
 
-Saved images can also be reviewed and cropped by hand, and the crops shared with identification apps such as [Seek by iNaturalist](https://www.inaturalist.org/pages/seek_app), [ObsIdentify](https://observation.org/apps/obsidentify/), [BeeMachine](https://www.beemachine.ai/) or another service you prefer.
+Saved images can also be reviewed and cropped by hand, and the crops shared with identification apps such as [Seek by iNaturalist][seek_app], [ObsIdentify][obsidentify], [BeeMachine][beemachine] or another service you prefer.
 
 </details>
 
@@ -493,3 +498,8 @@ These are links used throughout this file
 [fp_models]: https://github.com/valentinitnelav/fauna-pulse-models
 [fp_export]: https://github.com/valentinitnelav/fauna-pulse-export
 [fauna_lapse]: https://github.com/valentinitnelav/fauna-lapse
+[seek_app]: https://www.inaturalist.org/pages/seek_app
+[obsidentify]: https://observation.org/apps/obsidentify
+[beemachine]: https://www.beemachine.ai
+[floraincognita]: https://floraincognita.com/
+[plantnet]: https://plantnet.org/en/
