@@ -1,9 +1,18 @@
 name: Security and release checks
 
+# A change that touches only docs/ and Markdown files skips the checks: no test, build step or
+# app asset reads them. A push with any other file still runs everything. If a test ever reads
+# one of these files, remove its pattern here.
 on:
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   push:
     branches: [develop]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   workflow_dispatch:
 
 permissions:
