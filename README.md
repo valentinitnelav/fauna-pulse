@@ -338,14 +338,15 @@ Each model card on [Hugging Face][hf_fp_models] names the original authors, the 
 
 FaunaPulse is developed as an open research project.
 
-Contributions are welcome. Fork the repo, start a short-lived branch from `develop` and open
-the pull request back into `develop`. `main` is kept stable for reviewed
-changes. The [contributor guide](docs/CONTRIBUTING.md) explains setup, testing,
+Contributions are welcome. Please fork the repo, start a short-lived branch from `develop`
+and after adding your contribution, open the pull request back into `develop`.
+The branch `main` is kept stable for reviewed changes after a test on a phone.
+The [contributor guide](docs/CONTRIBUTING.md) explains setup, testing,
 branch names and the dependency-update workflow.
 
 If you want to contribute to this project, here are some main ideas where help is appreciated:
 
-- [ ] discussions about optimal workflows for **aggregation of classification outputs per track ID**. See already a discussion started here [#25]
+- [ ] Discussions about optimal workflows for **aggregation of classification outputs per track ID**. See already a discussion started as an "issue" [#25]
 - [ ] **iOS** development. The Ultralytics plugin supports iOS, but adapting FaunaPulse will require a significant amount of resources for me, so I have parked this idea for now.
 
 [#25]: https://github.com/valentinitnelav/fauna-pulse/issues/25
@@ -362,10 +363,10 @@ The idea for FaunaPulse grew from my past research at the Helmholtz Centre for E
 During my [PhD][phd_stef] research, my field-team and I used affordable smartphones in time-lapse mode to record flower-visiting insects.
 While this was ok, it quickly highlighted some core challenges that motivated the creation of FaunaPulse:
 
-- **Eliminating data overload at the source**: Visits of pollinating insects are brief and infrequent, meaning time-lapse capture generated millions of empty images that overloaded storage and processing time. Post-processing tools like [MegaDetector][mgdet] filter out empty trail camera photos of popular wildlife after collection, and FaunaPulse places that kind of AI processing directly on the phone. So, running detection on-device ensures one captures and stores images when fauna are actually present.
+- **Eliminating data overload at the source**: Visits of pollinating insects are brief and infrequent, meaning time-lapse capture generated millions of "empty" images (without pollinators) that overloaded storage and processing time. Post-processing tools like [MegaDetector][mgdet] filter out "empty" trail camera photos of popular wildlife after collection, and FaunaPulse places that kind of AI processing directly on the phone. Of course, in the stochastic world of AI (on whatever device) there will be false detections (false positives) or not detecting organisms (false negatives), but each research question comes with its subjectively acceptable error rates.
 - **Overcoming traditional sensor limitations**: Standard motion sensors trigger continuously on wind, moving vegetation, or changing sunlight. Heat-based sensors ([Passive infrared sensors][PIR]) are impractical on small insects whose body temperature matches their surroundings. So, on-device computer vision seems like the only reliable way to trigger recordings for flower visiting insects.
-- **Focusing AI on ecological context (Region of Interest - ROI)**: As first suggested in [Ștefan et al. 2025][stefan-2025-a], focusing the camera on a target area (for example, a single flower) reduces background clutter and matches the square input format standard in object-detection models.
-- **Democratizing wildlife monitoring through accessible and affordable hardware**: Commercial camera traps, microcomputers or other gadgets are not available on all markets at all times, some are expensive and some can also be complex to work with. Modern smartphones are powerful, globally accessible microcomputers and almost everyone understands nowadays how to use one. By releasing FaunaPulse as free and open-source software, I want to enable citizen scientists, students, and under-funded research groups to turn everyday phones into tailored camera traps for documenting local biodiversity. The focus is on affordable Android smartphones (also used ones). Growing up in poverty, my main motivation is to empower those with less money.
+- **Focusing AI on ecological context (Region of Interest - ROI)**: This is pretty obvious - focusing the camera on a target area (for example, a single flower) reduces background clutter ([Ștefan et al. 2025][stefan-2025-b]) and matches the square input format standard in object-detection models.
+- **Democratizing wildlife monitoring through accessible and affordable hardware**: Commercial camera traps, microcomputers or other gadgets are not available on all markets at all times, some are expensive and some can also be complex to work with. Modern smartphones are powerful, globally accessible microcomputers and almost everyone understands nowadays how to use one. By releasing FaunaPulse as free and open-source software, I want to enable citizen scientists, students, and under-funded research groups to turn everyday phones into tailored camera traps for documenting local biodiversity. The focus is on affordable Android smartphones (also used ones). Growing up in poverty, my main motivation is to empower those with less money / power.
 
 ### Past Research
 
@@ -388,15 +389,15 @@ FaunaPulse builds on research conducted with colleagues at [UFZ][ufz] and [iDiv]
 <details>
 	<summary>Expand:</summary>
 
-FaunaPulse also began as a personal experiment in what is called “vibe coding”. Developing a custom smartphone field tool initially seemed likely to require substantial funding and professional app developers. As AI-assisted software-development tools became more capable, I decided to explore whether they could help me build the application myself.
+FaunaPulse also began as a personal experiment in what is called “vibe coding”. Developing a custom smartphone field tool initially seemed likely to require substantial funding and professional app developers. As AI-assisted software-development tools became more capable, I decided to pay for a subscription and explore whether they could help me build the application myself.
 
-I am a curious scientist with experience in R, Python, statistics and computer vision, but I am not a professional mobile-app developer. Software development was assisted by [Claude Code](https://claude.com/product/claude-code), a paid tool that was instrumental in making this project possible. I recognize that access to paid AI tools is not equally available.
+I am a curious scientist with experience in R, Python, statistics and computer vision, but I am was not seeing myself as a professional mobile-app developer (and what does "professional" means nowadays?). Software development was assisted by [Claude Code](https://claude.com/product/claude-code), a paid tool that was instrumental in making this project possible. I recognize that access to paid AI tools is not equally available.
 
-I defined the scientific requirements and design decisions, tested the application repeatedly on smartphones, inspected its outputs, reviewed and created documentation and code, and overall architected the resulting software. Occasionally, ChatGPT or Gemini (via web chat) and [Codex](https://openai.com/codex/) were used as additional sources of "critique".
+I defined the scientific requirements, formulated and design decisions, tested the application repeatedly on smartphones, inspected its outputs, reviewed and created documentation and code, and overall architected the resulting software. Occasionally, ChatGPT or Gemini (via web chat) and [Codex](https://openai.com/codex/) were used as additional sources of "critique".
 
-Scientific literature was located using [Google Scholar](https://scholar.google.com), [Elicit](https://elicit.com/) and [Consensus](https://consensus.app/).
+Scientific literature was located using mainly [Google Scholar](https://scholar.google.com), and occasionally [Elicit](https://elicit.com/) and [Consensus](https://consensus.app/).
 
-For transparency, the development process is automatically documented in [`AGENT_CHANGELOG_OVERVIEW.md`](docs/AGENT_CHANGELOG_OVERVIEW.md) and the very detailed [`AGENT_CHANGELOG.md`](docs/AGENT_CHANGELOG.md). Also, the Git history provides the corresponding code-level record.
+For public transparency, the development process is automatically documented in [`AGENT_CHANGELOG_OVERVIEW.md`](docs/AGENT_CHANGELOG_OVERVIEW.md) and the very detailed [`AGENT_CHANGELOG.md`](docs/AGENT_CHANGELOG.md). Also, the Git history provides the corresponding code-level record.
 
 </details>
 
@@ -406,17 +407,18 @@ For transparency, the development process is automatically documented in [`AGENT
 	<summary>Expand:</summary>
 
 FaunaPulse is designed as a free, transparent and open research tool for monitoring biodiversity.
-The app does not collect nor transmit private user data: no account, no analytics, no user tracking.
+
+There is no account one has to create to use the FaunaPulse app. There is no user tracking.
 
 AI models run directly on the phone and everything recorded stays in the app's folder on the device.
 
 **Staying safe:**
 
-- Install FaunaPulse only from Google Play, from the [GitHub Releases](https://github.com/valentinitnelav/fauna-pulse/releases) page of this repository, or with Obtainium from that page. Do not install copies from other places.
-- Import model files, name lists and FaunaLapse zips only from people or websites you trust. Models from the app's own list come from a fixed version on Hugging Face and are checked with a checksum (a fingerprint of the file) before use.
+- Install FaunaPulse only from Google Play, from the [GitHub Releases](https://github.com/valentinitnelav/fauna-pulse/releases) page of this repository, or with Obtainium (see [Installation & Testing Guide](docs/INSTALL.md)). Do not install copies from other places.
+- Import model files, name lists and data only from people or websites you trust. Models from the app's own list come from a fixed version on Hugging Face and are checked with a checksum (a fingerprint of the file) before use.
 - Saved and shared crops include the session position (GPS). For sites that must stay private, such as sites of rare species, turn off "Add the position to exported crops" in Session settings (Photos tab).
-- Feedback reports leave out the position and the field notes you typed. Still, read a report before you post it in a public place.
-- Use a screen lock on field phones and install Android's security updates. On Android 10 and older, other apps with the storage permission can read the session folder.
+- Feedback reports leave out the position and the field notes you typed. Still, please read a report before you post it in a public place.
+- As with any smartphone, use a screen lock on field phones and install Android's security updates. On Android 10 and older, other apps with the storage permission can read the session folder.
 - To report a security problem privately, see [`SECURITY.md`](SECURITY.md).
 
 See [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md) (in the app: **Menu** → **Privacy policy**) for the permission-by-permission detail,
